@@ -9,6 +9,7 @@ from typing import Any, Iterator
 import pandas as pd
 
 from src.aggregator import build_all_statistics
+from src.filters import apply_config_only_filters, is_html_slice_filter
 from src.settings import col, filter_column_name, with_product_analysis_mode
 from src.visualization_data import (
     JSON_AGGREGATION_MODES,
@@ -20,7 +21,6 @@ logger: logging.Logger = logging.getLogger("kanban.filter_slices")
 FILTER_DISPLAY_NAMES: dict[str, str] = {
     "change_conditions": "Изменение условий",
     "data_entry": "Ввод данных",
-    "efs_flag": "ЕФС флаг",
     "strategy_label": "Все стратегии",
     "strategy_label_2026": "Стратегия · 2026",
 }
@@ -28,18 +28,19 @@ FILTER_DISPLAY_NAMES: dict[str, str] = {
 TOGGLE_LABELS: dict[str, str] = {
     "change_conditions": "Изменение условий = 1",
     "data_entry": "Ввод данных = 1",
-    "efs_flag": "ЕФС флаг = 1",
     "strategy_label": "Метка содержит «Стратегия»",
     "strategy_label_2026": "Метка: «Стратегия» и «2026»",
 }
 
 
 def html_filter_names(config: dict[str, Any]) -> list[str]:
-    """Имена фильтров config.filters для HTML (все, не только enabled)."""
+    """Имена фильтров config.filters для HTML (html_slice, не только enabled)."""
     return [
         name
         for name, flt in config.get("filters", {}).items()
-        if isinstance(flt, dict) and filter_column_name(config, flt)
+        if isinstance(flt, dict)
+        and is_html_slice_filter(flt)
+        and filter_column_name(config, flt)
     ]
 
 
@@ -176,13 +177,18 @@ def build_all_filter_slices(
     combinations: list[list[str]] = list(iter_filter_combinations(config))
     slices: dict[str, Any] = {}
 
+    base_df: pd.DataFrame = apply_config_only_filters(raw_df, config)
+    if base_df.empty:
+        logger.warning("После config-only фильтров не осталось строк для JSON-срезов")
+        return catalog, slices
+
     for index, active in enumerate(combinations):
         key: str = filter_slice_key(active)
         label: str = slice_label(active, catalog)
         if progress:
             progress.step(f"JSON-срез {index + 1}/{len(combinations)}: {label}")
 
-        slice_df: pd.DataFrame = apply_filter_subset(raw_df, config, active)
+        slice_df: pd.DataFrame = apply_filter_subset(base_df, config, active)
         if slice_df.empty:
             logger.info("Срез '%s': нет строк после фильтров", key)
             continue

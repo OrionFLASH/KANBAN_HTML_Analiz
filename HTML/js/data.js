@@ -6,6 +6,72 @@ const KanbanData = (() => {
   let aggregationMode = "group_product";
   /** Активные pipeline-фильтры (имена из config.filters). */
   let activePipelineFilters = [];
+  /** split-bundle: кэш загруженных срезов, базовый URL каталога slices/. */
+  let bundleMode = "monolith";
+  let slicesBase = "slices/";
+  const sliceCache = {};
+
+  function isSplitBundle() {
+    return bundleMode === "split";
+  }
+
+  function getSlicesBase() {
+    return slicesBase;
+  }
+
+  function _initFromPayload(data) {
+    payload = data;
+    const defaultAgg =
+      payload?.visualizations?.default_view?.aggregation ||
+      payload?.visualizations?.excel_product_analysis_mode ||
+      "group_product";
+    aggregationMode = availableAggregationModes().includes(defaultAgg) ? defaultAgg : "group_product";
+    activePipelineFilters = [];
+  }
+
+  function loadJson(text) {
+    const data = JSON.parse(text);
+    if (data?.meta?.json_bundle_mode === "split") {
+      bundleMode = "split";
+      slicesBase = data.meta.slices_base || "slices/";
+      Object.keys(sliceCache).forEach((k) => delete sliceCache[k]);
+      _initFromPayload(data);
+      return payload;
+    }
+    bundleMode = "monolith";
+    Object.keys(sliceCache).forEach((k) => delete sliceCache[k]);
+    _initFromPayload(data);
+    return payload;
+  }
+
+  async function ensureSlice(key) {
+    if (!isSplitBundle()) {
+      return filterSliceData();
+    }
+    const sliceKey = key || resolveFilterSliceKey();
+    if (sliceCache[sliceKey]) {
+      if (!payload.visualizations.filter_slices) payload.visualizations.filter_slices = {};
+      payload.visualizations.filter_slices[sliceKey] = sliceCache[sliceKey];
+      return sliceCache[sliceKey];
+    }
+    const base = slicesBase.endsWith("/") ? slicesBase : `${slicesBase}/`;
+    const url = `${base}${sliceKey}.json`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Не удалось загрузить срез «${sliceKey}» (${response.status})`);
+    }
+    const data = await response.json();
+    const slice = { ...data };
+    delete slice.key;
+    sliceCache[sliceKey] = slice;
+    if (!payload.visualizations.filter_slices) payload.visualizations.filter_slices = {};
+    payload.visualizations.filter_slices[sliceKey] = slice;
+    return slice;
+  }
+
+  async function prepareActiveSlice() {
+    return ensureSlice(resolveFilterSliceKey());
+  }
 
   const AGGREGATION_LABELS = {
     group_product: "По продуктам",
@@ -24,16 +90,6 @@ const KanbanData = (() => {
     p50: "П50",
     p80: "П80",
   };
-
-  function loadJson(text) {
-    payload = JSON.parse(text);
-    const defaultAgg =
-      payload?.visualizations?.default_view?.aggregation ||
-      payload?.visualizations?.excel_product_analysis_mode ||
-      "group_product";
-    aggregationMode = availableAggregationModes().includes(defaultAgg) ? defaultAgg : "group_product";
-    return payload;
-  }
 
   function setAggregationMode(mode) {
     if (availableAggregationModes().includes(mode)) {
@@ -78,7 +134,9 @@ const KanbanData = (() => {
     const key = filterSliceKey(activePipelineFilters);
     const slices = viz().filter_slices || {};
     if (slices[key]) return key;
-    if (slices.none) return "none";
+    const manifestKeys = payload?.meta?.slice_keys || payload?.meta?.filter_slice_keys || [];
+    if (manifestKeys.includes(key)) return key;
+    if (slices.none || manifestKeys.includes("none")) return "none";
     return key;
   }
 
@@ -538,6 +596,10 @@ const KanbanData = (() => {
 
   return {
     loadJson,
+    isSplitBundle,
+    getSlicesBase,
+    ensureSlice,
+    prepareActiveSlice,
     getPayload,
     setAggregationMode,
     getAggregationMode,

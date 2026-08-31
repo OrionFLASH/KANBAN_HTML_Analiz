@@ -99,6 +99,11 @@ def test_build_manager_analytics_top3() -> None:
     tb2 = [row for row in top if row["tb"] == "ТБ2" and row["exceedance_count"] > 0]
     assert tb2
     assert tb2[0]["km"] == "Иванов"
+    charts = payload.get("charts") or {}
+    assert "by_tb" in charts
+    assert isinstance(charts.get("facts"), list)
+    with_viol = [row for row in charts["by_tb"] if row["km_with_violations"] > 0]
+    assert with_viol
 
 
 def test_p80_thresholds_built() -> None:

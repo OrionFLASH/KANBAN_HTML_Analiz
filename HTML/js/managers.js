@@ -1,4 +1,4 @@
-/** Загрузка и отображение JSON аналитики менеджеров (отдельный файл). */
+/** Загрузка JSON менеджеров, панель BOTTOM и bar-графики «КМ с нарушениями P80». */
 
 const KanbanManagers = (() => {
   let payload = null;
@@ -12,14 +12,28 @@ const KanbanManagers = (() => {
     return payload;
   }
 
+  function chartsData() {
+    return payload?.charts || { by_tb: [], facts: [] };
+  }
+
   function hasData() {
     return Boolean(payload?.top_by_tb?.length);
+  }
+
+  function hasChartData() {
+    const charts = chartsData();
+    return Boolean(charts.by_tb?.length || charts.facts?.length);
   }
 
   function metaLine() {
     if (!payload?.meta) return "";
     const m = payload.meta;
     return `P${m.percentile} · ${m.metric} · топ-${m.top_managers_per_tb} на ТБ`;
+  }
+
+  function percentileLabel() {
+    const m = payload?.meta || {};
+    return String(m.percentile_label || `p${m.percentile || 80}`).toUpperCase();
   }
 
   function resolveTbFilter(filters) {
@@ -52,6 +66,155 @@ const KanbanManagers = (() => {
       result = result.filter((row) => String(row.stage_key) === filters.stage);
     }
     return result;
+  }
+
+  function filterFacts(filters) {
+    let rows = chartsData().facts || [];
+    const tbSet = resolveTbFilter(filters);
+    if (tbSet) rows = rows.filter((row) => tbSet.has(String(row.tb)));
+    if (filters?.productGroups?.length) {
+      rows = rows.filter((row) => filters.productGroups.includes(String(row.product_group)));
+    }
+    if (filters?.products?.length) {
+      rows = rows.filter((row) => filters.products.includes(String(row.product)));
+    }
+    if (filters?.stage) {
+      rows = rows.filter((row) => String(row.stage_key) === filters.stage);
+    }
+    return rows;
+  }
+
+  function filterByTbRows(filters) {
+    let rows = chartsData().by_tb || [];
+    const tbSet = resolveTbFilter(filters);
+    if (tbSet) rows = rows.filter((row) => tbSet.has(String(row.tb)));
+    return rows;
+  }
+
+  /** Уникальные КМ с нарушениями по ключу сегмента (группа или продукт). */
+  function aggregateFactsBySegment(facts, groupOnly) {
+    const map = new Map();
+    facts.forEach((fact) => {
+      const label = groupOnly
+        ? String(fact.product_group)
+        : `${fact.product_group} · ${fact.product || "—"}`;
+      if (!map.has(label)) map.set(label, { kms: new Set(), deals: 0 });
+      const bucket = map.get(label);
+      bucket.kms.add(String(fact.km));
+      bucket.deals += Number(fact.deals) || 0;
+    });
+    return [...map.entries()]
+      .map(([label, v]) => ({
+        label,
+        km_with_violations: v.kms.size,
+        violation_deals: v.deals,
+      }))
+      .sort((a, b) => b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals);
+  }
+
+  /** Уникальные КМ с нарушениями внутри одного ТБ по сегменту. */
+  function aggregateFactsByTbSegment(facts, tb, groupOnly) {
+    const scoped = facts.filter((f) => String(f.tb) === String(tb));
+    return aggregateFactsBySegment(scoped, groupOnly);
+  }
+
+  function toBarGroup(title, subtitle, rows, valueKey, labelKey) {
+    return {
+      title,
+      subtitle,
+      labels: rows.map((r) => r[labelKey]),
+      values: rows.map((r) => Number(r[valueKey]) || 0),
+      deals: rows.map((r) => Number(r.violation_deals) || 0),
+      kmTotal: rows.map((r) => (r.km_total != null ? Number(r.km_total) : null)),
+      tier: "summary",
+      chartKind: "bar",
+    };
+  }
+
+  function buildChartGroups(filters, chartMode, maxSeries) {
+    const limit = Math.max(1, Number(maxSeries) || 8);
+    const pLabel = percentileLabel();
+    const groupOnly = KanbanData.isGroupOnly();
+    const segmentDim = groupOnly ? "группам" : "продуктам";
+    const groups = [];
+
+    if (chartMode === "km_by_tb") {
+      const byTb = filterByTbRows(filters)
+        .slice()
+        .sort((a, b) => b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals);
+
+      if (byTb.length) {
+        groups.push(
+          toBarGroup(
+            `КМ с нарушениями ${pLabel} · по ТБ`,
+            "Число уникальных КМ, у которых есть сделки с превышением порога продукта×стадии",
+            byTb.map((row) => ({
+              label: KanbanData.tbDisplay(row.tb),
+              km_with_violations: row.km_with_violations,
+              violation_deals: row.violation_deals,
+              km_total: row.km_total,
+            })),
+            "km_with_violations",
+            "label"
+          )
+        );
+      }
+
+      const facts = filterFacts(filters);
+      byTb.slice(0, limit).forEach((row) => {
+        const segments = aggregateFactsByTbSegment(facts, row.tb, groupOnly).slice(0, limit);
+        if (!segments.length) return;
+        groups.push(
+          toBarGroup(
+            `${KanbanData.tbDisplay(row.tb)} · по ${segmentDim}`,
+            `КМ с нарушениями ${pLabel} внутри ТБ`,
+            segments.map((s) => ({ ...s, label: s.label })),
+            "km_with_violations",
+            "label"
+          )
+        );
+      });
+      return groups;
+    }
+
+    if (chartMode === "km_by_segment") {
+      const facts = filterFacts(filters);
+      const segments = aggregateFactsBySegment(facts, groupOnly).slice(0, limit);
+
+      if (segments.length) {
+        groups.push(
+          toBarGroup(
+            `КМ с нарушениями ${pLabel} · по ${segmentDim}`,
+            "Уникальные КМ с превышением порога (с учётом фильтров ТБ и стадии)",
+            segments,
+            "km_with_violations",
+            "label"
+          )
+        );
+      }
+
+      const byTb = filterByTbRows(filters)
+        .filter((row) => row.km_with_violations > 0)
+        .slice()
+        .sort((a, b) => b.km_with_violations - a.km_with_violations)
+        .slice(0, limit);
+
+      byTb.forEach((row) => {
+        const tbSegments = aggregateFactsByTbSegment(facts, row.tb, groupOnly).slice(0, limit);
+        if (!tbSegments.length) return;
+        groups.push(
+          toBarGroup(
+            `${KanbanData.tbDisplay(row.tb)} · ${segmentDim}`,
+            `${row.km_with_violations} КМ с нарушениями · ${row.violation_deals} сделок`,
+            tbSegments,
+            "km_with_violations",
+            "label"
+          )
+        );
+      });
+    }
+
+    return groups;
   }
 
   function escapeHtml(value) {
@@ -138,5 +301,13 @@ const KanbanManagers = (() => {
     }
   }
 
-  return { loadJson, getPayload, hasData, metaLine, render };
+  return {
+    loadJson,
+    getPayload,
+    hasData,
+    hasChartData,
+    metaLine,
+    buildChartGroups,
+    render,
+  };
 })();

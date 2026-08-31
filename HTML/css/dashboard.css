@@ -620,6 +620,27 @@ body::after {
   height: min(380px, 50vh);
 }
 
+.charts-grid.charts-grid--km {
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.charts-grid.charts-grid--km .chart-wrap--bar {
+  min-height: 280px;
+  height: clamp(280px, 42vh, 520px);
+}
+
+.chart-card--bar .chart-card__intro {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  color: var(--glass-muted, #5a6578);
+  line-height: 1.4;
+}
+
+.field--hidden {
+  display: none !important;
+}
+
 .chart-card {
   padding: 12px 14px;
   border-radius: var(--radius);

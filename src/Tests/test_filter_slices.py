@@ -39,10 +39,31 @@ def _config() -> dict:
 
 
 def test_filter_combinations_count() -> None:
-    """Пять фильтров → 32 комбинации."""
+    """Четыре HTML-фильтра → 16 комбинаций."""
     combos = list(iter_filter_combinations(_config()))
     assert len(combos) == 16
     assert filter_slice_key([]) == "none"
+
+
+def test_efs_excluded_from_html_filters() -> None:
+    """efs_flag с html_slice:false не участвует в комбинациях и каталоге."""
+    config = {
+        "columns": {"efs_flag": "ЕФС флаг", "change_conditions": "_Изменение условий"},
+        "filters": {
+            "change_conditions": {"column_key": "change_conditions", "value": 1},
+            "efs_flag": {
+                "enabled": False,
+                "column_key": "efs_flag",
+                "value": 1,
+                "html_slice": False,
+            },
+        },
+    }
+    from src.filter_slices import html_filter_names
+
+    assert "efs_flag" not in html_filter_names(config)
+    assert len(list(iter_filter_combinations(config))) == 2
+    assert len(build_filter_catalog(config)) == 1
 
 
 def test_apply_filter_strategy_2026() -> None:

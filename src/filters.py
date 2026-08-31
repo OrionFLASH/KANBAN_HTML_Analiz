@@ -29,14 +29,24 @@ def _text_match_mask(series: pd.Series, flt: dict[str, Any]) -> pd.Series:
     raise ValueError("Фильтр не содержит contains или contains_all")
 
 
-def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Оставляет только строки, прошедшие все включённые фильтры (AND)."""
+def is_html_slice_filter(flt: dict[str, Any]) -> bool:
+    """True — фильтр участвует в комбинациях JSON/HTML (переключатель в UI)."""
+    return bool(flt.get("html_slice", True))
+
+
+def _apply_filter_subset(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+    filters_cfg: dict[str, Any],
+    *,
+    include_filter: Any,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Общая логика AND-фильтрации с предикатом include_filter(name, flt)."""
     result: pd.DataFrame = df.copy()
-    filters_cfg: dict[str, Any] = config.get("filters", {})
     active: list[str] = []
 
     for name, flt in filters_cfg.items():
-        if not flt.get("enabled", False):
+        if not isinstance(flt, dict) or not include_filter(name, flt):
             continue
 
         column: str | None = filter_column_name(config, flt)
@@ -58,9 +68,42 @@ def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
         active.append(name)
         logger.info("Фильтр '%s': %d -> %d строк", name, before, len(result))
 
+    return result.reset_index(drop=True), active
+
+
+def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """Оставляет только строки, прошедшие все включённые фильтры (AND)."""
+    filters_cfg: dict[str, Any] = config.get("filters", {})
+    result, active = _apply_filter_subset(
+        df,
+        config,
+        filters_cfg,
+        include_filter=lambda _name, flt: bool(flt.get("enabled", False)),
+    )
+
     if active:
         logger.info("Применены фильтры (AND): %s", ", ".join(active))
     else:
         logger.info("Фильтры не активны, анализируются все строки")
 
-    return result.reset_index(drop=True)
+    return result
+
+
+def apply_config_only_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """
+    Фильтры только из config (html_slice: false), без комбинаций в JSON/UI.
+    По умолчанию enabled: false — строки с 0 и 1 не отсекаются.
+    """
+    filters_cfg: dict[str, Any] = config.get("filters", {})
+    result, active = _apply_filter_subset(
+        df,
+        config,
+        filters_cfg,
+        include_filter=lambda _name, flt: bool(flt.get("enabled", False))
+        and not is_html_slice_filter(flt),
+    )
+
+    if active:
+        logger.info("Config-only фильтры (AND): %s", ", ".join(active))
+
+    return result

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from src.html_json_export import build_manager_html_payload
 from src.percentile_stats import percentile_label, to_integer_days
 from src.settings import col, group_only_product_label, is_group_only_analysis
 
@@ -155,6 +155,65 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
     return by_product, manager_totals
 
 
+def build_km_violation_charts(
+    detail: pd.DataFrame,
+    manager_totals: pd.DataFrame,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Компактные агрегаты для bar-графиков «КМ с нарушениями P80» в HTML.
+    by_tb — уникальные КМ с превышением по каждому ТБ;
+    facts — факты (tb×km×группа×продукт×стадия) для детализации и фильтров UI.
+    """
+    tb_col: str = col(config, "tb")
+    km_name: str = km_column(config) or "km"
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    lead_col: str = col(config, "lead_id")
+    group_only: bool = is_group_only_analysis(config)
+
+    by_tb: list[dict[str, Any]] = []
+    if not manager_totals.empty and tb_col in manager_totals.columns:
+        for tb_value in sorted(manager_totals[tb_col].dropna().unique(), key=str):
+            bucket: pd.DataFrame = manager_totals.loc[manager_totals[tb_col] == tb_value]
+            with_viol: pd.DataFrame = bucket.loc[bucket["exceedance_count"] > 0]
+            by_tb.append(
+                {
+                    "tb": str(tb_value),
+                    "km_with_violations": int(len(with_viol)),
+                    "km_total": int(len(bucket)),
+                    "violation_deals": int(with_viol["exceedance_count"].sum()),
+                }
+            )
+
+    facts: list[dict[str, Any]] = []
+    if not detail.empty and "exceeded" in detail.columns:
+        exceeded: pd.DataFrame = detail.loc[detail["exceeded"]].copy()
+        if not exceeded.empty and km_name in exceeded.columns:
+            group_cols: list[str] = [tb_col, km_name, pg_col, "stage_key"]
+            if not group_only and prod_col in exceeded.columns:
+                group_cols.insert(3, prod_col)
+
+            grouped: pd.DataFrame = (
+                exceeded.groupby(group_cols, dropna=False)
+                .agg(deals=(lead_col, "count"))
+                .reset_index()
+            )
+            for _, row in grouped.iterrows():
+                fact: dict[str, Any] = {
+                    "tb": str(row[tb_col]),
+                    "km": str(row[km_name]),
+                    "product_group": str(row[pg_col]),
+                    "stage_key": str(row["stage_key"]),
+                    "deals": int(row["deals"]),
+                }
+                if not group_only and prod_col in grouped.columns:
+                    fact["product"] = str(row[prod_col])
+                facts.append(fact)
+
+    return {"by_tb": by_tb, "facts": facts}
+
+
 def top_managers_per_tb(manager_totals: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """Топ-N менеджеров по числу превышений P80 в каждом ТБ."""
     if manager_totals.empty:
@@ -226,12 +285,14 @@ def build_manager_analytics(
     detail: pd.DataFrame = build_manager_exceedance_detail(records, thresholds, config)
     by_product, manager_totals = aggregate_manager_counts(detail, config)
     top_tb: pd.DataFrame = top_managers_per_tb(manager_totals, config)
+    charts: dict[str, Any] = build_km_violation_charts(detail, manager_totals, config)
 
     logger.info(
-        "Менеджеры: превышений %d, топ-записей %d, порогов P80 %d",
+        "Менеджеры: превышений %d, топ-записей %d, порогов P80 %d, chart facts %d",
         int(detail["exceeded"].sum()) if not detail.empty else 0,
         len(top_tb),
         len(thresholds),
+        len(charts.get("facts", [])),
     )
 
     return {
@@ -251,6 +312,7 @@ def build_manager_analytics(
         "top_by_tb": _frame_to_records(top_tb, config),
         "detail_by_product": _frame_to_records(by_product, config),
         "manager_totals": _frame_to_records(manager_totals, config),
+        "charts": charts,
         "thresholds_count": int(len(thresholds)),
     }
 
@@ -278,18 +340,22 @@ def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, 
 
 
 def export_manager_json(payload: dict[str, Any], output_path: Path, config: dict[str, Any]) -> None:
-    """Сохраняет отдельный JSON менеджеров и копию для HTML."""
+    """Сохраняет JSON менеджеров только в output_path (с timestamp)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    compact: bool = bool(
+        config.get("dashboard", {}).get("html_json", {}).get("compact", True)
+    )
+    dump_kw: dict[str, Any] = (
+        {"ensure_ascii": False, "separators": (",", ":"), "default": str}
+        if compact
+        else {"ensure_ascii": False, "indent": 2, "default": str}
+    )
+    export_payload: dict[str, Any] = (
+        build_manager_html_payload(payload, config)
+        if not config.get("manager_analytics", {}).get("html_include_detail", False)
+        else payload
+    )
     with output_path.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
+        json.dump(export_payload, fh, **dump_kw)
 
-    prefix: str = config.get("output", {}).get("report_prefix", "kanban_report")
-    latest_path: Path = output_path.parent / f"{prefix}_managers_latest.json"
-    shutil.copy2(output_path, latest_path)
-
-    html_data_dir: Path = output_path.parent.parent / "HTML" / "data"
-    html_data_dir.mkdir(parents=True, exist_ok=True)
-    html_latest: Path = html_data_dir / "kanban_managers_latest.json"
-    shutil.copy2(output_path, html_latest)
-
-    logger.info("JSON менеджеров: %s → %s", output_path.name, html_latest)
+    logger.info("JSON менеджеров: %s (%d KB)", output_path.name, output_path.stat().st_size // 1024)

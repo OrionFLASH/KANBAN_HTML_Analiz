@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 import pandas as pd
@@ -13,12 +14,15 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
+from src.excel_sanitize import sanitize_cell_value, sanitize_sheet_name
 from src.settings import analysis_row_key, is_group_only_analysis
 from src.visualization_data import build_pivot_matrix, indicator_keys, series_chart_points
 
 logger: logging.Logger = logging.getLogger("kanban.pivot_excel")
 
 HIDDEN_SHEETS: tuple[str, ...] = ("_pivot_flat", "_chart_src")
+# Ограничение точек на графике Excel — меньше риска повреждения файла и перекрытия данных
+EXCEL_CHART_MAX_POINTS: int = 1500
 
 
 def _metric_labels(config: dict[str, Any]) -> dict[str, str]:
@@ -51,7 +55,7 @@ def write_hidden_pivot_flat(ws: Worksheet, pivot_flat: list[dict[str, Any]]) -> 
     ]
     ws.append(headers)
     for row in pivot_flat:
-        ws.append([row.get(h) for h in headers])
+        ws.append([sanitize_cell_value(row.get(h)) for h in headers])
     ws.sheet_state = "hidden"
 
 
@@ -72,12 +76,12 @@ def write_hidden_chart_source(ws: Worksheet, distribution_series: list[dict[str,
             ws.append(
                 [
                     idx,
-                    series.get("tb"),
-                    series.get("product"),
-                    series.get("stage_key"),
-                    series.get("metric"),
-                    point.get("lead_index"),
-                    point.get("days"),
+                    sanitize_cell_value(series.get("tb")),
+                    sanitize_cell_value(series.get("product")),
+                    sanitize_cell_value(series.get("stage_key")),
+                    sanitize_cell_value(series.get("metric")),
+                    sanitize_cell_value(point.get("lead_index")),
+                    sanitize_cell_value(point.get("days")),
                 ]
             )
     ws.sheet_state = "hidden"
@@ -104,10 +108,10 @@ def _write_matrix_table(
 
     for row_offset, row_label in enumerate(row_labels, start=1):
         row_idx: int = header_row + row_offset
-        ws.cell(row=row_idx, column=start_col, value=row_label)
+        ws.cell(row=row_idx, column=start_col, value=sanitize_cell_value(row_label))
         for col_offset, stage in enumerate(stages, start=1):
             value = values.get(row_label, {}).get(stage)
-            cell = ws.cell(row=row_idx, column=start_col + col_offset, value=value)
+            cell = ws.cell(row=row_idx, column=start_col + col_offset, value=sanitize_cell_value(value))
             cell.number_format = "0"
 
     last_row: int = header_row + len(row_labels)
@@ -242,6 +246,17 @@ def write_matrix_sheet(
             break
 
 
+def _downsample_chart_points(points: list[dict[str, int]], max_points: int) -> list[dict[str, int]]:
+    """Равномерно прореживает точки для Excel-графика."""
+    if len(points) <= max_points:
+        return points
+    step: int = max(1, math.ceil(len(points) / max_points))
+    sampled: list[dict[str, int]] = points[::step]
+    if sampled[-1] != points[-1]:
+        sampled.append(points[-1])
+    return sampled
+
+
 def write_charts_sheet(
     wb,
     distribution_series: list[dict[str, Any]],
@@ -269,22 +284,36 @@ def write_charts_sheet(
 
     ws["A1"] = f"Графики: ТБ={default_tb}, метрика={default_metric}"
     ws["A1"].font = Font(bold=True)
-    ws["A2"] = "Ось X — число лидов (накоп.), ось Y — срок в днях. Полный интерактив — HTML/дашборд."
+    ws["A2"] = (
+        "Ось X — число лидов (накоп.), ось Y — срок в днях. "
+        "Полный интерактив — HTML/дашборд."
+    )
     ws["A2"].font = Font(italic=True)
 
-    chart_row: int = 4
-    chart_col_offset: int = 0
     charts_per_row: int = 2
+    col_stride: int = 10
+    block_rows: list[int] = [4, 4]
 
     for idx, series in enumerate(filtered):
-        points: list[dict[str, int]] = series_chart_points(series)
+        points: list[dict[str, int]] = _downsample_chart_points(
+            series_chart_points(series), EXCEL_CHART_MAX_POINTS
+        )
         if not points:
             continue
 
-        start_row: int = chart_row + (idx // charts_per_row) * 22
-        start_col: int = 1 + (idx % charts_per_row) * 10
+        col_block: int = idx % charts_per_row
+        if col_block == 0 and idx > 0:
+            next_row: int = max(block_rows) + 3
+            block_rows = [next_row, next_row]
 
-        title: str = f"{series.get('row_key') or series.get('product')} | {series.get('stage_key')}"
+        start_row: int = block_rows[col_block]
+        start_col: int = 1 + col_block * col_stride
+
+        title: str = str(
+            sanitize_cell_value(
+                f"{series.get('row_key') or series.get('product')} | {series.get('stage_key')}"
+            )
+        )
         ws.cell(row=start_row, column=start_col, value=title)
         ws.cell(row=start_row, column=start_col).font = Font(bold=True)
 
@@ -296,11 +325,15 @@ def write_charts_sheet(
             ws.cell(row=data_start + offset, column=start_col + 1, value=point["days"])
 
         data_end: int = data_start + len(points)
+        block_rows[col_block] = data_end + 2
+
         chart: ScatterChart = ScatterChart()
         chart.title = title
         chart.style = 2
         chart.x_axis.title = "Число лидов"
         chart.y_axis.title = "Дней"
+        chart.x_axis.axPos = "b"
+        chart.y_axis.axPos = "l"
         chart.width = 16
         chart.height = 10
 
@@ -308,12 +341,10 @@ def write_charts_sheet(
         yvalues = Reference(ws, min_col=start_col + 1, min_row=data_start + 1, max_row=data_end)
         ser = Series(yvalues, xvalues, title="Срок")
         ser.marker = Marker(symbol="circle", size=5)
-        ser.graphicalProperties.line.width = 18000
         chart.series.append(ser)
 
         anchor_col: int = start_col + 3
-        anchor_row: int = start_row
-        ws.add_chart(chart, f"{get_column_letter(anchor_col)}{anchor_row}")
+        ws.add_chart(chart, f"{get_column_letter(anchor_col)}{start_row}")
 
     ws.column_dimensions["A"].width = 14
     ws.column_dimensions["B"].width = 10
@@ -324,10 +355,13 @@ def add_visualization_sheets(
     pivot_flat: list[dict[str, Any]],
     distribution_series: list[dict[str, Any]],
     config: dict[str, Any],
+    used_sheet_names: set[str] | None = None,
 ) -> None:
     """Добавляет скрытые данные, матрицу и графики."""
     out_cfg: dict[str, Any] = config.get("output", {})
     sheet_names: dict[str, str] = out_cfg.get("excel_sheets", {})
+    max_len: int = int(out_cfg.get("excel_max_sheet_name_length", 31))
+    used: set[str] = used_sheet_names if used_sheet_names is not None else set(wb.sheetnames)
 
     flat_ws = wb.create_sheet("_pivot_flat")
     write_hidden_pivot_flat(flat_ws, pivot_flat)
@@ -335,11 +369,11 @@ def add_visualization_sheets(
     chart_ws = wb.create_sheet("_chart_src")
     write_hidden_chart_source(chart_ws, distribution_series)
 
-    matrix_name: str = sheet_names.get("matrix", "Матрица")
+    matrix_name: str = sanitize_sheet_name(sheet_names.get("matrix", "Матрица"), used, max_len)
     matrix_ws = wb.create_sheet(matrix_name)
     write_matrix_sheet(matrix_ws, pivot_flat, distribution_series, config)
 
-    charts_name: str = sheet_names.get("charts", "Графики")
+    charts_name: str = sanitize_sheet_name(sheet_names.get("charts", "Графики"), used, max_len)
     write_charts_sheet(wb, distribution_series, config, charts_name)
 
     logger.info("Добавлены листы визуализации: %s, %s", matrix_name, charts_name)

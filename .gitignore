@@ -4,6 +4,7 @@ IN/
 OUT/
 POST/
 HTML/data/*.json
+HTML/data/slices/
 .env
 __pycache__/
 *.pyc

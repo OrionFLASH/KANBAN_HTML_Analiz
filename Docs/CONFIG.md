@@ -1,6 +1,6 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.1**).
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.2**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
 
@@ -55,18 +55,19 @@
 | `manager_analytics` | object | Топ КМ по превышениям P80 |
 | `parallel_workers` | int | 0 = авто, 1 = последовательно |
 | `excel_theme` | `"green_red"` \| `"minimal"` | Оформление Excel |
-| `filters` | object | Pipeline-фильтры (см. §13) |
+| `html_json` | object | Split-bundle, compact JSON, прореживание серий для HTML |
+| `filters` | object | Pipeline-фильтры; см. §13 (`html_slice`, `enabled`) |
 
 ### Excel vs JSON vs HTML — три контекста одного `config.json`
 
 | Контекст | Что управляет config | Где применяется |
 |----------|----------------------|-----------------|
-| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode` | Листы сводки, Матрица, Графики, Менеджеры |
-| **JSON (основной)** | `dashboard.precompute_html_filter_slices`; все ключи `filters` (независимо от `enabled`) | `visualizations.filter_slices` — все непустые комбинации 2^N |
-| **JSON (менеджеры)** | `manager_analytics.*`; колонка `km` в `required_column_keys` | Отдельный `kanban_report_managers_*.json` |
-| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations` | Локальный дашборд `HTML/` |
+| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки, Матрица, Графики, Менеджеры |
+| **JSON (основной)** | `dashboard.precompute_html_filter_slices`; фильтры с `html_slice: true` (не `enabled`) | `visualizations.filter_slices` — комбинации 2^N (N = число HTML-фильтров); база данных — после config-only фильтров |
+| **JSON (менеджеры)** | `manager_analytics.*`; колонка `km` в `required_column_keys` | `kanban_report_managers_{timestamp}.json` + блок `charts` |
+| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations`; JSON менеджеров — bar-графики КМ | Локальный дашборд `HTML/` |
 
-> **`enabled` в `filters` влияет только на Excel.** HTML выбирает готовый срез из JSON без пересчёта pipeline.
+> **`enabled` в `filters` влияет на Excel и на config-only срез (`html_slice: false`).** HTML переключает готовые срезы JSON (`html_slice: true`) без пересчёта pipeline. Копии `*_latest*` и запись в `HTML/data/` **не создаются** — JSON загружается вручную.
 
 ---
 
@@ -111,7 +112,7 @@
 ```json
 {
   "filters": {
-    "efs_flag": { "enabled": true, "column_key": "efs_flag", "value": 1 },
+    "efs_flag": { "enabled": true, "column_key": "efs_flag", "value": 1, "html_slice": false },
     "strategy_label": {
       "enabled": true,
       "column_key": "label",
@@ -284,6 +285,7 @@
 | `empty_stage_values` | array | `["", "-", "nan", "None"]` | Пустая «Стадия сделки» |
 | `dedup_same_date_agg` | string | `"max"` | На одну дату + стадию: `max` дней |
 | `pick_across_dates` | string | `max_days_then_latest_report_date` | Между датами отчёта |
+| `group_only_product_label` | string | `"—"` | Подпись в колонке «Продукт» при `product_analysis_mode: group_only` |
 | `audit_row_counts` | bool | `true` | Аудит: не терять строки молча |
 | `duration_fallback_to_columns` | bool | `true` | При `dates`: если дата пуста → колонка дней |
 
@@ -408,6 +410,35 @@ HTML-дашборд выбирает срез переключателем «А�
 | `excel_max_chart_series` | Число графиков на листе Excel |
 | `max_chart_series` | Макс. линий на одном HTML-графике |
 | `precompute_html_filter_slices` | `true` — все комбинации `config.filters` в JSON (пустые пропускаются) |
+| `html_json` | Экспорт для HTML: split-bundle, compact, прореживание серий (см. ниже) |
+
+### `dashboard.html_json` — оптимизация для prod
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `bundle_mode` | `"split"` | `"split"` — manifest + `slices/*.json` (lazy load в HTML); `"monolith"` — один файл (test) |
+| `compact` | `true` | JSON без indent (меньше размер) |
+| `include_statistics` | `false` | Блок `statistics` не нужен HTML — не писать в архив |
+| `include_dimensions` | `true` | Справочники в manifest (~KB) |
+| `max_distribution_points` | `800` | Прореживание `days_sorted` в сериях для браузера |
+| `slices_subdir` | `"slices"` | Подкаталог файлов срезов |
+| `write_monolith_archive` | `true` | Писать slim-архив `kanban_report_{timestamp}.json` (указатель на split-bundle) |
+
+**Структура выхода после `run.py`:**
+
+```
+OUT/
+  kanban_report_YYYYMMDD_HHMMSS.xlsx
+  kanban_report_YYYYMMDD_HHMMSS.json          # slim-архив (split) или monolith
+  kanban_report_YYYYMMDD_HHMMSS_html/
+    kanban_report_YYYYMMDD_HHMMSS.manifest.json
+    slices/none.json, slices/change_conditions.json, …
+  kanban_report_managers_YYYYMMDD_HHMMSS.json
+```
+
+**Split-bundle (prod):** каталог `OUT/kanban_report_{timestamp}_html/` — manifest + `slices/*.json`. Копии `*_latest*` и `HTML/data/` **не создаются**; JSON загружается в дашборд **вручную** через левую панель.
+
+**Менеджеры:** `manager_analytics.html_include_detail: false` — в HTML `top_by_tb` + компактный блок `charts` для bar-графиков КМ; полный JSON с `detail_by_product` остаётся в `OUT/`.
 
 JSON содержит блок `visualizations`:
 
@@ -437,11 +468,11 @@ JSON содержит блок `visualizations`:
       "group_only": { "distribution_series": [], "pivot_flat": [] }
     }
   },
-  "efs_flag+strategy_label": { "...": "..." }
+  "change_conditions+strategy_label": { "...": "..." }
 }
 ```
 
-Пустые комбинации в JSON не попадают. `dashboard.precompute_html_filter_slices` (по умолчанию `true`) — предрасчёт всех 2^N комбинаций.
+Пустые комбинации в JSON не попадают. Число срезов: **2^N**, где N — фильтры с `html_slice: true` (по умолчанию 4: изменение условий, ввод данных, два варианта метки; `efs_flag` с `html_slice: false` **не входит**).
 
 В `meta` JSON дополнительно:
 
@@ -459,21 +490,31 @@ JSON содержит блок `visualizations`:
 
 ### HTML-дашборд (`HTML/`)
 
-Запуск: `cd HTML && python -m http.server 8080` — автозагрузка `HTML/data/kanban_report_latest.json` (копия создаётся при `run.py`). Альтернатива: сервер из корня проекта, URL `http://localhost:8080/HTML/`.
+Запуск: `cd HTML && python -m http.server 8080` — загрузите manifest или monolith через левую панель.
 
 | Возможность | Описание |
 |-------------|----------|
 | Агрегация строк | Переключатель «По продуктам» / «По группам» — срез из `filter_slices.*.aggregations` |
 | Pipeline-фильтры | Левая панель: кнопки ВКЛ/ВЫКЛ по `filter_catalog` |
 | Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск, сворачивание |
-| Графики «свод + каждый» | Сверху все выбранные ТБ/группы/продукты; ниже — отдельная карточка на каждый |
-| Режим «По группам» | Фильтр продуктов скрыт; строки матрицы и графики — группы |
-| Режим «По ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
+| Графики линий | Режимы «По продуктам/группам» и «По ТБ» — кривые «лиды × дни» |
+| Графики КМ | Режимы «КМ с нарушениями P80: по ТБ» и «… по группам/продуктам» — bar-chart; нужен JSON менеджеров |
 | Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
 
 Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/icons.js`, `js/multi-filter.js`, `js/managers.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
 
-Автозагрузка после `run.py`: `HTML/data/kanban_report_latest.json`, `HTML/data/kanban_managers_latest.json` (если есть КМ).
+Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — в подкаталоге `slices/`. Для lazy-load срезов manifest и slices должны быть доступны по HTTP из одной базы URL (сервер из каталога `_html/`).
+
+### Режимы графика (HTML, селект «Режим линий»)
+
+| Значение | Тип | Источник данных |
+|----------|-----|-----------------|
+| `by_product` | line | Основной JSON — `distribution_series` |
+| `by_tb` | line | Основной JSON — `distribution_series` |
+| `km_by_tb` | bar | JSON менеджеров — `charts.by_tb` + `charts.facts` |
+| `km_by_segment` | bar | JSON менеджеров — `charts.facts` (группы/продукты по «Агрегация строк») |
+
+**Нарушение КМ:** уникальный КМ, у которого есть сделки со сроком **строго больше** P80 для той же группы × продукта × стадии. На bar-chart — **число таких КМ**; в tooltip — число сделок с превышением.
 
 ### `parallel_workers`
 
@@ -654,32 +695,50 @@ HEX без `#`: min — зелёный, max — красный.
 
 ## 13. Фильтры (`filters`)
 
-Каждый фильтр — объект в `config.filters`. Имена ключей (`change_conditions`, `strategy_label` …) используются как идентификаторы в `filter_catalog` и ключах `filter_slices`.
+Каждый фильтр — объект в `config.filters`. Имена ключей (`change_conditions`, `strategy_label` …) используются как идентификаторы в `filter_catalog` и ключах `filter_slices` (только для `html_slice: true`).
+
+### Общие поля фильтра
+
+| Поле | Тип | По умолчанию | Описание |
+|------|-----|--------------|----------|
+| `enabled` | bool | `false` | Применять фильтр в Excel (AND с другими `enabled: true`) |
+| `column_key` | string | — | Ключ из `columns` |
+| `html_slice` | bool | `true` | `false` — только config (без UI и без комбинаций в JSON); база данных для срезов фильтруется до комбинаций |
+| `value` | int | `1` | Для бинарных фильтров: ожидаемое значение колонки |
+| `contains` | string | — | Подстрока в текстовой колонке |
+| `contains_all` | array | — | Все подстроки обязательны |
+| `case_sensitive` | bool | `false` | Учёт регистра для текстовых фильтров |
+| `exclusive_group` | string | — | Группа взаимоисключения в HTML (варианты метки) |
 
 ### Роли поля `enabled`
 
 | `enabled` | Excel | JSON `filter_slices` | HTML |
 |-----------|-------|----------------------|------|
-| `false` | Фильтр **не** применяется | Срез **всё равно предрасчитывается** (если `precompute_html_filter_slices: true`) | Доступен переключателем ВКЛ/ВЫКЛ |
-| `true` | Строки фильтруются (AND с другими `enabled: true`) | То же — срез в JSON | То же — выбор в UI |
+| `false` | Фильтр **не** применяется | Срез предрасчитывается (если `html_slice: true`) | Доступен переключателем ВКЛ/ВЫКЛ |
+| `true` + `html_slice: true` | Строки фильтруются | Комбинации в JSON | Переключатель ВКЛ/ВЫКЛ |
+| `true` + `html_slice: false` | Строки фильтруются | База всех срезов уже отфильтрована; отдельных ключей `efs_flag` в JSON **нет** | **Не показывается** в UI |
 
 В `meta.filters_applied` JSON попадают **только** фильтры с `enabled: true` (отражение Excel-среза).
 
 ### Бинарные фильтры
 
-`change_conditions`, `data_entry`, `efs_flag`:
+`change_conditions`, `data_entry` — переключатели в HTML и комбинации в JSON.
+
+`efs_flag` — **только config** (`html_slice: false`): в UI и `filter_slices` не участвует; при `enabled: true` отбирает строки с заданным `value` (обычно `1`) **до** построения JSON и Excel. При `enabled: false` (по умолчанию) строки с `0` и `1` не отсекаются.
 
 | Поле | Описание |
 |------|----------|
 | `enabled` | `true` / `false` |
 | `column_key` | Ключ из `columns` |
 | `value` | Ожидаемое значение (обычно `1`) |
+| `html_slice` | `false` — без UI и без комбинаций в JSON (`efs_flag`) |
 
 ```json
 "efs_flag": {
   "enabled": true,
   "column_key": "efs_flag",
-  "value": 1
+  "value": 1,
+  "html_slice": false
 }
 ```
 
@@ -735,8 +794,16 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 | `percentile` | Порог перцентиля (обычно `80`) |
 | `threshold_scope` | `overall` — порог из общей сводки без ТБ |
 | `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) |
+| `html_include_detail` | `false` (prod) — в HTML только `top_by_tb` + `charts`; `true` — также `detail_by_product`, `manager_totals` |
 
 **Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ.
+
+**Блок `charts` (в slim и полном JSON):**
+
+| Ключ | Описание |
+|------|----------|
+| `by_tb[]` | `{ tb, km_with_violations, km_total, violation_deals }` — уникальные КМ с нарушениями по ТБ |
+| `facts[]` | `{ tb, km, product_group, product?, stage_key, deals }` — детализация для bar-графиков и фильтров UI |
 
 **Выход:**
 
@@ -744,8 +811,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 |----------|------|
 | Excel | Лист `output.excel_sheets.managers` («Менеджеры») |
 | JSON | `OUT/kanban_report_managers_{timestamp}.json` |
-| Копии | `OUT/kanban_report_managers_latest.json`, `HTML/data/kanban_managers_latest.json` |
-| HTML | Блок BOTTOM на вкладке «Сводная матрица» (`js/managers.js`) |
+| HTML | Блок BOTTOM на вкладке «Сводная матрица» + bar-графики КМ на вкладке «Графики» |
 
 **Структура JSON менеджеров (кратко):**
 
@@ -760,11 +826,21 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "top_by_tb": [
     { "tb": "…", "rank": 1, "km": "…", "exceedance_count": 12, "total_leads": 340 }
   ],
+  "charts": {
+    "by_tb": [
+      { "tb": "ЮЗБ", "km_with_violations": 12, "km_total": 80, "violation_deals": 45 }
+    ],
+    "facts": [
+      { "tb": "ЮЗБ", "km": "Иванов И.И.", "product_group": "…", "product": "…", "stage_key": "В РАБОТЕ", "deals": 3 }
+    ]
+  },
+  "thresholds_count": 156,
   "detail_by_product": [],
-  "manager_totals": [],
-  "thresholds_count": 156
+  "manager_totals": []
 }
 ```
+
+При `html_include_detail: false` поля `detail_by_product` и `manager_totals` в файл **не пишутся**; `charts` и `top_by_tb` — **всегда**.
 
 > Этап пропускается **без ошибки**, если: `enabled: false`; колонки КМ нет в Excel; `km` не в `required_column_keys` (колонка не загружена); не удалось построить пороги P80.
 
@@ -776,7 +852,8 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "metric": "days_on_stage",
   "percentile": 80,
   "threshold_scope": "overall",
-  "top_managers_per_tb": 3
+  "top_managers_per_tb": 3,
+  "html_include_detail": false
 }
 ```
 

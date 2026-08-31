@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from src.html_json_export import export_split_html_bundle, html_json_settings
 from src.percentile_stats import percentile_label
 from src.settings import (
     analysis_row_key,
@@ -119,6 +119,53 @@ def _statistics_block(stats: dict[str, Any], config: dict[str, Any]) -> dict[str
     }
 
 
+def _build_meta(
+    config: dict[str, Any],
+    filter_catalog: list[dict[str, Any]] | None,
+    visualizations: dict[str, Any] | None,
+    slice_keys: list[str],
+) -> dict[str, Any]:
+    """Блок meta для JSON."""
+    excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
+    html_cfg: dict[str, Any] = html_json_settings(config)
+    return {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "mode": config.get("mode"),
+        "duration_source": config.get("duration_source"),
+        "stage_analysis_mode": config.get("stage_analysis_mode"),
+        "product_analysis_mode": excel_mode,
+        "excel_product_analysis_mode": excel_mode,
+        "json_aggregation_modes": list(JSON_AGGREGATION_MODES),
+        "group_only_product_label": group_only_product_label(config),
+        "percentiles": config.get("percentiles"),
+        "percentile_method": PERCENTILE_METHOD,
+        "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
+        "filters": config.get("filters"),
+        "filters_applied": _active_pipeline_filters(config),
+        "filters_active": bool(_active_pipeline_filters(config)),
+        "data_scope_note": (
+            "Excel — по config.product_analysis_mode и filters.enabled. "
+            "HTML split-bundle: manifest + slices/*.json (lazy load)."
+            if html_cfg.get("bundle_mode") == "split"
+            else "JSON содержит visualizations.filter_slices и обе агрегации."
+        ),
+        "filter_catalog": filter_catalog or ((visualizations or {}).get("filter_catalog")),
+        "filter_slice_keys": slice_keys,
+        "columns": config.get("columns"),
+        "stages_order": config.get("stages_order"),
+    }
+
+
+def _json_dump(path: Path, payload: dict[str, Any], compact: bool) -> None:
+    """Запись JSON (compact или pretty)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        if compact:
+            json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"), default=str)
+        else:
+            json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
+
+
 def export_json(
     stats_by_mode: dict[str, dict[str, pd.DataFrame]],
     dimensions: dict[str, Any],
@@ -126,56 +173,62 @@ def export_json(
     output_path: Path,
     visualizations: dict[str, Any] | None = None,
     filter_catalog: list[dict[str, Any]] | None = None,
+    filter_slices: dict[str, Any] | None = None,
 ) -> None:
-    """Сохраняет JSON с обеими агрегациями (продукт + группа) для HTML-дашборда."""
-    excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
-    statistics: dict[str, Any] = {}
-    for mode in JSON_AGGREGATION_MODES:
-        mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
-        statistics[mode] = _statistics_block(stats_by_mode[mode], mode_config)
+    """Сохраняет JSON: split-bundle для HTML или монолит (test)."""
+    html_cfg: dict[str, Any] = html_json_settings(config)
+    bundle_mode: str = str(html_cfg.get("bundle_mode", "split"))
+    compact: bool = bool(html_cfg.get("compact", True))
+    include_statistics: bool = bool(html_cfg.get("include_statistics", False))
+
+    viz: dict[str, Any] = visualizations or {}
+    slices: dict[str, Any] = filter_slices if filter_slices is not None else viz.get("filter_slices", {})
+    slice_keys: list[str] = sorted(slices.keys())
+
+    statistics: dict[str, Any] | None = None
+    if include_statistics:
+        statistics = {}
+        for mode in JSON_AGGREGATION_MODES:
+            mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
+            statistics[mode] = _statistics_block(stats_by_mode[mode], mode_config)
+
+    meta: dict[str, Any] = _build_meta(config, filter_catalog, viz, slice_keys)
+    prefix: str = config.get("output", {}).get("report_prefix", "kanban_report")
+    timestamp: str = output_path.stem.replace(f"{prefix}_", "", 1)
+
+    if bundle_mode == "split" and slices:
+        export_split_html_bundle(
+            meta=meta,
+            dimensions=dimensions,
+            visualizations=viz,
+            filter_slices=slices,
+            config=config,
+            output_dir=output_path.parent,
+            prefix=prefix,
+            timestamp=timestamp,
+        )
+        archive_payload: dict[str, Any] = {
+            "meta": {**meta, "json_bundle_mode": "split", "archive_note": "Данные срезов — в каталоге *_html/slices/"},
+            "dimensions": dimensions if html_cfg.get("include_dimensions", True) else {},
+            "visualizations": {k: v for k, v in viz.items() if k != "filter_slices"},
+        }
+        if statistics is not None:
+            archive_payload["statistics"] = statistics
+        _json_dump(output_path, archive_payload, compact)
+        logger.info("JSON-архив (split, без срезов): %s", output_path)
+        return
+
+    statistics_full: dict[str, Any] = statistics or {}
+    if not statistics_full:
+        for mode in JSON_AGGREGATION_MODES:
+            mode_config = with_product_analysis_mode(config, mode)
+            statistics_full[mode] = _statistics_block(stats_by_mode[mode], mode_config)
 
     payload: dict[str, Any] = {
-        "meta": {
-            "generated_at": datetime.now().isoformat(timespec="seconds"),
-            "mode": config.get("mode"),
-            "duration_source": config.get("duration_source"),
-            "stage_analysis_mode": config.get("stage_analysis_mode"),
-            "product_analysis_mode": excel_mode,
-            "excel_product_analysis_mode": excel_mode,
-            "json_aggregation_modes": list(JSON_AGGREGATION_MODES),
-            "group_only_product_label": group_only_product_label(config),
-            "percentiles": config.get("percentiles"),
-            "percentile_method": PERCENTILE_METHOD,
-            "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
-            "filters": config.get("filters"),
-            "filters_applied": _active_pipeline_filters(config),
-            "filters_active": bool(_active_pipeline_filters(config)),
-            "data_scope_note": (
-                "Excel — по config.product_analysis_mode и filters.enabled. JSON содержит срезы "
-                "visualizations.filter_slices (все комбинации HTML-фильтров) и обе агрегации."
-            ),
-            "filter_catalog": filter_catalog
-            or ((visualizations or {}).get("filter_catalog")),
-            "filter_slice_keys": list((visualizations or {}).get("filter_slices", {}).keys()),
-            "columns": config.get("columns"),
-            "stages_order": config.get("stages_order"),
-        },
+        "meta": meta,
         "dimensions": dimensions,
-        "statistics": statistics,
-        "visualizations": visualizations or {},
+        "statistics": statistics_full,
+        "visualizations": viz,
     }
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
-
-    latest_path: Path = output_path.parent / "kanban_report_latest.json"
-    shutil.copy2(output_path, latest_path)
-
-    html_data_dir: Path = output_path.parent.parent / "HTML" / "data"
-    html_data_dir.mkdir(parents=True, exist_ok=True)
-    html_latest: Path = html_data_dir / "kanban_report_latest.json"
-    shutil.copy2(output_path, html_latest)
-
-    logger.info("JSON сохранён: %s", output_path)
-    logger.info("JSON для дашборда: %s", html_latest)
+    _json_dump(output_path, payload, compact)
+    logger.info("JSON сохранён (monolith): %s", output_path)

@@ -176,6 +176,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "excel_max_chart_series": 8,
         "max_chart_series": 12,
         "precompute_html_filter_slices": True,
+        "html_json": {
+            "bundle_mode": "split",
+            "compact": True,
+            "include_statistics": False,
+            "include_dimensions": True,
+            "max_distribution_points": 800,
+            "slices_subdir": "slices",
+            "write_monolith_archive": True,
+        },
     },
     "manager_analytics": {
         "enabled": True,
@@ -183,6 +192,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "percentile": 80,
         "threshold_scope": "overall",
         "top_managers_per_tb": 3,
+        "html_include_detail": False,
     },
     "parallel_workers": 0,
     "excel_theme": "green_red",
@@ -201,6 +211,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "enabled": False,
             "column_key": "efs_flag",
             "value": 1,
+            "html_slice": False,
         },
         "strategy_label": {
             "enabled": False,

@@ -60,9 +60,9 @@ log/                 # логи INFO/DEBUG
 | `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа |
 | `aggregation` | Группировки и метрики |
 | `output` | Имена файлов, листы Excel, оформление |
-| `filters` | Фильтры pipeline: Excel (`enabled`) + JSON (`filter_slices`) + HTML (ВКЛ/ВЫКЛ) |
-| `dashboard` | Дашборд: `precompute_html_filter_slices`, метрики по умолчанию |
-| `manager_analytics` | Превышения P80 по менеджерам (КМ); отдельный JSON |
+| `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`) |
+| `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
+| `manager_analytics` | Превышения P80 по КМ; отдельный JSON + bar-графики в HTML |
 | `logging` | Файлы логов |
 
 ### Частые настройки
@@ -74,8 +74,26 @@ log/                 # логи INFO/DEBUG
   "stage_analysis_mode": "status",
   "percentiles": [20, 50, 80],
   "parallel_workers": 0,
-  "performance": { "max_parallel_workers": 3, "reserve_cpu_cores": 1,
-    "compact_distribution_series": true, "precompute_pivot_matrices": false }
+  "performance": {
+    "max_parallel_workers": 3,
+    "reserve_cpu_cores": 1,
+    "compact_distribution_series": true,
+    "precompute_pivot_matrices": false
+  },
+  "dashboard": {
+    "html_json": {
+      "bundle_mode": "split",
+      "max_distribution_points": 800,
+      "write_monolith_archive": true
+    }
+  },
+  "filters": {
+    "efs_flag": { "enabled": false, "column_key": "efs_flag", "value": 1, "html_slice": false }
+  },
+  "manager_analytics": {
+    "enabled": true,
+    "html_include_detail": false
+  }
 }
 ```
 
@@ -85,37 +103,41 @@ log/                 # логи INFO/DEBUG
 
 - **Сводная** — все ТБ
 - **Общий** — без разреза ТБ
-- **Сводная** / **Общий** / **{ТБ}** — табличная статистика
-- **Матрица** — продукт × стадия, фильтры ТБ / показатель / метрика (выпадающие списки)
-- **Менеджеры** — топ-3 КМ по ТБ с превышениями P80 (если в Excel есть колонка КМ)
+- **{ТБ}** — отдельный лист на каждый ТБ
+- **Матрица** — продукт × стадия, фильтры ТБ / показатель / метрика
+- **Менеджеры** — топ-N КМ по ТБ с превышениями P80 (если в Excel есть колонка КМ)
 - **Графики** — кривые «лиды × дни» (Chart.js в Excel через openpyxl)
 
-`OUT/kanban_report_YYYYMMDD_HHMMSS.json` — агрегаты + `visualizations` (filter_slices, обе агрегации).
+**JSON основной** (split-bundle, prod):
 
-`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — отдельный JSON аналитики менеджеров (копия в `HTML/data/kanban_managers_latest.json`).
+```
+OUT/kanban_report_YYYYMMDD_HHMMSS.json          # slim-архив / указатель
+OUT/kanban_report_YYYYMMDD_HHMMSS_html/
+  kanban_report_YYYYMMDD_HHMMSS.manifest.json
+  slices/none.json, slices/change_conditions.json, …
+```
+
+Содержит `visualizations.filter_slices` (комбинации HTML-фильтров), обе агрегации `group_product` / `group_only`. Копии `*_latest*` и `HTML/data/` **не создаются**.
+
+`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — аналитика КМ: `top_by_tb`, блок `charts` для bar-графиков; при `html_include_detail: true` — также `detail_by_product`, `manager_totals`.
 
 ## HTML-дашборд
 
 Каталог `HTML/` — локальная страница с загрузкой JSON. **UI** повторяет glass-layout из `SPOD_PROM/common/web-fill-full` и `RESURCE_PANEL_HTML_WORK` (боковые панели, edge-кнопки, filter-block).
 
 ```bash
-# После run.py JSON копируется в HTML/data/kanban_report_latest.json
 cd HTML && python -m http.server 8080
-# открыть http://localhost:8080 — автозагрузка data/kanban_report_latest.json
-
-# Альтернатива: сервер из корня проекта
-python -m http.server 8080
-# открыть http://localhost:8080/HTML/
+# открыть http://localhost:8080 — загрузить JSON вручную (manifest + slices или monolith)
 ```
 
-- Левая панель: загрузка JSON, **pipeline-фильтры** (ВКЛ/ВЫКЛ), настройки графика
+- Левая панель: загрузка JSON (manifest или monolith + JSON менеджеров), **pipeline-фильтры** (ВКЛ/ВЫКЛ), настройки графика
 - Правая панель: **мультивыбор** ТБ, групп и продуктов (поиск, сворачивание, бейдж «N / всего»)
 - Вкладки **Графики** и **Сводная матрица** (+ блок **BOTTOM менеджеры** на вкладке матрицы)
-- **Графики:** режим «свод + каждый» — сверху все выбранные ТБ или строки (продукты/группы) на одном графике, ниже отдельная карточка на каждый элемент
-- **Агрегация в HTML:** «По продуктам» / «По группам» + pipeline-фильтры (ВКЛ/ВЫКЛ) — срез из `visualizations.filter_slices`
-- **Pipeline-фильтры:** левая панель; варианты метки «Стратегия» / «Стратегия·2026» (взаимоисключающие). Настройка в `config.filters`; срезы в JSON — `dashboard.precompute_html_filter_slices`
-- **Фильтры UI:** иконки, мини-кнопки «все/сброс», ресайз правой панели
-- **Менеджеры:** отдельный JSON (`manager_analytics`), автозагрузка `kanban_managers_latest.json`; колонка `km` должна быть в `required_column_keys`
+- **Графики линий:** «По продуктам/группам» и «По ТБ» — кривые «лиды × дни»
+- **Графики КМ:** «КМ с нарушениями P80: по ТБ» / «… по группам/продуктам» — bar-chart (нужен JSON менеджеров)
+- **Агрегация в HTML:** «По продуктам» / «По группам» + pipeline-фильтры — срез из `visualizations.filter_slices`
+- **Pipeline-фильтры:** изменение условий, ввод данных, метки «Стратегия» / «Стратегия·2026». **ЕФС** — только `config.filters.efs_flag` (`enabled`, `value`, `html_slice: false`)
+- **Менеджеры:** отдельный JSON в `OUT/`; загрузка вручную в дашборде
 - `config.product_analysis_mode` — только для **Excel**; в JSON — обе агрегации и все срезы фильтров
 - Режим «По ТБ»: графики **друг под другом** (одна колонка)
 
@@ -146,4 +168,5 @@ python -m http.server 8080
 | 0.8.0 | 2026-08-31 | JSON: обе агрегации; HTML — выбор среза; ТБ вертикально; Excel по config |
 | 0.9.0 | 2026-08-31 | JSON filter_slices (комбинации config.filters); HTML pipeline-фильтры |
 | 1.0.0 | 2026-08-31 | UI: иконки, ресайз, переключатели ВКЛ/ВЫКЛ; метка Стратегия/2026; аналитика КМ (Excel+JSON+HTML) |
-| 1.0.1 | 2026-08-31 | Документация config (Excel/JSON/HTML); `km` в `required_column_keys`; синхронизация POST |
+| 1.0.1 | 2026-08-31 | Документация config; `km` в `required_column_keys`; синхронизация POST |
+| 1.0.2 | 2026-08-31 | Split-bundle JSON; ЕФС config-only (`html_slice`); без `*_latest*`; bar-графики КМ; `charts` в JSON менеджеров |

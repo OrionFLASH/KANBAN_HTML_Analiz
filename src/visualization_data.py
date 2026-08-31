@@ -321,6 +321,7 @@ def build_json_visualization_payload(
     filter_slices: dict[str, Any],
     filter_catalog: list[dict[str, Any]],
     default_slice_key: str = "none",
+    embed_filter_slices: bool = True,
 ) -> dict[str, Any]:
     """Блок visualizations для JSON: агрегации × срезы pipeline-фильтров."""
     dash_cfg: dict[str, Any] = config.get("dashboard", {})
@@ -335,13 +336,16 @@ def build_json_visualization_payload(
     excel_slice: dict[str, Any] = aggregations.get(excel_mode, aggregations.get("group_product", {}))
 
     public_slices: dict[str, Any] = {}
-    for key, slice_data in filter_slices.items():
-        public_slices[key] = {
-            k: v
-            for k, v in slice_data.items()
-            if k not in ("_stats_by_mode",)
-        }
+    if embed_filter_slices:
+        for key, slice_data in filter_slices.items():
+            public_slices[key] = {
+                k: v
+                for k, v in slice_data.items()
+                if k not in ("_stats_by_mode",)
+            }
 
+    default_agg: dict[str, Any] = aggregations if embed_filter_slices else {}
+    excel_slice_data: dict[str, Any] = excel_slice if embed_filter_slices else {}
     return {
         "stage_order": stage_order(config),
         "indicators": indicator_keys(config),
@@ -357,14 +361,14 @@ def build_json_visualization_payload(
         },
         "filter_catalog": filter_catalog,
         "filter_slices": public_slices,
-        "aggregations": aggregations,
+        "aggregations": default_agg,
         "product_analysis_mode": excel_mode,
-        "row_dimension": excel_slice.get("row_dimension"),
-        "distribution_series": excel_slice.get("distribution_series", []),
-        "distribution_format": excel_slice.get("distribution_format"),
-        "pivot_flat": excel_slice.get("pivot_flat", []),
+        "row_dimension": excel_slice_data.get("row_dimension"),
+        "distribution_series": excel_slice_data.get("distribution_series", []),
+        "distribution_format": excel_slice_data.get("distribution_format"),
+        "pivot_flat": excel_slice_data.get("pivot_flat", []),
         "pivot_matrices": [],
-        "default_pivot_matrix": excel_slice.get("default_pivot_matrix"),
+        "default_pivot_matrix": excel_slice_data.get("default_pivot_matrix"),
     }
 
 

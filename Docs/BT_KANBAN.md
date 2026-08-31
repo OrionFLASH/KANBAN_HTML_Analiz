@@ -1,6 +1,6 @@
 # Бизнес-требования и системный анализ: KANBAN HTML Analiz
 
-**Версия:** 1.0.1  
+**Версия:** 1.0.2  
 **Дата:** 2026-08-31  
 **Источник:** `Docs/ToDo KANBAN.txt`
 
@@ -133,25 +133,26 @@
 | Контекст | Поведение |
 |----------|-----------|
 | **Excel** | Фильтры с `enabled: true` в config; объединение **AND** |
-| **JSON** | Предрасчёт всех комбинаций ключей `config.filters` в `visualizations.filter_slices` (пустые пропускаются) |
-| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; варианты метки в одной `exclusive_group` — не более одного активного |
+| **JSON** | Комбинации фильтров с `html_slice: true` в `visualizations.filter_slices`; config-only (`efs_flag`) применяется к базе до комбинаций |
+| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; ЕФС **не** в UI — только через config |
 
 | Фильтр | Колонка | Логика |
 |--------|---------|--------|
-| Изменение условий | `_Изменение условий` | = 1 |
-| Ввод данных | `_Ввод данных` | = 1 |
-| ЕФС | `ЕФС флаг` | = 1 |
+| Изменение условий | `_Изменение условий` | = 1; HTML + JSON комбинации |
+| Ввод данных | `_Ввод данных` | = 1; HTML + JSON комбинации |
+| ЕФС | `ЕФС флаг` | = 1; **только config** (`html_slice: false`), без UI и без срезов в JSON |
 | Стратегия | `Метка` | содержит «Стратегия» |
 | Стратегия · 2026 | `Метка` | содержит «Стратегия» **и** «2026» |
 
-> **Решение (v1.0):** фильтры комбинируются через **AND**. Для HTML все комбинации предрасчитываются в JSON; `enabled` влияет только на Excel.
+> **Решение (v1.0.2):** `enabled` — AND для Excel и config-only фильтров. HTML-фильтры (`html_slice: true`) — все комбинации 2^N в JSON; `enabled` на них **не** влияет.
 
 ### 4.6. Этап 6 — Аналитика менеджеров (КМ)
 
 - Порог P80 по группе × продукт × стадия из общей сводки (без ТБ)
 - Превышение: срок лида **строго больше** P80
-- Топ-3 менеджера на каждый ТБ по числу превышений
-- Выход: лист Excel «Менеджеры», отдельный JSON, блок BOTTOM в HTML-дашборде
+- Топ-N менеджеров на каждый ТБ по числу превышений
+- Bar-графики в HTML: число КМ с нарушениями по ТБ и по группам/продуктам
+- Выход: лист Excel «Менеджеры», JSON с `top_by_tb` + `charts`, блок BOTTOM в HTML
 - Колонка `КМ` должна быть в `required_column_keys` для загрузки из Excel
 
 ---
@@ -177,23 +178,24 @@
 
 ### 5.3. JSON
 
-**Основной** (`kanban_report_*.json`):
+**Основной** (`kanban_report_{timestamp}.json` + split-bundle `_html/`):
 
-- `meta` — режим, filters_applied (Excel), aggregation modes
-- `dimensions` — ТБ, стадии, продукты, filter_dimensions
-- `statistics` — агрегаты overall / by_tb (обе агрегации: group_product, group_only)
-- `visualizations.filter_slices` — предрасчитанные срезы pipeline-фильтров
+- `meta` — режим, filters_applied, aggregation modes, bundle_version
+- `dimensions` — ТБ, стадии, продукты
+- `visualizations.filter_slices` — срезы pipeline-фильтров (`html_slice: true`)
 - `visualizations.filter_catalog` — описание фильтров для HTML
+- Slim-архив `.json` — указатель на manifest (при `write_monolith_archive: true`)
 
-**Менеджеры** (`kanban_report_managers_*.json`):
+**Менеджеры** (`kanban_report_managers_{timestamp}.json`):
 
-- `top_by_tb`, `detail_by_product`, `manager_totals`, `meta`
+- `top_by_tb`, `meta`, `charts` (`by_tb`, `facts`)
+- При полном экспорте: `detail_by_product`, `manager_totals`
 
-> **Решение (v1.0):** только агрегаты (без lead_tracks). HTML строит матрицу из `pivot_flat`.
+> Копии `*_latest*` и запись в `HTML/data/` **не создаются**. JSON загружается в дашборд вручную.
 
 ### 5.4. HTML-дашборд
 
-Каталог `HTML/` — локальная страница: графики, матрица, pipeline-фильтры, блок менеджеров. Автозагрузка JSON из `HTML/data/` после `run.py`.
+Каталог `HTML/` — локальная страница; JSON загружается вручную из `OUT/`.
 
 ## 6. Системная архитектура
 
@@ -277,15 +279,19 @@
   "columns": { "km": "КМ", "label": "Метка" },
   "required_column_keys": ["...", "label", "km"],
   "product_analysis_mode": "group_product",
-  "dashboard": { "precompute_html_filter_slices": true },
+  "dashboard": {
+    "precompute_html_filter_slices": true,
+    "html_json": { "bundle_mode": "split", "max_distribution_points": 800 }
+  },
   "manager_analytics": {
     "enabled": true,
     "metric": "days_on_stage",
     "percentile": 80,
-    "top_managers_per_tb": 3
+    "top_managers_per_tb": 3,
+    "html_include_detail": false
   },
   "filters": {
-    "efs_flag": { "enabled": false, "column_key": "efs_flag", "value": 1 },
+    "efs_flag": { "enabled": false, "column_key": "efs_flag", "value": 1, "html_slice": false },
     "strategy_label": {
       "enabled": false,
       "column_key": "label",
@@ -317,22 +323,21 @@
 
 ---
 
-## 9. Согласованные решения (v1.1, 2026-08-31)
+## 9. Согласованные решения (v1.0.2, 2026-08-31)
 
 | Тема | Решение |
 |------|---------|
 | Расчёт сроков | Оба метода в коде; переключатель `duration_source`: `columns` / `dates` |
 | Подстадии | `stage_analysis_mode`: `status` / `substages` / `both` |
-| Фильтры | Каждый вкл/выкл в config (`enabled`); AND для Excel; все комбинации в JSON для HTML |
-| JSON filter_slices | `dashboard.precompute_html_filter_slices`; обе агрегации group_product / group_only |
-| Менеджеры (КМ) | P80 overall; топ-3 на ТБ; `km` в required_column_keys |
-| Excel-таблица | Имя в config (`excel_table_name`: `Base`); авто fallback на Sheet1 |
-| JSON | Только агрегаты (без lead_tracks) |
-| Категория файла | Объединять (не влияет на аналитику) |
-| Дубли / срок лида | Max дней на стадии; при равенстве — max `Дата отчета` |
+| Фильтры HTML | `html_slice: true` — комбинации в JSON + UI; `enabled` только для Excel |
+| Фильтр ЕФС | `html_slice: false` — только config; `enabled: false` = строки с 0 и 1 |
+| JSON export | Split-bundle: manifest + `slices/`; без `*_latest*` и `HTML/data/` |
+| JSON filter_slices | 2^N для HTML-фильтров; `dashboard.precompute_html_filter_slices` |
+| Менеджеры (КМ) | P80 overall; топ-N на ТБ; `charts` для bar-графиков; `html_include_detail: false` на prod |
+| Excel-таблица | Имя в config (`excel.table_name`: `Base`); авто fallback на Sheet1 |
+| JSON | Только агрегаты (без lead_tracks); матрица из `pivot_flat` |
 | Перцентили | Настраиваемый список, default `[20, 50, 80]` |
 | Workers | `os.cpu_count()` при `parallel_workers=0` |
-| Excel | green_red + autofilter + freeze + ширина + формат чисел |
 
 ---
 
@@ -343,8 +348,8 @@
 - [v] Для каждого продукта — min/max/перцентили по каждой стадии
 - [v] Отдельные листы Excel по ТБ + сводная
 - [v] JSON пригоден для фильтрации по ТБ/продукту/стадии и pipeline-фильтрам (filter_slices)
-- [v] HTML-дашборд: графики, матрица, pipeline ВКЛ/ВЫКЛ, менеджеры
-- [v] Фильтры `_Изменение условий`, `_Ввод данных`, `ЕФС флаг`, `Метка` (2 варианта) реализованы
+- [v] HTML-дашборд: графики линий, bar-графики КМ, матрица, pipeline ВКЛ/ВЫКЛ, менеджеры
+- [v] Фильтры: изменение условий, ввод данных, ЕФС (config-only), метка (2 варианта)
 - [ ] Prod-режим читает все 22 файла параллельно
 - [v] Выходные файлы в `OUT/` с timestamp
 

@@ -195,14 +195,24 @@
     "default_indicator": "p80",
     "excel_max_chart_series": 8,
     "max_chart_series": 12,
-    "precompute_html_filter_slices": true
+    "precompute_html_filter_slices": true,
+    "html_json": {
+      "bundle_mode": "split",
+      "compact": true,
+      "include_statistics": false,
+      "include_dimensions": true,
+      "max_distribution_points": 800,
+      "slices_subdir": "slices",
+      "write_monolith_archive": true
+    }
   },
   "manager_analytics": {
     "enabled": true,
     "metric": "days_on_stage",
     "percentile": 80,
     "threshold_scope": "overall",
-    "top_managers_per_tb": 3
+    "top_managers_per_tb": 3,
+    "html_include_detail": false
   },
   "parallel_workers": 0,
   "excel_theme": "green_red",
@@ -220,7 +230,8 @@
     "efs_flag": {
       "enabled": false,
       "column_key": "efs_flag",
-      "value": 1
+      "value": 1,
+      "html_slice": false
     },
     "strategy_label": {
       "enabled": false,

@@ -132,7 +132,13 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         }
 
     json_visualizations: dict = build_json_visualization_payload(
-        config, filter_slices, filter_catalog, default_slice_key="none"
+        config,
+        filter_slices,
+        filter_catalog,
+        default_slice_key="none",
+        embed_filter_slices=not bool(
+            config.get("dashboard", {}).get("html_json", {}).get("bundle_mode", "split") == "split"
+        ),
     )
     none_slice: dict[str, Any] = filter_slices.get("none", {})
     stats_by_mode: dict[str, dict] = none_slice.get("_stats_by_mode", {})
@@ -170,6 +176,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         json_path,
         visualizations=json_visualizations,
         filter_catalog=filter_catalog,
+        filter_slices=filter_slices,
     )
     progress.done(f"JSON: {json_path.name}")
 

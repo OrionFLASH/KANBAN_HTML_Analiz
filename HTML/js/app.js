@@ -245,7 +245,7 @@
     );
   }
 
-  function onPipelineToggleClick(event) {
+  async function onPipelineToggleClick(event) {
     const btn = event.target.closest(".pipeline-toggle");
     if (!btn) return;
 
@@ -268,6 +268,18 @@
 
     KanbanData.setActivePipelineFilters(Array.from(active));
     syncPipelineToggleUi(Array.from(active));
+
+    if (KanbanData.isSplitBundle()) {
+      metaInfo.textContent = "Загрузка среза pipeline…";
+      try {
+        await KanbanData.ensureSlice(KanbanData.resolveFilterSliceKey());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        metaInfo.textContent = `Ошибка среза: ${message}`;
+        return;
+      }
+    }
+
     metaInfo.textContent = KanbanData.metaLine();
     updateFilterScopeBanner();
     populateGroupFilter();
@@ -358,10 +370,41 @@
     }
   }
 
+  function isKmChartMode(chartMode) {
+    return String(chartMode || "").startsWith("km_");
+  }
+
+  function updateChartModeUi(chartMode) {
+    const kmMode = isKmChartMode(chartMode);
+    controls.metricSelect.closest(".field")?.classList.toggle("field--hidden", kmMode);
+    controls.indicatorSelect.closest(".field")?.classList.toggle("field--hidden", kmMode);
+    controls.smoothLines.closest(".field--check")?.classList.toggle("field--hidden", kmMode);
+  }
+
   function renderCharts(filters, maxSeries, chartMode) {
+    updateChartModeUi(chartMode);
+    chartsGrid.classList.toggle("charts-grid--by-tb", chartMode === "by_tb");
+    chartsGrid.classList.toggle("charts-grid--km", isKmChartMode(chartMode));
+
+    if (isKmChartMode(chartMode)) {
+      if (!KanbanManagers.hasChartData()) {
+        KanbanCharts.destroyAll();
+        chartsGrid.innerHTML =
+          `<div class="empty-state panel">` +
+          `<p class="empty-state__title">Нет данных по КМ</p>` +
+          `<p>Загрузите <code>kanban_report_managers_*.json</code> — в нём блок <code>charts</code> для bar-графиков.</p>` +
+          `</div>`;
+        return;
+      }
+      const chartGroups = KanbanManagers.buildChartGroups(filters, chartMode, maxSeries);
+      KanbanCharts.renderBars(chartsGrid, chartGroups, {
+        showLegend: controls.showLegend.checked,
+      });
+      return;
+    }
+
     const filtered = KanbanData.filterSeries(filters);
     const chartGroups = KanbanData.groupSeriesForCharts(filtered, chartMode, maxSeries, filters);
-    chartsGrid.classList.toggle("charts-grid--by-tb", chartMode === "by_tb");
     KanbanCharts.render(chartsGrid, chartGroups, {
       chartMode,
       showLegend: controls.showLegend.checked,
@@ -429,13 +472,18 @@
     renderManagers(filters);
   }
 
-  function onJsonLoaded(text) {
+  async function onJsonLoaded(text) {
     try {
       KanbanData.loadJson(text);
+      if (KanbanData.isSplitBundle()) {
+        metaInfo.textContent = "Загрузка среза данных…";
+        await KanbanData.prepareActiveSlice();
+      }
       metaInfo.textContent = KanbanData.metaLine();
       KanbanPivot.resetSort();
-      populateControlsFromPayload();
-      refresh();
+    populateControlsFromPayload();
+    updateChartModeUi(controls.chartMode.value);
+    refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       metaInfo.textContent = `Ошибка загрузки JSON: ${message}`;
@@ -658,55 +706,5 @@
     });
   });
 
-  /** Кандидаты автозагрузки: data/ — при сервере из HTML/; ../OUT и /OUT — из корня проекта. */
-  const JSON_AUTOLOAD_URLS = [
-    "data/kanban_report_latest.json",
-    "../OUT/kanban_report_latest.json",
-    "/OUT/kanban_report_latest.json",
-  ];
-
-  const MANAGERS_AUTOLOAD_URLS = [
-    "data/kanban_managers_latest.json",
-    "../OUT/kanban_report_managers_latest.json",
-    "/OUT/kanban_report_managers_latest.json",
-  ];
-
-  async function autoloadManagersJson() {
-    if (window.location.protocol === "file:") return;
-    for (const url of MANAGERS_AUTOLOAD_URLS) {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) continue;
-        KanbanManagers.loadJson(await response.text());
-        return;
-      } catch (err) {
-        console.warn("[KANBAN] managers autoload failed for", url, err);
-      }
-    }
-  }
-
-  async function autoloadJson() {
-    if (window.location.protocol === "file:") {
-      metaInfo.textContent =
-        "Автозагрузка недоступна (file://). Запустите HTTP-сервер или выберите JSON вручную.";
-      return;
-    }
-
-    for (const url of JSON_AUTOLOAD_URLS) {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) continue;
-        onJsonLoaded(await response.text());
-        if (KanbanData.getPayload()) return;
-      } catch (err) {
-        console.warn("[KANBAN] autoload failed for", url, err);
-      }
-    }
-
-    metaInfo.textContent =
-      "JSON не найден. Выполните run.py или выберите kanban_report_*.json вручную.";
-  }
-
-  autoloadManagersJson();
-  autoloadJson();
+  metaInfo.textContent = "Выберите JSON отчёта (manifest или monolith) и при необходимости JSON менеджеров.";
 })();

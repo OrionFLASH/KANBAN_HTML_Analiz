@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from src.excel_sanitize import sanitize_dataframe, sanitize_sheet_name
 from src.manager_analytics import manager_analytics_to_excel_frame
 from src.pivot_excel import add_visualization_sheets
 from src.settings import build_percentile_column_mapping, col
@@ -129,19 +129,26 @@ def export_excel(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    used_sheet_names: set[str] = set()
     sheets: dict[str, pd.DataFrame] = {
-        sheet_names["summary"]: _rename_columns_for_export(stats["by_tb"], config),
-        sheet_names["overall"]: _rename_columns_for_export(stats["overall"], config),
+        sanitize_sheet_name(sheet_names["summary"], used_sheet_names, max_len): sanitize_dataframe(
+            _rename_columns_for_export(stats["by_tb"], config)
+        ),
+        sanitize_sheet_name(sheet_names["overall"], used_sheet_names, max_len): sanitize_dataframe(
+            _rename_columns_for_export(stats["overall"], config)
+        ),
     }
     for tb_name, tb_df in stats.get("tb_sheets", {}).items():
-        safe_name: str = str(tb_name)[:max_len]
-        sheets[safe_name] = _rename_columns_for_export(tb_df, config)
+        safe_name: str = sanitize_sheet_name(str(tb_name), used_sheet_names, max_len)
+        sheets[safe_name] = sanitize_dataframe(_rename_columns_for_export(tb_df, config))
 
     if manager_payload:
-        managers_sheet: str = sheet_names.get("managers", "Менеджеры")
+        managers_sheet: str = sanitize_sheet_name(
+            sheet_names.get("managers", "Менеджеры"), used_sheet_names, max_len
+        )
         mgr_frame: pd.DataFrame = manager_analytics_to_excel_frame(manager_payload, config)
         if not mgr_frame.empty:
-            sheets[managers_sheet] = mgr_frame
+            sheets[managers_sheet] = sanitize_dataframe(mgr_frame)
 
     with pd.ExcelWriter(output_path, engine=config["excel"].get("engine", "openpyxl")) as writer:
         for sheet_name, frame in sheets.items():
@@ -149,25 +156,24 @@ def export_excel(
                 continue
             frame.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    wb = load_workbook(output_path)
-    for sheet_name in wb.sheetnames:
-        if sheet_name.startswith("_"):
-            continue
-        if sheet_name in {out_cfg["excel_sheets"].get("matrix", "Матрица"), out_cfg["excel_sheets"].get("charts", "Графики")}:
-            continue
-        if sheet_name == out_cfg["excel_sheets"].get("managers", "Менеджеры"):
+        wb = writer.book
+        matrix_label: str = sheet_names.get("matrix", "Матрица")
+        charts_label: str = sheet_names.get("charts", "Графики")
+
+        for sheet_name in wb.sheetnames:
+            if sheet_name.startswith("_"):
+                continue
             _format_sheet(wb[sheet_name], config)
-            continue
-        _format_sheet(wb[sheet_name], config)
 
-    if visualizations:
-        add_visualization_sheets(
-            wb,
-            visualizations.get("pivot_flat", []),
-            visualizations.get("distribution_series", []),
-            config,
-        )
+        if visualizations:
+            add_visualization_sheets(
+                wb,
+                visualizations.get("pivot_flat", []),
+                visualizations.get("distribution_series", []),
+                config,
+                used_sheet_names=used_sheet_names,
+            )
 
-    wb.save(output_path)
+        wb.save(output_path)
 
     logger.info("Excel сохранён: %s", output_path)
