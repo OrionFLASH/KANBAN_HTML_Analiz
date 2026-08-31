@@ -11,36 +11,19 @@ from typing import Any
 import pandas as pd
 from openpyxl import load_workbook
 
+from src.settings import required_column_names
+
 logger: logging.Logger = logging.getLogger("kanban.excel_loader")
 
-REQUIRED_COLUMNS: list[str] = [
-    "Дата отчета",
-    "ID ПрПр",
-    "Группа продукта",
-    "Продукт",
-    "Дата начала работы",
-    "Текущий статус",
-    "Количество дней на текущей стадии",
-    "Дата создания сделки",
-    "Стадия сделки",
-    "Количество дней с создания сделки",
-    "ТБ",
-    "_Изменение условий",
-    "_Ввод данных",
-    "ЕФС флаг",
-    "Метка",
-]
 
-_EMPTY_STAGE_VALUES: set[str] = {"", "-", "nan", "None"}
-
-
-def _detect_category(filename: str) -> str:
+def _detect_category(filename: str, config: dict[str, Any]) -> str:
     """Определяет категорию файла по имени (не используется в аналитике)."""
-    if "К ПРОДАЖЕ" in filename:
-        return "К ПРОДАЖЕ"
-    if "В РАБОТЕ" in filename:
-        return "В РАБОТЕ"
-    return "UNKNOWN"
+    markers: dict[str, str] = config["excel"]["category_markers"]
+    if markers["for_sale"] in filename:
+        return markers["for_sale"]
+    if markers["in_work"] in filename:
+        return markers["in_work"]
+    return markers.get("unknown", "UNKNOWN")
 
 
 def _resolve_table_range(
@@ -62,7 +45,13 @@ def _resolve_table_range(
         wb.close()
 
 
-def _read_table_range(file_path: Path, sheet_name: str, cell_range: str) -> pd.DataFrame:
+def _read_table_range(
+    file_path: Path,
+    sheet_name: str,
+    cell_range: str,
+    engine: str,
+    na_values: list[str],
+) -> pd.DataFrame:
     """Читает именованную таблицу Excel по диапазону ref."""
     match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
     if not match:
@@ -73,10 +62,10 @@ def _read_table_range(file_path: Path, sheet_name: str, cell_range: str) -> pd.D
     return pd.read_excel(
         file_path,
         sheet_name=sheet_name,
-        engine="openpyxl",
+        engine=engine,
         header=start_row - 1,
         nrows=end_row - start_row,
-        na_values=[""],
+        na_values=na_values,
     )
 
 
@@ -84,78 +73,87 @@ def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
     """Читает один Excel-файл (для ProcessPoolExecutor)."""
     file_path_str, config = args
     file_path: Path = Path(file_path_str)
-    sheet_name: str = config["sheet_name"]
-    table_name: str = config.get("excel_table_name", "Base")
-    use_auto: bool = bool(config.get("excel_table_auto", True))
+    excel_cfg: dict[str, Any] = config["excel"]
+    sheet_name: str = excel_cfg["sheet_name"]
+    table_name: str = excel_cfg["table_name"]
+    use_auto: bool = bool(excel_cfg.get("table_auto", True))
+    engine: str = excel_cfg.get("engine", "openpyxl")
+    na_values: list[str] = list(excel_cfg.get("na_values", [""]))
 
     df: pd.DataFrame
     if use_auto:
         cell_range: str | None = _resolve_table_range(file_path, sheet_name, table_name)
         if cell_range:
-            df = _read_table_range(file_path, sheet_name, cell_range)
+            df = _read_table_range(file_path, sheet_name, cell_range, engine, na_values)
         else:
             df = pd.read_excel(
                 file_path,
                 sheet_name=sheet_name,
-                engine="openpyxl",
-                na_values=[""],
+                engine=engine,
+                na_values=na_values,
             )
     else:
         df = pd.read_excel(
             file_path,
             sheet_name=sheet_name,
-            engine="openpyxl",
-            na_values=[""],
+            engine=engine,
+            na_values=na_values,
         )
 
-    _validate_columns(df, file_path)
-    df = _normalize_types(df)
+    _validate_columns(df, file_path, config)
+    df = _normalize_types(df, config)
     df["source_file"] = file_path.name
-    df["source_category"] = _detect_category(file_path.name)
+    df["source_category"] = _detect_category(file_path.name, config)
     return df
 
 
-def _validate_columns(df: pd.DataFrame, file_path: Path) -> None:
+def _validate_columns(df: pd.DataFrame, file_path: Path, config: dict[str, Any]) -> None:
     """Проверяет наличие обязательных колонок."""
-    missing: list[str] = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    required: list[str] = required_column_names(config)
+    missing: list[str] = [name for name in required if name not in df.columns]
     if missing:
         raise ValueError(f"{file_path.name}: отсутствуют колонки: {missing}")
 
 
-def _normalize_types(df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """Приводит ключевые колонки к нужным типам."""
     result: pd.DataFrame = df.copy()
-    date_cols: list[str] = ["Дата отчета", "Дата начала работы"]
-    for col in date_cols:
-        if col in result.columns:
-            result[col] = pd.to_datetime(result[col], errors="coerce")
+    c = config["columns"]
 
-    if "Дата создания сделки" in result.columns:
-        result["Дата создания сделки"] = pd.to_datetime(
-            result["Дата создания сделки"], errors="coerce"
-        )
+    date_keys: list[str] = ["report_date", "work_start_date", "deal_created_date"]
+    for key in date_keys:
+        name: str = c[key]
+        if name in result.columns:
+            result[name] = pd.to_datetime(result[name], errors="coerce")
 
-    int_cols: list[str] = [
-        "Количество дней на текущей стадии",
-        "_Изменение условий",
-        "_Ввод данных",
-        "ЕФС флаг",
+    numeric_keys: list[str] = [
+        "days_on_stage",
+        "days_since_deal",
+        "change_conditions",
+        "data_entry",
+        "efs_flag",
     ]
-    for col in int_cols:
-        if col in result.columns:
-            result[col] = pd.to_numeric(result[col], errors="coerce")
+    for key in numeric_keys:
+        name = c[key]
+        if name in result.columns:
+            result[name] = pd.to_numeric(result[name], errors="coerce")
 
-    if "Количество дней с создания сделки" in result.columns:
-        result["Количество дней с создания сделки"] = pd.to_numeric(
-            result["Количество дней с создания сделки"], errors="coerce"
-        )
+    text_keys: list[str] = [
+        "current_status",
+        "deal_stage",
+        "product_group",
+        "product",
+        "tb",
+        "lead_id",
+    ]
+    for key in text_keys:
+        name = c[key]
+        if name in result.columns:
+            result[name] = result[name].astype(str).str.strip()
 
-    for col in ["Текущий статус", "Стадия сделки", "Группа продукта", "Продукт", "ТБ", "ID ПрПр"]:
-        if col in result.columns:
-            result[col] = result[col].astype(str).str.strip()
-
-    if "Стадия сделки" in result.columns:
-        result["Стадия сделки"] = result["Стадия сделки"].replace("nan", "")
+    deal_stage_col: str = c["deal_stage"]
+    if deal_stage_col in result.columns:
+        result[deal_stage_col] = result[deal_stage_col].replace("nan", "")
 
     return result
 

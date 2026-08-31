@@ -10,43 +10,49 @@ from typing import Any
 
 import pandas as pd
 
+from src.settings import col
+
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
 
 
-def _frame_to_statistics(frame: pd.DataFrame) -> list[dict[str, Any]]:
+def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
     """Преобразует DataFrame статистики в список словарей."""
     if frame.empty:
         return []
 
+    tb_name: str = col(config, "tb")
+    group_name: str = col(config, "product_group")
+    product_name: str = col(config, "product")
+    metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
+
     records: list[dict[str, Any]] = []
     for row in frame.to_dict(orient="records"):
         item: dict[str, Any] = {
-            "tb": row.get("ТБ"),
-            "product_group": row.get("Группа продукта"),
-            "product": row.get("Продукт"),
+            "tb": row.get(tb_name),
+            "product_group": row.get(group_name),
+            "product": row.get(product_name),
             "analysis_level": row.get("analysis_level"),
             "current_status": row.get("current_status"),
             "deal_stage": row.get("deal_stage") or None,
             "stage_key": row.get("stage_key"),
-            "metrics": {
-                "days_on_stage": {
-                    "min": row.get("days_on_stage_min"),
-                    "max": row.get("days_on_stage_max"),
-                    "count": row.get("days_on_stage_count"),
-                },
-                "days_since_deal": {
-                    "min": row.get("days_since_deal_min"),
-                    "max": row.get("days_since_deal_max"),
-                    "count": row.get("days_since_deal_count"),
-                },
-            },
+            "metrics": {},
         }
+        for metric in metrics:
+            item["metrics"][metric] = {
+                "min": row.get(f"{metric}_min"),
+                "max": row.get(f"{metric}_max"),
+                "count": row.get(f"{metric}_count"),
+            }
         for key, value in row.items():
             key_str: str = str(key)
-            if key_str.startswith("days_on_stage_p"):
-                item["metrics"]["days_on_stage"][key_str.replace("days_on_stage_", "")] = value
-            elif key_str.startswith("days_since_deal_p"):
-                item["metrics"]["days_since_deal"][key_str.replace("days_since_deal_", "")] = value
+            for metric in metrics:
+                prefix = f"{metric}_"
+                if key_str.startswith(prefix) and key_str not in {
+                    f"{metric}_min",
+                    f"{metric}_max",
+                    f"{metric}_count",
+                }:
+                    item["metrics"][metric][key_str.replace(prefix, "")] = value
         records.append(item)
     return records
 
@@ -66,13 +72,14 @@ def export_json(
             "stage_analysis_mode": config.get("stage_analysis_mode"),
             "percentiles": config.get("percentiles"),
             "filters": config.get("filters"),
+            "columns": config.get("columns"),
         },
         "dimensions": dimensions,
         "statistics": {
-            "overall": _frame_to_statistics(stats["overall"]),
-            "by_tb": _frame_to_statistics(stats["by_tb"]),
+            "overall": _frame_to_statistics(stats["overall"], config),
+            "by_tb": _frame_to_statistics(stats["by_tb"], config),
             "tb_sheets": {
-                tb: _frame_to_statistics(df)
+                tb: _frame_to_statistics(df, config)
                 for tb, df in stats.get("tb_sheets", {}).items()
             },
         },

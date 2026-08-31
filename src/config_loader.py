@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from src.project_paths import resolve_path
+from src.settings import normalize_config
 
 VALID_DURATION_SOURCES: set[str] = {"columns", "dates"}
 VALID_STAGE_MODES: set[str] = {"status", "substages", "both"}
@@ -14,21 +16,22 @@ VALID_EXCEL_THEMES: set[str] = {"green_red", "minimal"}
 
 
 def load_config(config_path: str | Path = "config.json") -> dict[str, Any]:
-    """Загружает config.json и применяет значения по умолчанию."""
-    path: Path = Path(config_path)
+    """Загружает config.json, дополняет defaults и валидирует."""
+    path: Path = resolve_path(config_path)
     if not path.exists():
         raise FileNotFoundError(f"Файл конфигурации не найден: {path}")
 
     with path.open(encoding="utf-8") as fh:
-        config: dict[str, Any] = json.load(fh)
+        raw: dict[str, Any] = json.load(fh)
 
+    config: dict[str, Any] = normalize_config(raw)
     _validate_config(config)
     _apply_defaults(config)
     return config
 
 
 def _apply_defaults(config: dict[str, Any]) -> None:
-    """Заполняет значения по умолчанию."""
+    """Заполняет вычисляемые значения по умолчанию."""
     workers: int = int(config.get("parallel_workers", 0))
     if workers <= 0:
         config["parallel_workers"] = os.cpu_count() or 4
@@ -36,10 +39,12 @@ def _apply_defaults(config: dict[str, Any]) -> None:
 
 def _validate_config(config: dict[str, Any]) -> None:
     """Проверяет обязательные ключи и допустимые значения."""
-    required_roots: list[str] = ["mode", "paths", "sheet_name", "percentiles"]
-    for key in required_roots:
-        if key not in config:
-            raise ValueError(f"В config.json отсутствует ключ: {key}")
+    if "mode" not in config:
+        raise ValueError("В config.json отсутствует ключ: mode")
+    if "paths" not in config:
+        raise ValueError("В config.json отсутствует ключ: paths")
+    if "columns" not in config:
+        raise ValueError("В config.json отсутствует ключ: columns")
 
     mode: str = config["mode"]
     if mode not in {"test", "prod"}:
@@ -61,13 +66,17 @@ def _validate_config(config: dict[str, Any]) -> None:
     if not percentiles:
         raise ValueError("percentiles не может быть пустым")
 
+    for path_key in ("input_test", "input_prod", "output", "log"):
+        if path_key not in config["paths"]:
+            raise ValueError(f"paths.{path_key} обязателен")
+
 
 def get_input_dir(config: dict[str, Any]) -> Path:
     """Возвращает каталог входных файлов по режиму."""
     paths: dict[str, str] = config["paths"]
     if config["mode"] == "test":
-        return Path(paths["input_test"])
-    return Path(paths["input_prod"])
+        return resolve_path(paths["input_test"])
+    return resolve_path(paths["input_prod"])
 
 
 def get_file_list(config: dict[str, Any]) -> list[str]:
@@ -79,6 +88,13 @@ def get_file_list(config: dict[str, Any]) -> list[str]:
 
 def get_output_dir(config: dict[str, Any]) -> Path:
     """Возвращает каталог выходных файлов."""
-    out: Path = Path(config["paths"]["output"])
+    out: Path = resolve_path(config["paths"]["output"])
     out.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def get_log_dir(config: dict[str, Any]) -> Path:
+    """Возвращает каталог логов."""
+    log_dir: Path = resolve_path(config["paths"]["log"])
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir

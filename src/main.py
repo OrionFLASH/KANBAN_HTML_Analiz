@@ -15,27 +15,31 @@ from src.filters import apply_filters
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
 from src.logger_setup import setup_logger
+from src.project_paths import resolve_path
 
 
-def run(config_path: str = "config.json") -> tuple[Path, Path]:
+def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     """Запускает полный pipeline анализа."""
-    logger = setup_logger()
+    config_file: Path = resolve_path(config_path)
+    config = load_config(config_file)
+    logger = setup_logger(config)
     logger.info("Старт pipeline Kanban Analiz")
 
-    config = load_config(config_path)
     input_dir: Path = get_input_dir(config)
     filenames: list[str] = get_file_list(config)
     output_dir: Path = get_output_dir(config)
 
-    timestamp: str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    excel_path: Path = output_dir / f"kanban_report_{timestamp}.xlsx"
-    json_path: Path = output_dir / f"kanban_report_{timestamp}.json"
+    out_cfg: dict = config["output"]
+    timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))
+    prefix: str = out_cfg.get("report_prefix", "kanban_report")
+    excel_path: Path = output_dir / f"{prefix}_{timestamp}.xlsx"
+    json_path: Path = output_dir / f"{prefix}_{timestamp}.json"
 
     logger.info("Режим: %s, файлов: %d", config["mode"], len(filenames))
 
     raw_df = load_all_files(config, input_dir, filenames)
     filtered_df = apply_filters(raw_df, config)
-    dimensions = build_dimensions(filtered_df)
+    dimensions = build_dimensions(filtered_df, config)
     records = build_lead_stage_records(filtered_df, config)
 
     if records.empty:

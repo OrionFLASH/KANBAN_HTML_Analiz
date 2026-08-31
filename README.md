@@ -45,34 +45,104 @@ OUT/                 # результаты с timestamp
 log/                 # логи INFO/DEBUG
 ```
 
-## config.json — основные параметры
+## config.json — структура настроек
 
-| Параметр | Описание | По умолчанию |
-|----------|----------|--------------|
-| `mode` | `test` или `prod` | `test` |
-| `paths.input_test` | Каталог test-файлов | `Docs/FileIN` |
-| `paths.input_prod` | Каталог prod-файлов | `IN` |
-| `paths.output` | Каталог результатов | `OUT` |
-| `test_files` | Список test-файлов | `["2ГОСБ1ТБ.xlsx"]` |
-| `prod_files` | Список prod-файлов | 22 имени из ТЗ |
-| `sheet_name` | Лист Excel | `Sheet1` |
-| `excel_table_name` | Имя таблицы Excel | `Base` |
-| `excel_table_auto` | Таблица или весь лист | `true` |
-| `duration_source` | `columns` или `dates` | `columns` |
-| `stage_analysis_mode` | `status`, `substages`, `both` | `status` |
-| `percentiles` | Список перцентилей | `[20, 50, 80]` |
-| `parallel_workers` | Число процессов (`0` = CPU count) | `0` |
-| `excel_theme` | `green_red` или `minimal` | `green_red` |
-| `filters.*.enabled` | Включить фильтр | `false` |
+Все параметры задаются в `config.json`. Отсутствующие ключи дополняются значениями по умолчанию из `src/settings.py`.
 
-### Фильтры
+### Режим и пути (`paths`)
 
-Каждый фильтр в `filters` имеет `enabled: true/false`. Если включён — в анализ попадают только подходящие строки (AND между включёнными):
+| Ключ | Описание |
+|------|----------|
+| `mode` | `test` или `prod` |
+| `paths.input_test` | Каталог test-файлов |
+| `paths.input_prod` | Каталог prod-файлов |
+| `paths.output` | Каталог результатов |
+| `paths.log` | Каталог логов |
+| `test_files` / `prod_files` | Списки имён xlsx |
 
-- `change_conditions` → `_Изменение условий` = 1
-- `data_entry` → `_Ввод данных` = 1
-- `efs_flag` → `ЕФС флаг` = 1
-- `strategy_label` → `Метка` содержит «Стратегия»
+### Колонки Excel (`columns`)
+
+Имена колонок в исходных файлах — **ключ → имя в Excel**:
+
+| Ключ | По умолчанию |
+|------|--------------|
+| `report_date` | Дата отчета |
+| `lead_id` | ID ПрПр |
+| `product_group` | Группа продукта |
+| `product` | Продукт |
+| `work_start_date` | Дата начала работы |
+| `current_status` | Текущий статус |
+| `days_on_stage` | Количество дней на текущей стадии |
+| `deal_created_date` | Дата создания сделки |
+| `deal_stage` | Стадия сделки |
+| `days_since_deal` | Количество дней с создания сделки |
+| `tb` | ТБ |
+| `label` | Метка |
+| `change_conditions` | _Изменение условий |
+| `data_entry` | _Ввод данных |
+| `efs_flag` | ЕФС флаг |
+
+`required_column_keys` — какие ключи обязательны при загрузке.
+
+### Excel (`excel`)
+
+| Ключ | Описание |
+|------|----------|
+| `sheet_name` | Лист |
+| `table_name` | Именованная таблица (например `Base`) |
+| `table_auto` | Сначала таблица, иначе весь лист |
+| `engine` | Движок pandas (`openpyxl`) |
+| `na_values` | Пустые значения |
+| `category_markers` | Маркеры «К ПРОДАЖЕ» / «В РАБОТЕ» в имени файла |
+
+### Обработка (`processing`)
+
+| Ключ | Описание |
+|------|----------|
+| `empty_stage_values` | Значения пустой подстадии (`-`, `""`, …) |
+| `dedup_same_date_agg` | Агрегация на одну дату (`max`) |
+| `pick_across_dates` | Правило выбора между датами отчёта |
+
+### Анализ
+
+| Ключ | Описание |
+|------|----------|
+| `duration_source` | `columns` или `dates` |
+| `stage_analysis_mode` | `status`, `substages`, `both` |
+| `percentiles` | Список перцентилей, напр. `[20, 50, 80]` |
+| `parallel_workers` | Процессы (`0` = число CPU) |
+| `aggregation.group_keys` | Ключи группировки статистики |
+| `aggregation.metrics` | Метрики: `days_on_stage`, `days_since_deal` |
+
+### Выход (`output`)
+
+| Ключ | Описание |
+|------|----------|
+| `report_prefix` | Префикс файлов (`kanban_report`) |
+| `timestamp_format` | Формат timestamp в имени |
+| `excel_sheets.summary` / `overall` | Имена листов Excel |
+| `column_labels` | Заголовки колонок в Excel |
+| `excel_format` | Freeze, ширина, цвета min/max |
+
+### Фильтры (`filters`)
+
+Каждый фильтр: `enabled`, `column_key` (ссылка на `columns`), `value` или `contains`:
+
+- `change_conditions`, `data_entry`, `efs_flag`, `strategy_label`
+
+### Логирование (`logging`)
+
+| Ключ | Описание |
+|------|----------|
+| `logger_name` | Имя логгера |
+| `info_file_prefix` / `debug_file_prefix` | Префиксы файлов логов |
+| `hour_format` | Формат часа в имени лога |
+
+### Прочее
+
+| Ключ | Описание |
+|------|----------|
+| `excel_theme` | `green_red` или `minimal` |
 
 ## Выходные файлы
 
@@ -99,3 +169,4 @@ log/                 # логи INFO/DEBUG
 | Версия | Дата | Изменения |
 |--------|------|-----------|
 | 0.1.0 | 2026-08-31 | MVP pipeline: загрузка, трекинг, агрегация, Excel/JSON; test пройден |
+| 0.2.0 | 2026-08-31 | Все пути, колонки и форматы вынесены в config.json |

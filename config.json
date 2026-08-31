@@ -3,7 +3,114 @@
   "paths": {
     "input_test": "Docs/FileIN",
     "input_prod": "IN",
-    "output": "OUT"
+    "output": "OUT",
+    "log": "log"
+  },
+  "columns": {
+    "report_date": "Дата отчета",
+    "lead_id": "ID ПрПр",
+    "product_group": "Группа продукта",
+    "product": "Продукт",
+    "work_start_date": "Дата начала работы",
+    "current_status": "Текущий статус",
+    "days_on_stage": "Количество дней на текущей стадии",
+    "deal_created_date": "Дата создания сделки",
+    "deal_stage": "Стадия сделки",
+    "days_since_deal": "Количество дней с создания сделки",
+    "tb": "ТБ",
+    "label": "Метка",
+    "change_conditions": "_Изменение условий",
+    "data_entry": "_Ввод данных",
+    "efs_flag": "ЕФС флаг"
+  },
+  "required_column_keys": [
+    "report_date",
+    "lead_id",
+    "product_group",
+    "product",
+    "work_start_date",
+    "current_status",
+    "days_on_stage",
+    "deal_created_date",
+    "deal_stage",
+    "days_since_deal",
+    "tb",
+    "change_conditions",
+    "data_entry",
+    "efs_flag",
+    "label"
+  ],
+  "excel": {
+    "sheet_name": "Sheet1",
+    "table_name": "Base",
+    "table_auto": true,
+    "engine": "openpyxl",
+    "na_values": [""],
+    "category_markers": {
+      "for_sale": "К ПРОДАЖЕ",
+      "in_work": "В РАБОТЕ",
+      "unknown": "UNKNOWN"
+    }
+  },
+  "processing": {
+    "empty_stage_values": ["", "-", "nan", "None"],
+    "dedup_same_date_agg": "max",
+    "pick_across_dates": "max_days_then_latest_report_date"
+  },
+  "aggregation": {
+    "group_keys": [
+      "product_group",
+      "product",
+      "analysis_level",
+      "current_status",
+      "deal_stage",
+      "stage_key"
+    ],
+    "metrics": ["days_on_stage", "days_since_deal"]
+  },
+  "output": {
+    "report_prefix": "kanban_report",
+    "timestamp_format": "%Y%m%d_%H%M%S",
+    "excel_sheets": {
+      "summary": "Сводная",
+      "overall": "Общий"
+    },
+    "excel_max_sheet_name_length": 31,
+    "column_labels": {
+      "product_group": "ГРУППА",
+      "product": "ПРОДУКТ",
+      "tb": "ТБ",
+      "current_status": "Текущий статус",
+      "deal_stage": "Стадия сделки",
+      "stage_key": "Ключ стадии",
+      "analysis_level": "Уровень анализа",
+      "days_on_stage_min": "Мин дней на стадии",
+      "days_on_stage_max": "Макс дней на стадии",
+      "days_on_stage_count": "Число лидов",
+      "days_since_deal_min": "Мин дней с создания сделки",
+      "days_since_deal_max": "Макс дней с создания сделки",
+      "days_since_deal_count": "Число лидов (сделка)",
+      "min_header_marker": "Мин",
+      "max_header_marker": "Макс"
+    },
+    "excel_format": {
+      "freeze_panes": "A2",
+      "float_format": "0.00",
+      "int_format": "0",
+      "max_column_width": 45,
+      "min_column_width": 12,
+      "sample_rows_for_width": 200,
+      "colors": {
+        "min": "C6EFCE",
+        "max": "FFC7CE"
+      }
+    }
+  },
+  "logging": {
+    "logger_name": "kanban",
+    "info_file_prefix": "INFO_kanban",
+    "debug_file_prefix": "DEBUG_kanban",
+    "hour_format": "%Y%m%d_%H"
   },
   "test_files": [
     "2ГОСБ1ТБ.xlsx"
@@ -32,9 +139,6 @@
     "Канбан ВВБ (К ПРОДАЖЕ) все на 27-08-2026.xlsx",
     "Канбан ББ (К ПРОДАЖЕ) все на 27-08-2026.xlsx"
   ],
-  "sheet_name": "Sheet1",
-  "excel_table_name": "Base",
-  "excel_table_auto": true,
   "duration_source": "columns",
   "stage_analysis_mode": "status",
   "percentiles": [20, 50, 80],
@@ -43,23 +147,24 @@
   "filters": {
     "change_conditions": {
       "enabled": false,
-      "column": "_Изменение условий",
+      "column_key": "change_conditions",
       "value": 1
     },
     "data_entry": {
       "enabled": false,
-      "column": "_Ввод данных",
+      "column_key": "data_entry",
       "value": 1
     },
     "efs_flag": {
       "enabled": false,
-      "column": "ЕФС флаг",
+      "column_key": "efs_flag",
       "value": 1
     },
     "strategy_label": {
       "enabled": false,
-      "column": "Метка",
-      "contains": "Стратегия"
+      "column_key": "label",
+      "contains": "Стратегия",
+      "case_sensitive": false
     }
   }
 }
