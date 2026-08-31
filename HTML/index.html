@@ -46,8 +46,8 @@
             <label class="field">
               <span class="field-label">Режим линий</span>
               <select id="chartMode" class="field-control">
-                <option value="by_product">По продуктам / группам (выбранное ТБ)</option>
-                <option value="by_tb">По ТБ (выбранный продукт)</option>
+                <option value="by_product">По продуктам / группам: свод + каждый</option>
+                <option value="by_tb">По ТБ: свод + каждый ТБ</option>
               </select>
             </label>
             <label class="field">
@@ -82,6 +82,7 @@
       <main class="main">
         <div class="workspace">
           <section id="chartsTab" class="tab-panel active">
+            <div id="filterScopeBanner" class="filter-scope-banner" hidden></div>
             <div id="chartsGrid" class="charts-grid">
               <div class="empty-state panel">
                 <p class="empty-state__title">Нет данных</p>
@@ -113,21 +114,51 @@
           <div class="side-block-title">Фильтры</div>
         </div>
         <div class="filters-scroll">
-          <div class="filter-block">
-            <div class="filter-block__label">ТБ</div>
-            <select id="tbFilter" class="field-control"></select>
+          <div class="filter-block filter-block--multi">
+            <button type="button" class="multi-filter__toggle" id="tbFilterToggle" aria-expanded="true" aria-controls="tbFilterPanel">
+              <span class="multi-filter__title">ТБ</span>
+              <span class="multi-filter__badge" id="tbFilterBadge">Все</span>
+              <span class="multi-filter__chevron" aria-hidden="true"></span>
+            </button>
+            <div class="multi-filter__panel" id="tbFilterPanel">
+              <div id="tbFilterList" class="multi-filter__list multi-filter__list--compact" role="group" aria-label="Фильтр по ТБ"></div>
+              <div class="multi-filter__actions">
+                <button type="button" class="btn btn-compact btn-link" id="tbSelectAll">Все ТБ</button>
+                <button type="button" class="btn btn-compact btn-link" id="tbSelectNone">Сброс</button>
+              </div>
+            </div>
           </div>
-          <div class="filter-block">
-            <div class="filter-block__label">Группа продукта</div>
-            <select id="groupFilter" class="field-control">
-              <option value="">Все группы</option>
-            </select>
+
+          <div class="filter-block filter-block--multi">
+            <button type="button" class="multi-filter__toggle" id="groupFilterToggle" aria-expanded="true" aria-controls="groupFilterPanel">
+              <span class="multi-filter__title">Группы продуктов</span>
+              <span class="multi-filter__badge" id="groupFilterBadge">Все</span>
+              <span class="multi-filter__chevron" aria-hidden="true"></span>
+            </button>
+            <div class="multi-filter__panel" id="groupFilterPanel">
+              <input type="search" class="multi-filter__search" id="groupFilterSearch" placeholder="Поиск группы…" autocomplete="off">
+              <div id="groupFilterList" class="multi-filter__list" role="group" aria-label="Фильтр по группам"></div>
+              <div class="multi-filter__actions">
+                <button type="button" class="btn btn-compact btn-link" id="groupSelectAll">Все</button>
+                <button type="button" class="btn btn-compact btn-link" id="groupSelectNone">Сброс</button>
+              </div>
+            </div>
           </div>
-          <div class="filter-block" id="productFilterBlock">
-            <div class="filter-block__label">Продукт</div>
-            <select id="productFilter" class="field-control">
-              <option value="">Все продукты</option>
-            </select>
+
+          <div class="filter-block filter-block--multi" id="productFilterBlock">
+            <button type="button" class="multi-filter__toggle" id="productFilterToggle" aria-expanded="false" aria-controls="productFilterPanel">
+              <span class="multi-filter__title">Продукты</span>
+              <span class="multi-filter__badge" id="productFilterBadge">Все</span>
+              <span class="multi-filter__chevron" aria-hidden="true"></span>
+            </button>
+            <div class="multi-filter__panel is-collapsed" id="productFilterPanel">
+              <input type="search" class="multi-filter__search" id="productFilterSearch" placeholder="Поиск продукта…" autocomplete="off">
+              <div id="productFilterList" class="multi-filter__list multi-filter__list--tall" role="group" aria-label="Фильтр по продуктам"></div>
+              <div class="multi-filter__actions">
+                <button type="button" class="btn btn-compact btn-link" id="productSelectAll">Все</button>
+                <button type="button" class="btn btn-compact btn-link" id="productSelectNone">Сброс</button>
+              </div>
+            </div>
           </div>
           <div class="filter-block">
             <div class="filter-block__label">Стадия (статус)</div>
@@ -171,6 +202,7 @@
   </div>
 
   <script src="js/data.js"></script>
+  <script src="js/multi-filter.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/pivot.js"></script>
   <script src="js/app.js"></script>

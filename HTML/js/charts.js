@@ -25,7 +25,7 @@ const KanbanCharts = (() => {
 
     chartGroups.forEach((group, groupIdx) => {
       const card = document.createElement("article");
-      card.className = "chart-card";
+      card.className = group.tier === "summary" ? "chart-card chart-card--summary" : "chart-card chart-card--detail";
 
       const title = document.createElement("h3");
       title.textContent = group.title;
@@ -40,10 +40,17 @@ const KanbanCharts = (() => {
 
       const datasets = group.seriesList.map((series, idx) => {
         const points = KanbanData.seriesPoints(series);
+        let label = series._chartLabel;
+        if (!label) {
+          label =
+            options.chartMode === "by_tb"
+              ? `${KanbanData.tbDisplay(series.tb)} (${series.total_leads} лид.)`
+              : `${KanbanData.rowLabel(series)} (${series.total_leads} лид.)`;
+        } else {
+          label = `${label} (${series.total_leads} лид.)`;
+        }
         return {
-        label: options.chartMode === "by_tb"
-          ? `${series.tb} (${series.total_leads} лид.)`
-          : `${KanbanData.rowLabel(series)} (${series.total_leads} лид.)`,
+        label,
         data: points.map((p) => ({ x: p.lead_index, y: p.days })),
         borderColor: palette[(groupIdx + idx) % palette.length],
         backgroundColor: palette[(groupIdx + idx) % palette.length] + "55",

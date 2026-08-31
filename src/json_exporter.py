@@ -24,6 +24,22 @@ PERCENTILE_METHOD_DESCRIPTION: str = (
 )
 
 
+def _active_pipeline_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Список включённых фильтров config.filters для meta JSON."""
+    active: list[dict[str, Any]] = []
+    for name, flt in config.get("filters", {}).items():
+        if not isinstance(flt, dict) or not flt.get("enabled"):
+            continue
+        entry: dict[str, Any] = {"name": name, "column_key": flt.get("column_key")}
+        if "contains" in flt:
+            entry["contains"] = flt.get("contains")
+            entry["case_sensitive"] = flt.get("case_sensitive", False)
+        else:
+            entry["value"] = flt.get("value", 1)
+        active.append(entry)
+    return active
+
+
 def _extract_percentiles(row: dict[str, Any], metric: str, percentiles: list[float]) -> dict[str, Any]:
     """Собирает вложенный блок percentiles для одной метрики."""
     result: dict[str, Any] = {}
@@ -91,6 +107,12 @@ def export_json(
             "percentile_method": PERCENTILE_METHOD,
             "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
             "filters": config.get("filters"),
+            "filters_applied": _active_pipeline_filters(config),
+            "filters_active": bool(_active_pipeline_filters(config)),
+            "data_scope_note": (
+                "Все агрегаты и visualizations построены после pipeline-фильтров "
+                "(config.filters с enabled=true). HTML-фильтры работают внутри этого среза."
+            ),
             "columns": config.get("columns"),
             "stages_order": config.get("stages_order"),
         },

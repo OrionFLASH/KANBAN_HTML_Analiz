@@ -53,6 +53,22 @@ def extract_products(df: pd.DataFrame, config: dict[str, Any]) -> list[dict[str,
     return products
 
 
+def extract_filter_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, list[str]]:
+    """Уникальные значения колонок фильтров в уже отфильтрованных данных."""
+    from src.settings import filter_column_name
+
+    result: dict[str, list[str]] = {}
+    for name, flt in config.get("filters", {}).items():
+        if not isinstance(flt, dict):
+            continue
+        column: str | None = filter_column_name(config, flt)
+        if not column or column not in df.columns:
+            continue
+        values: list[str] = sorted(df[column].dropna().astype(str).unique().tolist(), key=str)
+        result[name] = values
+    return result
+
+
 def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]:
     """Собирает все справочники для экспорта."""
     from src.settings import is_group_only_analysis
@@ -62,6 +78,7 @@ def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]
         "stages": extract_stages(df, config),
         "products": extract_products(df, config),
         "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
+        "filter_dimensions": extract_filter_dimensions(df, config),
     }
     if is_group_only_analysis(config):
         group_col: str = col(config, "product_group")

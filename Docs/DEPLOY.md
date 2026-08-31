@@ -6,6 +6,8 @@
 
 Готовый zip: **`POST/KANBAN_HTML_Analiz.zip`** (обновляется при релизах).
 
+Содержит **Python pipeline + HTML-дашборд** (каталог `HTML/`).
+
 ## Минимальный набор файлов (код + конфиг)
 
 ```
@@ -16,39 +18,30 @@ KANBAN_HTML_Analiz/
 ├── ROADMAP.md
 ├── .env.example
 ├── src/
-│   ├── __init__.py
 │   ├── main.py
-│   ├── config_loader.py
-│   ├── settings.py
-│   ├── project_paths.py
-│   ├── logger_setup.py
 │   ├── excel_loader.py
-│   ├── dictionaries.py
 │   ├── lead_tracker.py
-│   ├── filters.py
 │   ├── aggregator.py
-│   ├── percentile_stats.py
-│   ├── pivot_excel.py
 │   ├── visualization_data.py
-│   ├── excel_exporter.py
 │   ├── json_exporter.py
-│   ├── data_audit.py
-│   ├── date_utils.py
-│   ├── performance.py
+│   ├── excel_exporter.py
+│   ├── pivot_excel.py
 │   ├── progress.py
 │   └── Tests/
-│       ├── test_excel_loader.py
-│       ├── test_percentile_stats.py
-│       └── test_visualization_data.py
-├── HTML/
+├── HTML/                          # ← дашборд (обязательно)
 │   ├── index.html
-│   ├── css/dashboard.css
+│   ├── css/
+│   │   └── dashboard.css
 │   └── js/
+│       ├── data.js
+│       ├── multi-filter.js
+│       ├── charts.js
+│       ├── pivot.js
+│       └── app.js
 └── Docs/
-    ├── CONFIG.md         # справочник config.json
-    ├── BT_KANBAN.md
+    ├── CONFIG.md
     ├── DEPLOY.md
-    └── ToDo KANBAN.txt
+    └── BT_KANBAN.md
 ```
 
 **Не включать:** `.git/`, `log/`, `OUT/`, `IN/`, `Docs/FileIN/`, `POST/`, `__pycache__/`
@@ -57,26 +50,38 @@ KANBAN_HTML_Analiz/
 
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
-| test | `Docs/FileIN/` | `2ГОСБ1ТБ.xlsx` |
+| test | `Docs/FileIN/` | `2ГОСБ1TБ.xlsx` |
 | prod | `IN/` | 22 файла из `config.json` → `prod_files` |
 
 ## Настройка на новом ПК
 
-1. Python 3.12 / Anaconda + `pandas`, `openpyxl`
+1. Python 3.12 + `pandas`, `openpyxl`
 2. Распаковать архив
 3. Создать пустые: `IN/`, `OUT/`, `log/`, `Docs/FileIN/`
 4. Положить xlsx
 5. Настроить `config.json` — см. [CONFIG.md](CONFIG.md)
-6. `python run.py`
-7. Открыть дашборд: `cd HTML && python -m http.server 8080` → загрузить JSON из `OUT/`
+6. `python run.py` → файлы в `OUT/`
+7. Дашборд:
+
+```bash
+cd HTML && python -m http.server 8080
+# http://localhost:8080 — загрузить kanban_report_*.json из OUT/
+# или положить OUT рядом с проектом для автозагрузки latest
+```
 
 ## HTML-дашборд
 
-- Загрузка `kanban_report_*.json` через левую панель
-- Фильтры справа: ТБ, группа, продукт, стадия
-- Графики: ось X — число лидов, ось Y — дней
-- Матрица: продукт × стадия, значение — выбранный показатель (П80 и др.)
+| Раздел | Описание |
+|--------|----------|
+| Левая панель | Загрузка JSON, режим графика, метрика, показатель матрицы |
+| Правая панель | Мультивыбор ТБ, групп, продуктов (поиск, сворачивание) |
+| Графики | Режим «свод + каждый»: сверху все выбранные сущности, ниже — по одной карточке |
+| Матрица | Продукт/группа × стадия; сортировка по клику на заголовок колонки |
+| Pipeline-фильтры | Если при `run.py` были `filters.enabled=true` — баннер вверху вкладки «Графики» |
 
+Режим `product_analysis_mode: group_only` — фильтр продуктов скрыт, подписи «группы».
+
+## Prod-режим
 
 ```json
 "mode": "prod"
@@ -93,6 +98,6 @@ KANBAN_HTML_Analiz/
 
 ```bash
 python -c "import pandas, openpyxl; print('OK')"
-python -m unittest src.Tests.test_excel_loader -v
+python -m pytest src/Tests/ -q
 python run.py
 ```

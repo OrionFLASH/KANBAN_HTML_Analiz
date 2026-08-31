@@ -1,6 +1,10 @@
-/** Сводная матрица продукт × стадия. */
+/** Сводная матрица продукт × стадия с сортировкой по колонкам. */
 
 const KanbanPivot = (() => {
+  let sortStage = null;
+  let sortDir = "asc";
+  let lastRenderArgs = null;
+
   function heatColor(value, min, max) {
     if (value == null || min == null || max == null || min === max) return "";
     const t = (value - min) / (max - min);
@@ -10,31 +14,97 @@ const KanbanPivot = (() => {
     return `rgb(${r},${g},${b})`;
   }
 
-  function render(table, matrix, captionEl, filters) {
+  function sortRowLabels(rowLabels, values, stage) {
+    if (!stage) return rowLabels;
+    const sorted = [...rowLabels];
+    sorted.sort((a, b) => {
+      const va = values[a]?.[stage];
+      const vb = values[b]?.[stage];
+      if (va == null && vb == null) return a.localeCompare(b, "ru");
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = va - vb;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }
+
+  function onHeaderClick(stage) {
+    if (sortStage === stage) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortStage = stage;
+      sortDir = "asc";
+    }
+    if (lastRenderArgs) {
+      render(...lastRenderArgs);
+    }
+  }
+
+  function resetSort() {
+    sortStage = null;
+    sortDir = "asc";
+  }
+
+  function render(table, matrix, captionEl) {
+    lastRenderArgs = [table, matrix, captionEl];
     const thead = table.querySelector("thead");
     const tbody = table.querySelector("tbody");
     thead.innerHTML = "";
     tbody.innerHTML = "";
 
-    const { stages, rows, products, values, tb, metric, indicator, row_dimension: rowDim } = matrix;
-    const rowLabels = rows || products || [];
+    const { stages, rows, products, values, tbs, metric, indicator, row_dimension: rowDim } = matrix;
+    let rowLabels = rows || products || [];
     if (!rowLabels.length) {
       captionEl.textContent = "Нет данных для матрицы с текущими фильтрами.";
       return;
     }
 
-    const tbLabel = tb === KanbanData.allTbLabel() ? KanbanData.allTbDisplay() : tb;
+    if (sortStage && stages.includes(sortStage)) {
+      rowLabels = sortRowLabels(rowLabels, values, sortStage);
+    }
+
+    const allLabel = KanbanData.allTbLabel();
+    const tbNames = tbs && tbs.length ? tbs : [matrix.tb || allLabel];
+    const tbLabel =
+      tbNames.length > 1
+        ? tbNames.map((tb) => (tb === allLabel ? KanbanData.allTbDisplay() : tb)).join(", ")
+        : tbNames[0] === allLabel
+          ? KanbanData.allTbDisplay()
+          : tbNames[0];
+
     const rowHeader = rowDim === "product_group" || KanbanData.isGroupOnly() ? "Группа" : "Продукт";
     captionEl.textContent =
-      `Свод: ${tbLabel} | ${KanbanData.METRIC_LABELS[metric] || metric} | ${KanbanData.INDICATOR_LABELS[indicator] || indicator}`;
+      `Свод: ${tbLabel} | ${KanbanData.METRIC_LABELS[metric] || metric} | ${KanbanData.INDICATOR_LABELS[indicator] || indicator}` +
+      (tbNames.length > 1 ? " | ячейка: max по выбранным ТБ" : "") +
+      (sortStage ? ` | сортировка: ${sortStage} (${sortDir === "asc" ? "↑ возр." : "↓ убыв."})` : "");
 
     const headerRow = document.createElement("tr");
     const corner = document.createElement("th");
     corner.textContent = rowHeader;
+    corner.className = "pivot-corner";
+    corner.title = "Клик по заголовку стадии — сортировка строк по числу дней";
     headerRow.appendChild(corner);
+
     stages.forEach((stage) => {
       const th = document.createElement("th");
-      th.textContent = stage;
+      th.className = "pivot-sortable";
+      if (sortStage === stage) {
+        th.classList.add(sortDir === "asc" ? "sort-asc" : "sort-desc");
+      }
+      const label = document.createElement("span");
+      label.className = "pivot-sortable__label";
+      label.textContent = stage;
+      th.appendChild(label);
+      if (sortStage === stage) {
+        const icon = document.createElement("span");
+        icon.className = "pivot-sortable__icon";
+        icon.textContent = sortDir === "asc" ? "▲" : "▼";
+        icon.setAttribute("aria-hidden", "true");
+        th.appendChild(icon);
+      }
+      th.title = "Сортировка по колонке «" + stage + "»";
+      th.addEventListener("click", () => onHeaderClick(stage));
       headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
@@ -76,5 +146,5 @@ const KanbanPivot = (() => {
     });
   }
 
-  return { render };
+  return { render, resetSort };
 })();

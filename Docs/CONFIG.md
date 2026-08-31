@@ -320,11 +320,40 @@
 
 JSON содержит блок `visualizations`:
 
-- `distribution_series` — кривые для графиков (X: lead_index, Y: days)
-- `pivot_flat` — длинный формат для матрицы
-- `pivot_matrices` — предрасчитанные матрицы
-- `default_pivot_matrix` — срез по умолчанию
+| Ключ | Описание |
+|------|----------|
+| `distribution_series` | Кривые «лиды × дни» (`days_sorted` или `points`) |
+| `distribution_format` | `days_sorted` или `points` |
+| `pivot_flat` | Длинный формат для матрицы (HTML строит матрицу из него) |
+| `pivot_matrices` | Предрасчёт (по умолчанию пусто, см. `performance.precompute_pivot_matrices`) |
+| `default_pivot_matrix` | Срез по умолчанию |
+| `default_view` | `{ tb, metric, indicator }` для UI |
 
+В `meta` JSON дополнительно:
+
+| Ключ | Описание |
+|------|----------|
+| `filters_applied` | Список включённых pipeline-фильтров (`filters.*.enabled=true`) |
+| `filters_active` | `true`, если хотя бы один фильтр применён при экспорте |
+| `data_scope_note` | Пояснение: все данные уже после pipeline-фильтров |
+
+В `dimensions.filter_dimensions` — фактические значения колонок фильтров в отфильтрованном срезе.
+
+### HTML-дашборд (`HTML/`)
+
+Запуск: `cd HTML && python -m http.server 8080`, загрузить `OUT/kanban_report_*.json` (или автозагрузка `kanban_report_latest.json`).
+
+| Возможность | Описание |
+|-------------|----------|
+| Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск, сворачивание |
+| Графики «свод + каждый» | Сверху все выбранные ТБ/продукты; ниже — отдельная карточка на каждый |
+| Режим `group_only` | Подписи «группы», фильтр продуктов скрыт |
+| Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
+| Pipeline-фильтры | Оранжевый баннер, если `meta.filters_active` |
+
+Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/multi-filter.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
+
+### `parallel_workers`
 
 | Значение | Поведение |
 |----------|-----------|
@@ -544,6 +573,8 @@ HEX без `#`: min — зелёный, max — красный.
 ```
 
 > Без включённых фильтров анализируются **все** строки.
+
+При экспорте JSON в `meta.filters_applied` попадают только фильтры с `enabled: true`. HTML-дашборд показывает баннер — данные уже срезаны pipeline, повторно не фильтрует по `config.filters`.
 
 ---
 
