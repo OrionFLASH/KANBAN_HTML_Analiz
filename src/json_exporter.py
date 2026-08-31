@@ -13,8 +13,6 @@ import pandas as pd
 from src.percentile_stats import percentile_label
 from src.settings import col
 
-from src.visualization_data import build_visualization_payload
-
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
 
 PERCENTILE_METHOD: str = "empirical_bottom_tail_integer_days"
@@ -78,19 +76,16 @@ def export_json(
     dimensions: dict[str, Any],
     config: dict[str, Any],
     output_path: Path,
-    records: pd.DataFrame | None = None,
+    visualizations: dict[str, Any] | None = None,
 ) -> None:
     """Сохраняет JSON с агрегатами и данными для HTML-дашборда."""
-    visualizations: dict[str, Any] = {}
-    if records is not None and not records.empty:
-        visualizations = build_visualization_payload(records, stats, config)
-
     payload: dict[str, Any] = {
         "meta": {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "mode": config.get("mode"),
             "duration_source": config.get("duration_source"),
             "stage_analysis_mode": config.get("stage_analysis_mode"),
+            "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
             "percentiles": config.get("percentiles"),
             "percentile_method": PERCENTILE_METHOD,
             "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
@@ -107,7 +102,7 @@ def export_json(
                 for tb, df in stats.get("tb_sheets", {}).items()
             },
         },
-        "visualizations": visualizations,
+        "visualizations": visualizations or {},
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

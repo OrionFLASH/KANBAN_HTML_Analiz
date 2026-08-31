@@ -13,7 +13,6 @@ from openpyxl.utils import get_column_letter
 
 from src.pivot_excel import add_visualization_sheets
 from src.settings import build_percentile_column_mapping, col
-from src.visualization_data import build_visualization_payload
 
 logger: logging.Logger = logging.getLogger("kanban.excel_exporter")
 
@@ -119,7 +118,7 @@ def export_excel(
     stats: dict[str, Any],
     output_path: Path,
     config: dict[str, Any],
-    records: pd.DataFrame | None = None,
+    visualizations: dict[str, Any] | None = None,
 ) -> None:
     """Записывает Excel с листами из config.output.excel_sheets."""
     out_cfg: dict[str, Any] = config["output"]
@@ -150,12 +149,11 @@ def export_excel(
             continue
         _format_sheet(wb[sheet_name], config)
 
-    if records is not None and not records.empty:
-        viz_payload: dict[str, Any] = build_visualization_payload(records, stats, config)
+    if visualizations:
         add_visualization_sheets(
             wb,
-            viz_payload.get("pivot_flat", []),
-            viz_payload.get("distribution_series", []),
+            visualizations.get("pivot_flat", []),
+            visualizations.get("distribution_series", []),
             config,
         )
 

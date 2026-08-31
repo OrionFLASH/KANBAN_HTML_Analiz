@@ -16,19 +16,21 @@ const KanbanPivot = (() => {
     thead.innerHTML = "";
     tbody.innerHTML = "";
 
-    const { stages, products, values, tb, metric, indicator } = matrix;
-    if (!products.length) {
+    const { stages, rows, products, values, tb, metric, indicator, row_dimension: rowDim } = matrix;
+    const rowLabels = rows || products || [];
+    if (!rowLabels.length) {
       captionEl.textContent = "Нет данных для матрицы с текущими фильтрами.";
       return;
     }
 
     const tbLabel = tb === KanbanData.allTbLabel() ? KanbanData.allTbDisplay() : tb;
+    const rowHeader = rowDim === "product_group" || KanbanData.isGroupOnly() ? "Группа" : "Продукт";
     captionEl.textContent =
       `Свод: ${tbLabel} | ${KanbanData.METRIC_LABELS[metric] || metric} | ${KanbanData.INDICATOR_LABELS[indicator] || indicator}`;
 
     const headerRow = document.createElement("tr");
     const corner = document.createElement("th");
-    corner.textContent = "Продукт";
+    corner.textContent = rowHeader;
     headerRow.appendChild(corner);
     stages.forEach((stage) => {
       const th = document.createElement("th");
@@ -39,9 +41,9 @@ const KanbanPivot = (() => {
 
     let min = Infinity;
     let max = -Infinity;
-    products.forEach((product) => {
+    rowLabels.forEach((rowLabel) => {
       stages.forEach((stage) => {
-        const val = values[product]?.[stage];
+        const val = values[rowLabel]?.[stage];
         if (val != null) {
           min = Math.min(min, val);
           max = Math.max(max, val);
@@ -53,15 +55,15 @@ const KanbanPivot = (() => {
       max = 0;
     }
 
-    products.forEach((product) => {
+    rowLabels.forEach((rowLabel) => {
       const tr = document.createElement("tr");
       const nameTd = document.createElement("td");
-      nameTd.textContent = product;
+      nameTd.textContent = rowLabel;
       tr.appendChild(nameTd);
 
       stages.forEach((stage) => {
         const td = document.createElement("td");
-        const val = values[product]?.[stage];
+        const val = values[rowLabel]?.[stage];
         td.textContent = val == null ? "—" : String(val);
         td.className = "cell-heat";
         if (val != null) {

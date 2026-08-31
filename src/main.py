@@ -17,6 +17,7 @@ from src.excel_loader import load_all_files
 from src.filters import apply_filters
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
+from src.visualization_data import build_visualization_payload
 from src.logger_setup import setup_logger
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
@@ -91,12 +92,14 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     stats = build_all_statistics(records, config)
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
+    visualizations: dict = build_visualization_payload(records, stats, config)
+
     progress.stage("Экспорт Excel")
-    export_excel(stats, excel_path, config, records=records)
+    export_excel(stats, excel_path, config, visualizations=visualizations)
     progress.done(f"Excel: {excel_path.name}")
 
     progress.stage("Экспорт JSON")
-    export_json(stats, dimensions, config, json_path, records=records)
+    export_json(stats, dimensions, config, json_path, visualizations=visualizations)
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline

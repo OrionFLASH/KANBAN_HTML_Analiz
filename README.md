@@ -72,7 +72,8 @@ log/                 # логи INFO/DEBUG
   "stage_analysis_mode": "status",
   "percentiles": [20, 50, 80],
   "parallel_workers": 0,
-  "performance": { "max_parallel_workers": 3, "reserve_cpu_cores": 1 }
+  "performance": { "max_parallel_workers": 3, "reserve_cpu_cores": 1,
+    "compact_distribution_series": true, "precompute_pivot_matrices": false }
 }
 ```
 
@@ -90,7 +91,7 @@ log/                 # логи INFO/DEBUG
 
 ## HTML-дашборд
 
-Каталог `HTML/` — локальная страница с загрузкой JSON:
+Каталог `HTML/` — локальная страница с загрузкой JSON. **UI** повторяет glass-layout из `SPOD_PROM/common/web-fill-full` и `RESURCE_PANEL_HTML_WORK` (боковые панели, edge-кнопки, filter-block).
 
 ```bash
 cd HTML && python -m http.server 8080
@@ -104,6 +105,8 @@ cd HTML && python -m http.server 8080
 ## Полнота данных
 
 - Оптимизация **не отбрасывает строки** — только ускоряет чтение/обработку
+- В JSON серии распределения хранятся как `days_sorted` (эквивалент `{lead_index, days}`)
+- Блок `pivot_matrices` в JSON не генерируется по умолчанию — HTML строит матрицу из `pivot_flat`
 - Исключение строк — **только включённые фильтры** в `filters`
 - Аудит в логе: `Аудит [лиды]: все N ID ПрПр учтены`
 
@@ -120,3 +123,4 @@ cd HTML && python -m http.server 8080
 | 0.3.0 | 2026-08-31 | Ускорение, прогресс, разбор дат |
 | 0.4.0 | 2026-08-31 | Аудит полноты данных, Docs/CONFIG.md |
 | 0.5.0 | 2026-08-31 | HTML-дашборд, Excel Матрица/Графики, visualizations в JSON |
+| 0.6.0 | 2026-08-31 | Оптимизация: один проход viz, compact JSON, tb_sheets из by_tb, itertuples |

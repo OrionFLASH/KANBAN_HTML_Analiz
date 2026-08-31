@@ -13,8 +13,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
-
-from src.visualization_data import build_pivot_matrix, indicator_keys
+from src.settings import analysis_row_key, is_group_only_analysis
+from src.visualization_data import build_pivot_matrix, indicator_keys, series_chart_points
 
 logger: logging.Logger = logging.getLogger("kanban.pivot_excel")
 
@@ -68,7 +68,7 @@ def write_hidden_chart_source(ws: Worksheet, distribution_series: list[dict[str,
     ]
     ws.append(headers)
     for idx, series in enumerate(distribution_series):
-        for point in series.get("points", []):
+        for point in series_chart_points(series):
             ws.append(
                 [
                     idx,
@@ -88,28 +88,29 @@ def _write_matrix_table(
     matrix: dict[str, Any],
     start_row: int,
     start_col: int,
+    row_header: str = "Продукт",
 ) -> tuple[int, int]:
-    """Пишет блок матрицы продукт × стадия."""
+    """Пишет блок матрицы строка × стадия."""
     stages: list[str] = list(matrix["stages"])
-    products: list[str] = list(matrix["products"])
+    row_labels: list[str] = list(matrix.get("rows") or matrix.get("products") or [])
     values: dict[str, dict[str, int | None]] = matrix["values"]
 
     header_row: int = start_row
-    ws.cell(row=header_row, column=start_col, value="Продукт")
+    ws.cell(row=header_row, column=start_col, value=row_header)
     for col_idx, stage in enumerate(stages, start=start_col + 1):
         cell = ws.cell(row=header_row, column=col_idx, value=stage)
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", wrap_text=True)
 
-    for row_offset, product in enumerate(products, start=1):
+    for row_offset, row_label in enumerate(row_labels, start=1):
         row_idx: int = header_row + row_offset
-        ws.cell(row=row_idx, column=start_col, value=product)
+        ws.cell(row=row_idx, column=start_col, value=row_label)
         for col_offset, stage in enumerate(stages, start=1):
-            value = values.get(product, {}).get(stage)
+            value = values.get(row_label, {}).get(stage)
             cell = ws.cell(row=row_idx, column=start_col + col_offset, value=value)
             cell.number_format = "0"
 
-    last_row: int = header_row + len(products)
+    last_row: int = header_row + len(row_labels)
     last_col: int = start_col + len(stages)
     return last_row, last_col
 
@@ -183,9 +184,12 @@ def write_matrix_sheet(
     dv_met.add(ws["B3"])
 
     matrix: dict[str, Any] = build_pivot_matrix(pivot_flat, default_tb, default_metric, default_indicator, config)
-    last_row, last_col = _write_matrix_table(ws, matrix, start_row=5, start_col=1)
+    row_header: str = "Группа" if is_group_only_analysis(config) else "Продукт"
+    last_row, last_col = _write_matrix_table(
+        ws, matrix, start_row=5, start_col=1, row_header=row_header
+    )
 
-    ws.cell(row=4, column=1, value="Свод: продукт × стадия (значение — выбранный показатель, целые дни)")
+    ws.cell(row=4, column=1, value="Свод: строка × стадия (значение — выбранный показатель, целые дни)")
     ws["A4"].font = Font(italic=True)
 
     if last_row >= 6 and last_col >= 2:
@@ -220,12 +224,14 @@ def write_matrix_sheet(
                 if tb == default_tb and metric == default_metric and indicator == default_indicator:
                     continue
                 sub_matrix: dict[str, Any] = build_pivot_matrix(pivot_flat, tb, metric, indicator, config)
-                if not sub_matrix["products"]:
+                if not sub_matrix.get("rows") and not sub_matrix.get("products"):
                     continue
                 title: str = f"{tb} | {metric_labels.get(metric, metric)} | {indicator_labels.get(indicator, indicator)}"
                 ws.cell(row=cursor_row, column=block_col, value=title)
                 cursor_row += 1
-                end_row, _ = _write_matrix_table(ws, sub_matrix, start_row=cursor_row, start_col=block_col)
+                end_row, _ = _write_matrix_table(
+                    ws, sub_matrix, start_row=cursor_row, start_col=block_col, row_header=row_header
+                )
                 cursor_row = end_row + 2
                 shown += 1
                 if shown >= 4:
@@ -271,14 +277,14 @@ def write_charts_sheet(
     charts_per_row: int = 2
 
     for idx, series in enumerate(filtered):
-        points: list[dict[str, int]] = series.get("points", [])
+        points: list[dict[str, int]] = series_chart_points(series)
         if not points:
             continue
 
         start_row: int = chart_row + (idx // charts_per_row) * 22
         start_col: int = 1 + (idx % charts_per_row) * 10
 
-        title: str = f"{series.get('product')} | {series.get('stage_key')}"
+        title: str = f"{series.get('row_key') or series.get('product')} | {series.get('stage_key')}"
         ws.cell(row=start_row, column=start_col, value=title)
         ws.cell(row=start_row, column=start_col).font = Font(bold=True)
 

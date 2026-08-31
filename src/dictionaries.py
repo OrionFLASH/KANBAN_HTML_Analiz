@@ -55,8 +55,15 @@ def extract_products(df: pd.DataFrame, config: dict[str, Any]) -> list[dict[str,
 
 def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]:
     """Собирает все справочники для экспорта."""
-    return {
+    from src.settings import is_group_only_analysis
+
+    dimensions: dict[str, Any] = {
         "tb": extract_tb_list(df, config),
         "stages": extract_stages(df, config),
         "products": extract_products(df, config),
+        "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
     }
+    if is_group_only_analysis(config):
+        group_col: str = col(config, "product_group")
+        dimensions["product_groups"] = sorted(df[group_col].dropna().astype(str).unique().tolist())
+    return dimensions

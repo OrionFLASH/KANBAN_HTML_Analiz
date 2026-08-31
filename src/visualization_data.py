@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.percentile_stats import percentile_label, to_integer_days
-from src.settings import col
+from src.settings import analysis_row_key, col, group_only_product_label, is_group_only_analysis
 
 
 def stage_order(config: dict[str, Any]) -> list[str]:
@@ -42,42 +42,82 @@ def _indicator_value(row: dict[str, Any], metric: str, indicator: str) -> int | 
     return row.get(f"{metric}_{indicator}_days")
 
 
+def _pivot_row_value(record: dict[str, Any], config: dict[str, Any]) -> str | None:
+    """Значение строки матрицы: группа или продукт в зависимости от режима."""
+    if is_group_only_analysis(config):
+        return record.get("product_group")
+    return record.get("product")
+
+
+def _indicator_column(metric: str, indicator: str) -> str:
+    """Имя колонки агрегации для показателя."""
+    if indicator == "min":
+        return f"{metric}_min"
+    if indicator == "max":
+        return f"{metric}_max"
+    return f"{metric}_{indicator}_days"
+
+
+def series_chart_points(series: dict[str, Any]) -> list[dict[str, int]]:
+    """Точки графика из points или компактного days_sorted."""
+    points: list[dict[str, Any]] | None = series.get("points")
+    if points:
+        return [{"lead_index": int(p["lead_index"]), "days": int(p["days"])} for p in points]
+    days_sorted: list[int] = list(series.get("days_sorted") or [])
+    return [{"lead_index": idx + 1, "days": int(day)} for idx, day in enumerate(days_sorted)]
+
+
 def stats_frame_to_pivot_flat(
     frame: pd.DataFrame,
     tb_value: str,
     config: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Длинный формат для сводной матрицы и lookup в Excel."""
+    """Длинный формат для сводной матрицы (itertuples, без to_dict)."""
     if frame.empty:
         return []
 
     group_col: str = col(config, "product_group")
     product_col: str = col(config, "product")
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
-    rows: list[dict[str, Any]] = []
+    group_only: bool = is_group_only_analysis(config)
+    placeholder: str = group_only_product_label(config)
+    id_cols: list[str] = [c for c in (group_col, product_col, "stage_key", "analysis_level") if c in frame.columns]
 
-    for record in frame.to_dict(orient="records"):
-        base: dict[str, Any] = {
-            "tb": tb_value,
-            "product_group": record.get(group_col),
-            "product": record.get(product_col),
-            "stage_key": record.get("stage_key"),
-            "analysis_level": record.get("analysis_level"),
-        }
-        for metric in metrics:
-            for indicator in indicator_keys(config):
-                value = _indicator_value(record, metric, indicator)
-                if value is None:
-                    continue
-                rows.append(
+    flat: list[dict[str, Any]] = []
+    for metric in metrics:
+        for indicator in indicator_keys(config):
+            value_col: str = _indicator_column(metric, indicator)
+            if value_col not in frame.columns:
+                continue
+            chunk: pd.DataFrame = frame[id_cols + [value_col]].dropna(subset=[value_col])
+            if chunk.empty:
+                continue
+
+            col_index: dict[str, int] = {name: idx for idx, name in enumerate(chunk.columns)}
+            g_idx: int = col_index[group_col]
+            p_idx: int = col_index[product_col]
+            s_idx: int = col_index.get("stage_key", -1)
+            a_idx: int = col_index.get("analysis_level", -1)
+            v_idx: int = col_index[value_col]
+
+            for row in chunk.itertuples(index=False, name=None):
+                group_value = row[g_idx]
+                product_value = placeholder if group_only else row[p_idx]
+                row_key = group_value if group_only else product_value
+                flat.append(
                     {
-                        **base,
+                        "tb": tb_value,
+                        "product_group": group_value,
+                        "product": product_value,
+                        "row_key": row_key,
+                        "stage_key": row[s_idx] if s_idx >= 0 else None,
+                        "analysis_level": row[a_idx] if a_idx >= 0 else None,
                         "metric": metric,
                         "indicator": indicator,
-                        "value": int(value),
+                        "value": int(row[v_idx]),
                     }
                 )
-    return rows
+    return flat
 
 
 def build_pivot_flat(stats: dict[str, pd.DataFrame], config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -100,30 +140,36 @@ def build_pivot_matrix(
     indicator: str,
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Матрица продукт × стадия для выбранного среза."""
+    """Матрица строка × стадия (строка — продукт или группа)."""
     stages: list[str] = stage_order(config)
+    row_dimension: str = analysis_row_key(config)
     filtered: list[dict[str, Any]] = [
         row
         for row in pivot_flat
         if row["tb"] == tb and row["metric"] == metric and row["indicator"] == indicator
     ]
 
-    products: list[str] = sorted({str(row["product"]) for row in filtered if row.get("product")})
-    values: dict[str, dict[str, int | None]] = {}
-    for product in products:
-        values[product] = {}
-        for stage in stages:
-            match: list[dict[str, Any]] = [
-                row for row in filtered if str(row["product"]) == product and str(row["stage_key"]) == stage
-            ]
-            values[product][stage] = int(match[0]["value"]) if match else None
+    row_labels: list[str] = sorted(
+        {str(row["row_key"]) for row in filtered if row.get("row_key") is not None},
+        key=lambda value: value.lower(),
+    )
+    lookup: dict[tuple[str, str], int] = {
+        (str(row.get("row_key")), str(row["stage_key"])): int(row["value"])
+        for row in filtered
+        if row.get("row_key") is not None and row.get("stage_key") is not None
+    }
+    values: dict[str, dict[str, int | None]] = {
+        row_label: {stage: lookup.get((row_label, stage)) for stage in stages} for row_label in row_labels
+    }
 
     return {
         "tb": tb,
         "metric": metric,
         "indicator": indicator,
+        "row_dimension": row_dimension,
         "stages": stages,
-        "products": products,
+        "rows": row_labels,
+        "products": row_labels,
         "values": values,
     }
 
@@ -146,7 +192,7 @@ def build_all_pivot_matrices(
         for metric in metrics:
             for indicator in indicators:
                 matrix: dict[str, Any] = build_pivot_matrix(pivot_flat, tb, metric, indicator, config)
-                if matrix["products"]:
+                if matrix["rows"]:
                     matrices.append(matrix)
     return matrices
 
@@ -162,7 +208,9 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
     group_col: str = col(config, "product_group")
     product_col: str = col(config, "product")
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
-    group_columns: list[str] = [tb_col, group_col, product_col, "stage_key"]
+    group_columns: list[str] = [tb_col, group_col, "stage_key"]
+    if not is_group_only_analysis(config):
+        group_columns.insert(2, product_col)
 
     series_list: list[dict[str, Any]] = []
     grouped = records.groupby(group_columns, dropna=False, observed=True)
@@ -170,7 +218,11 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
     for keys, group in grouped:
         if not isinstance(keys, tuple):
             keys = (keys,)
-        tb_name, product_group, product, stage_key = keys
+        if is_group_only_analysis(config):
+            tb_name, product_group, stage_key = keys
+            product = group_only_product_label(config)
+        else:
+            tb_name, product_group, product, stage_key = keys
 
         for metric in metrics:
             if metric not in group.columns:
@@ -180,21 +232,25 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
                 continue
 
             sorted_days: np.ndarray = np.sort(int_days)
-            points: list[dict[str, int]] = [
-                {"lead_index": idx + 1, "days": int(day)} for idx, day in enumerate(sorted_days)
-            ]
-            series_list.append(
-                {
-                    "tb": str(tb_name),
-                    "product_group": str(product_group),
-                    "product": str(product),
-                    "stage_key": str(stage_key),
-                    "analysis_level": str(group["analysis_level"].iloc[0]) if "analysis_level" in group.columns else None,
-                    "metric": metric,
-                    "total_leads": int(len(sorted_days)),
-                    "points": points,
-                }
-            )
+            row_label: str = str(product_group if is_group_only_analysis(config) else product)
+            series_entry: dict[str, Any] = {
+                "tb": str(tb_name),
+                "product_group": str(product_group),
+                "product": str(product),
+                "row_key": row_label,
+                "row_dimension": analysis_row_key(config),
+                "stage_key": str(stage_key),
+                "analysis_level": str(group["analysis_level"].iloc[0]) if "analysis_level" in group.columns else None,
+                "metric": metric,
+                "total_leads": int(len(sorted_days)),
+            }
+            if config.get("performance", {}).get("compact_distribution_series", True):
+                series_entry["days_sorted"] = [int(day) for day in sorted_days]
+            else:
+                series_entry["points"] = [
+                    {"lead_index": idx + 1, "days": int(day)} for idx, day in enumerate(sorted_days)
+                ]
+            series_list.append(series_entry)
 
     return series_list
 
@@ -212,10 +268,19 @@ def build_visualization_payload(
     default_metric: str = str(dash_cfg.get("default_metric", "days_on_stage"))
     default_indicator: str = str(dash_cfg.get("default_indicator", "p80"))
 
+    precompute_matrices: bool = bool(
+        config.get("performance", {}).get("precompute_pivot_matrices", False)
+    )
+    pivot_matrices: list[dict[str, Any]] = []
+    if precompute_matrices:
+        pivot_matrices = build_all_pivot_matrices(pivot_flat, config)
+
     return {
         "stage_order": stage_order(config),
         "indicators": indicator_keys(config),
         "metrics": list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"])),
+        "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
+        "row_dimension": analysis_row_key(config),
         "all_tb_label": all_tb_label,
         "default_view": {
             "tb": default_tb,
@@ -223,8 +288,11 @@ def build_visualization_payload(
             "indicator": default_indicator,
         },
         "distribution_series": build_distribution_series(records, config),
+        "distribution_format": "days_sorted"
+        if config.get("performance", {}).get("compact_distribution_series", True)
+        else "points",
         "pivot_flat": pivot_flat,
-        "pivot_matrices": build_all_pivot_matrices(pivot_flat, config),
+        "pivot_matrices": pivot_matrices,
         "default_pivot_matrix": build_pivot_matrix(
             pivot_flat, default_tb, default_metric, default_indicator, config
         ),

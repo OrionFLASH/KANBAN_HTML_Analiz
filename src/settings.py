@@ -63,6 +63,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "empty_stage_values": ["", "-", "nan", "None"],
         "dedup_same_date_agg": "max",
         "pick_across_dates": "max_days_then_latest_report_date",
+        "group_only_product_label": "—",
         "audit_row_counts": True,
         "duration_fallback_to_columns": True,
     },
@@ -72,6 +73,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "read_only_required_columns": True,
         "downcast_numeric": True,
         "free_memory_between_stages": True,
+        "compact_distribution_series": True,
+        "precompute_pivot_matrices": False,
     },
     "progress": {
         "enabled": True,
@@ -156,6 +159,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "duration_source": "columns",
     "stage_analysis_mode": "status",
+    "product_analysis_mode": "group_product",
     "percentiles": [20, 50, 80],
     "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
     "dashboard": {
@@ -255,6 +259,31 @@ def filter_column_name(config: dict[str, Any], flt: dict[str, Any]) -> str | Non
     return None
 
 
+def product_analysis_mode(config: dict[str, Any]) -> str:
+    """Режим анализа продуктов: group_product | group_only."""
+    return str(config.get("product_analysis_mode", "group_product"))
+
+
+def is_group_only_analysis(config: dict[str, Any]) -> bool:
+    """True — расчёт только в разрезе группы продукта, без детализации по продукту."""
+    return product_analysis_mode(config) == "group_only"
+
+
+def group_only_product_label(config: dict[str, Any]) -> str:
+    """Подпись в колонке «Продукт» при режиме group_only."""
+    return str(config.get("processing", {}).get("group_only_product_label", "—"))
+
+
+def analysis_row_key(config: dict[str, Any]) -> str:
+    """Ключ строки сводных таблиц: product_group или product."""
+    return "product_group" if is_group_only_analysis(config) else "product"
+
+
+def analysis_row_column(config: dict[str, Any]) -> str:
+    """Имя колонки Excel для строк сводных таблиц."""
+    return col(config, analysis_row_key(config))
+
+
 def aggregation_group_columns(config: dict[str, Any], records_columns: set[str]) -> list[str]:
     """Колонки группировки агрегации с учётом фактических колонок records."""
     group: list[str] = []
@@ -264,6 +293,8 @@ def aggregation_group_columns(config: dict[str, Any], records_columns: set[str])
         "tb": col(config, "tb"),
     }
     for key in config["aggregation"]["group_keys"]:
+        if is_group_only_analysis(config) and key == "product":
+            continue
         if key in mapping:
             name = mapping[key]
         else:

@@ -4,9 +4,9 @@ const KanbanCharts = (() => {
   const instances = [];
 
   const palette = [
-    "#38bdf8", "#22c55e", "#f97316", "#a78bfa", "#f472b6",
-    "#eab308", "#2dd4bf", "#fb7185", "#60a5fa", "#84cc16",
-    "#c084fc", "#fbbf24",
+    "#007AFF", "#34C759", "#FF9500", "#5856D6", "#FF3B30",
+    "#5AC8FA", "#AF52DE", "#FF2D55", "#64D2FF", "#30D158",
+    "#0b6bcb", "#0f8a6a", "#c27a00",
   ];
 
   function destroyAll() {
@@ -38,18 +38,21 @@ const KanbanCharts = (() => {
       card.appendChild(wrap);
       container.appendChild(card);
 
-      const datasets = group.seriesList.map((series, idx) => ({
+      const datasets = group.seriesList.map((series, idx) => {
+        const points = KanbanData.seriesPoints(series);
+        return {
         label: options.chartMode === "by_tb"
           ? `${series.tb} (${series.total_leads} лид.)`
-          : `${series.product} (${series.total_leads} лид.)`,
-        data: series.points.map((p) => ({ x: p.lead_index, y: p.days })),
+          : `${KanbanData.rowLabel(series)} (${series.total_leads} лид.)`,
+        data: points.map((p) => ({ x: p.lead_index, y: p.days })),
         borderColor: palette[(groupIdx + idx) % palette.length],
         backgroundColor: palette[(groupIdx + idx) % palette.length] + "55",
         tension: options.smooth ? 0.25 : 0,
-        pointRadius: series.points.length > 80 ? 0 : 2,
+        pointRadius: points.length > 80 ? 0 : 2,
         borderWidth: 2,
         fill: false,
-      }));
+      };
+      });
 
       const chart = new Chart(canvas, {
         type: "line",
@@ -61,7 +64,7 @@ const KanbanCharts = (() => {
           plugins: {
             legend: {
               display: options.showLegend,
-              labels: { color: "#cbd5e1", boxWidth: 12 },
+              labels: { color: "#5a6578", boxWidth: 12 },
             },
             tooltip: {
               callbacks: {
@@ -74,14 +77,14 @@ const KanbanCharts = (() => {
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "Число лидов", color: "#94a3b8" },
-              ticks: { color: "#94a3b8" },
-              grid: { color: "rgba(148,163,184,0.15)" },
+              title: { display: true, text: "Число лидов", color: "#5a6578" },
+              ticks: { color: "#5a6578" },
+              grid: { color: "rgba(90, 101, 120, 0.12)" },
             },
             y: {
-              title: { display: true, text: "Дней", color: "#94a3b8" },
-              ticks: { color: "#94a3b8", stepSize: 1 },
-              grid: { color: "rgba(148,163,184,0.15)" },
+              title: { display: true, text: "Дней", color: "#5a6578" },
+              ticks: { color: "#5a6578", stepSize: 1 },
+              grid: { color: "rgba(90, 101, 120, 0.12)" },
             },
           },
         },

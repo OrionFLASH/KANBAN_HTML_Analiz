@@ -1,12 +1,13 @@
-/** Главный контроллер дашборда. */
+/** Главный контроллер дашборда (glass UI). */
 
 (() => {
-  const app = document.querySelector(".app");
+  const app = document.getElementById("app");
   const metaInfo = document.getElementById("metaInfo");
   const chartsGrid = document.getElementById("chartsGrid");
   const pivotTable = document.getElementById("pivotTable");
   const pivotCaption = document.getElementById("pivotCaption");
   const filterStats = document.getElementById("filterStats");
+  const productFilterBlock = document.getElementById("productFilterBlock");
 
   const controls = {
     jsonFile: document.getElementById("jsonFile"),
@@ -85,6 +86,19 @@
       ),
       true
     );
+
+    const groupOnly = KanbanData.isGroupOnly();
+    if (productFilterBlock) {
+      productFilterBlock.hidden = groupOnly;
+    }
+    if (groupOnly) {
+      controls.productFilter.value = "";
+      const opt = controls.chartMode.querySelector('option[value="by_product"]');
+      if (opt) opt.textContent = "По группам (выбранное ТБ)";
+    } else {
+      const opt = controls.chartMode.querySelector('option[value="by_product"]');
+      if (opt) opt.textContent = "По продуктам (выбранное ТБ)";
+    }
   }
 
   function updateStats(filteredCount) {
@@ -92,7 +106,7 @@
     filterStats.innerHTML =
       `Серий в JSON: <b>${total}</b><br>` +
       `После фильтров: <b>${filteredCount}</b><br>` +
-      `Точек (суммарно): <b>${KanbanData.distributionSeries().reduce((s, x) => s + (x.points?.length || 0), 0)}</b>`;
+      `Точек: <b>${KanbanData.distributionSeries().reduce((s, x) => s + KanbanData.seriesPointCount(x), 0)}</b>`;
   }
 
   function refresh() {
@@ -164,29 +178,37 @@
     refresh();
   });
 
-  document.getElementById("toggleLeft").addEventListener("click", () => {
-    app.classList.toggle("left-collapsed");
-  });
-  document.getElementById("toggleRight").addEventListener("click", () => {
-    app.classList.toggle("right-collapsed");
-  });
-  document.querySelectorAll(".panel-close").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.panel === "left") app.classList.add("left-collapsed");
-      if (btn.dataset.panel === "right") app.classList.add("right-collapsed");
+  function bindSidebarToggle(hideId, showId, collapsedClass) {
+    const hideBtn = document.getElementById(hideId);
+    const showBtn = document.getElementById(showId);
+    hideBtn?.addEventListener("click", () => {
+      app.classList.add(collapsedClass);
+      hideBtn.setAttribute("aria-expanded", "false");
+      showBtn?.setAttribute("aria-expanded", "true");
     });
-  });
+    showBtn?.addEventListener("click", () => {
+      app.classList.remove(collapsedClass);
+      showBtn.setAttribute("aria-expanded", "false");
+      hideBtn?.setAttribute("aria-expanded", "true");
+    });
+  }
 
-  document.querySelectorAll(".tab").forEach((tab) => {
+  bindSidebarToggle("btn-settings-hide", "btn-settings-show", "is-sidebar-collapsed");
+  bindSidebarToggle("btn-filters-hide", "btn-filters-show", "is-filters-collapsed");
+
+  document.querySelectorAll(".mode-tabs .tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".mode-tabs .tab").forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
       document.getElementById(`${tab.dataset.tab}Tab`).classList.add("active");
     });
   });
 
-  // Автозагрузка ../OUT/*.json при открытии через локальный сервер (опционально)
   fetch("../OUT/kanban_report_latest.json")
     .then((r) => (r.ok ? r.text() : null))
     .then((text) => {

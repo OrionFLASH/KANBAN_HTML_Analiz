@@ -3,132 +3,171 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="KANBAN Analiz — дашборд по JSON-отчёту">
   <title>KANBAN Analiz — дашборд</title>
+  <!-- UI: glass-layout по образцу SPOD_PROM/common/web-fill-full и RESURCE_PANEL_HTML_WORK -->
   <link rel="stylesheet" href="css/dashboard.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <button type="button" class="panel-toggle" id="toggleLeft" title="Настройки">☰</button>
-      <div class="brand">
-        <h1>KANBAN Analiz</h1>
-        <p id="metaInfo">Загрузите JSON-отчёт из OUT/</p>
+  <div class="app" id="app">
+    <header class="chrome-top">
+      <div class="topbar">
+        <div class="topbar__brand">
+          <div class="brand-mark">Kanban</div>
+          <h1 class="brand-title">KANBAN Analiz</h1>
+          <p class="brand-sub" id="metaInfo">Загрузите JSON-отчёт из OUT/</p>
+        </div>
+        <div class="mode-tabs" role="tablist" aria-label="Режим просмотра">
+          <button type="button" class="btn tab active" data-tab="charts" role="tab" aria-selected="true">Графики</button>
+          <button type="button" class="btn tab" data-tab="pivot" role="tab" aria-selected="false">Сводная матрица</button>
+        </div>
       </div>
-      <button type="button" class="panel-toggle" id="toggleRight" title="Фильтры">⚙</button>
     </header>
 
-    <aside class="panel panel-left" id="settingsPanel">
-      <div class="panel-head">
-        <h2>Настройки</h2>
-        <button type="button" class="panel-close" data-panel="left">×</button>
-      </div>
-      <div class="panel-body">
-        <label class="field">
-          <span>Загрузка JSON</span>
-          <input type="file" id="jsonFile" accept=".json,application/json">
-        </label>
-        <label class="field">
-          <span>Режим графика</span>
-          <select id="chartMode">
-            <option value="by_product">Линии по продуктам (выбранное ТБ)</option>
-            <option value="by_tb">Линии по ТБ (выбранный продукт)</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Метрика</span>
-          <select id="metricSelect"></select>
-        </label>
-        <label class="field">
-          <span>Показатель (матрица)</span>
-          <select id="indicatorSelect"></select>
-        </label>
-        <label class="field">
-          <span>Макс. линий на графике</span>
-          <input type="number" id="maxSeries" min="1" max="30" value="8">
-        </label>
-        <label class="field checkbox">
-          <input type="checkbox" id="showLegend" checked>
-          <span>Показывать легенду</span>
-        </label>
-        <label class="field checkbox">
-          <input type="checkbox" id="smoothLines">
-          <span>Сглаживание линий</span>
-        </label>
-        <div class="hint">
-          Ось X — число лидов (накопительно по возрастанию срока). Ось Y — дней (целые).
+    <div class="chrome-mid">
+      <aside class="sidebar" id="settings-sidebar" aria-label="Настройки">
+        <div class="sidebar-head">
+          <div class="side-block-title">Настройки</div>
         </div>
-      </div>
-    </aside>
+        <div class="sidebar-scroll">
+          <div class="filter-block filter-block--search">
+            <div class="filter-block__label">Загрузка JSON</div>
+            <label class="file-pick">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
+              <span>Выбрать kanban_report_*.json</span>
+              <input type="file" id="jsonFile" class="file-pick__input" accept=".json,application/json">
+            </label>
+            <p class="filter-block__hint">Файл из каталога OUT/ после <code>python run.py</code></p>
+          </div>
 
-    <main class="content">
-      <div class="tabs">
-        <button type="button" class="tab active" data-tab="charts">Графики</button>
-        <button type="button" class="tab" data-tab="pivot">Сводная матрица</button>
-      </div>
+          <div class="filter-block">
+            <div class="filter-block__label">График</div>
+            <label class="field">
+              <span class="field-label">Режим линий</span>
+              <select id="chartMode" class="field-control">
+                <option value="by_product">По продуктам / группам (выбранное ТБ)</option>
+                <option value="by_tb">По ТБ (выбранный продукт)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Метрика</span>
+              <select id="metricSelect" class="field-control"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Показатель матрицы</span>
+              <select id="indicatorSelect" class="field-control"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Макс. линий</span>
+              <input type="number" id="maxSeries" class="field-control" min="1" max="30" value="8">
+            </label>
+            <label class="field field--check">
+              <input type="checkbox" id="showLegend" checked>
+              <span>Показывать легенду</span>
+            </label>
+            <label class="field field--check">
+              <input type="checkbox" id="smoothLines">
+              <span>Сглаживание линий</span>
+            </label>
+          </div>
 
-      <section id="chartsTab" class="tab-panel active">
-        <div id="chartsGrid" class="charts-grid">
-          <div class="empty-state">
-            <p>Загрузите файл <code>kanban_report_*.json</code> слева.</p>
-            <p>Будут построены кривые «лиды × дни» по выбранному срезу.</p>
+          <div class="sidebar-about">
+            <div class="sidebar-about__title">Шкала графика</div>
+            <p class="sidebar-about__hint">Ось X — число лидов (накоп.). Ось Y — дней, целые. Перцентили — по нижней доле на отсортированной шкале.</p>
           </div>
         </div>
-      </section>
+      </aside>
 
-      <section id="pivotTab" class="tab-panel">
-        <div class="pivot-toolbar">
-          <span id="pivotCaption">Свод: продукт × стадия</span>
-        </div>
-        <div class="table-wrap">
-          <table id="pivotTable" class="pivot-table">
-            <thead></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+      <main class="main">
+        <div class="workspace">
+          <section id="chartsTab" class="tab-panel active">
+            <div id="chartsGrid" class="charts-grid">
+              <div class="empty-state panel">
+                <p class="empty-state__title">Нет данных</p>
+                <p>Загрузите файл <code>kanban_report_*.json</code> в панели слева.</p>
+                <p>Будут построены кривые «лиды × дни» по выбранному срезу.</p>
+              </div>
+            </div>
+          </section>
 
-    <aside class="panel panel-right" id="filtersPanel">
-      <div class="panel-head">
-        <h2>Фильтры</h2>
-        <button type="button" class="panel-close" data-panel="right">×</button>
-      </div>
-      <div class="panel-body">
-        <label class="field">
-          <span>ТБ</span>
-          <select id="tbFilter"></select>
-        </label>
-        <label class="field">
-          <span>Группа продукта</span>
-          <select id="groupFilter">
-            <option value="">Все группы</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Продукт</span>
-          <select id="productFilter">
-            <option value="">Все продукты</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Стадия (статус)</span>
-          <select id="stageFilter">
-            <option value="">Все стадии</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Уровень анализа</span>
-          <select id="levelFilter">
-            <option value="">Любой</option>
-            <option value="status">status</option>
-            <option value="substage">substage</option>
-          </select>
-        </label>
-        <button type="button" class="btn secondary" id="resetFilters">Сбросить фильтры</button>
-        <div class="stats-box" id="filterStats"></div>
-      </div>
-    </aside>
+          <section id="pivotTab" class="tab-panel">
+            <div class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">Сводная матрица</h2>
+                <p class="panel-intro" id="pivotCaption">Свод: строка × стадия</p>
+              </div>
+              <div class="table-wrap">
+                <table id="pivotTable" class="pivot-table">
+                  <thead></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <aside class="sidebar sidebar--filters" id="filters-sidebar" aria-label="Фильтры">
+        <div class="sidebar-head">
+          <div class="side-block-title">Фильтры</div>
+        </div>
+        <div class="filters-scroll">
+          <div class="filter-block">
+            <div class="filter-block__label">ТБ</div>
+            <select id="tbFilter" class="field-control"></select>
+          </div>
+          <div class="filter-block">
+            <div class="filter-block__label">Группа продукта</div>
+            <select id="groupFilter" class="field-control">
+              <option value="">Все группы</option>
+            </select>
+          </div>
+          <div class="filter-block" id="productFilterBlock">
+            <div class="filter-block__label">Продукт</div>
+            <select id="productFilter" class="field-control">
+              <option value="">Все продукты</option>
+            </select>
+          </div>
+          <div class="filter-block">
+            <div class="filter-block__label">Стадия (статус)</div>
+            <select id="stageFilter" class="field-control">
+              <option value="">Все стадии</option>
+            </select>
+          </div>
+          <div class="filter-block">
+            <div class="filter-block__label">Уровень анализа</div>
+            <select id="levelFilter" class="field-control">
+              <option value="">Любой</option>
+              <option value="status">status</option>
+              <option value="substage">substage</option>
+            </select>
+          </div>
+          <div class="filter-block filter-block--bulk">
+            <div class="filter-block__label">Сброс</div>
+            <button type="button" class="btn btn-compact" id="resetFilters">Сбросить фильтры</button>
+            <div class="stats-box" id="filterStats"></div>
+          </div>
+        </div>
+      </aside>
+
+      <button type="button" class="sidebar-edge-btn sidebar-edge-btn--left-collapse" id="btn-settings-hide" aria-controls="settings-sidebar" aria-expanded="true">
+        <span class="sidebar-edge-btn__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></span>
+        <span class="sidebar-edge-btn__label">Настройки</span>
+      </button>
+      <button type="button" class="sidebar-edge-btn sidebar-edge-btn--left-reopen" id="btn-settings-show" aria-controls="settings-sidebar" aria-expanded="false">
+        <span class="sidebar-edge-btn__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span>
+        <span class="sidebar-edge-btn__label">Настройки</span>
+      </button>
+      <button type="button" class="sidebar-edge-btn sidebar-edge-btn--right-collapse" id="btn-filters-hide" aria-controls="filters-sidebar" aria-expanded="true">
+        <span class="sidebar-edge-btn__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span>
+        <span class="sidebar-edge-btn__label">Фильтры</span>
+      </button>
+      <button type="button" class="sidebar-edge-btn sidebar-edge-btn--right-reopen" id="btn-filters-show" aria-controls="filters-sidebar" aria-expanded="false">
+        <span class="sidebar-edge-btn__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></span>
+        <span class="sidebar-edge-btn__label">Фильтры</span>
+      </button>
+    </div>
   </div>
 
   <script src="js/data.js"></script>

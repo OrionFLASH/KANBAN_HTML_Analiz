@@ -25,6 +25,19 @@ const KanbanData = (() => {
     return payload;
   }
 
+  function isGroupOnly() {
+    const mode = payload?.meta?.product_analysis_mode || payload?.visualizations?.product_analysis_mode;
+    return mode === "group_only";
+  }
+
+  function rowDimension() {
+    return viz().row_dimension || (isGroupOnly() ? "product_group" : "product");
+  }
+
+  function rowLabel(series) {
+    return series.row_key || (isGroupOnly() ? series.product_group : series.product);
+  }
+
   function viz() {
     return payload?.visualizations || {};
   }
@@ -51,6 +64,20 @@ const KanbanData = (() => {
 
   function distributionSeries() {
     return viz().distribution_series || [];
+  }
+
+  /** Точки графика: из points или компактного days_sorted. */
+  function seriesPoints(series) {
+    if (series.points?.length) {
+      return series.points.map((p) => ({ lead_index: p.lead_index, days: p.days }));
+    }
+    const days = series.days_sorted || [];
+    return days.map((day, idx) => ({ lead_index: idx + 1, days: day }));
+  }
+
+  function seriesPointCount(series) {
+    if (series.points?.length) return series.points.length;
+    return (series.days_sorted || []).length;
   }
 
   function pivotFlat() {
@@ -99,13 +126,13 @@ const KanbanData = (() => {
     if (chartMode === "by_tb") {
       const byProductStage = new Map();
       filtered.forEach((series) => {
-        const key = `${series.product} | ${series.stage_key}`;
+        const key = `${rowLabel(series)} | ${series.stage_key}`;
         if (!byProductStage.has(key)) byProductStage.set(key, []);
         byProductStage.get(key).push(series);
       });
       for (const [title, list] of byProductStage.entries()) {
         const sorted = [...list].sort((a, b) => b.total_leads - a.total_leads).slice(0, maxSeries);
-        charts.push({ title: `ТБ: ${title}`, seriesList: sorted });
+        charts.push({ title: `ТБ → ${title}`, seriesList: sorted });
       }
     } else {
       const byStage = new Map();
@@ -116,7 +143,8 @@ const KanbanData = (() => {
       });
       for (const [stage, list] of byStage.entries()) {
         const sorted = [...list].sort((a, b) => b.total_leads - a.total_leads).slice(0, maxSeries);
-        charts.push({ title: `Стадия: ${stage}`, seriesList: sorted });
+        const prefix = isGroupOnly() ? "Группы" : "Продукты";
+        charts.push({ title: `${prefix} | ${stage}`, seriesList: sorted });
       }
     }
 
@@ -135,30 +163,34 @@ const KanbanData = (() => {
         row.metric === metric &&
         row.indicator === indicator &&
         (!filters.productGroup || String(row.product_group) === filters.productGroup) &&
-        (!filters.product || String(row.product) === filters.product) &&
+        (!filters.product || isGroupOnly() || String(row.product) === filters.product) &&
         (!filters.stage || String(row.stage_key) === filters.stage)
     );
 
-    const products = Array.from(new Set(rows.map((r) => String(r.product)))).sort((a, b) =>
-      a.localeCompare(b, "ru")
-    );
+    const rowLabels = Array.from(
+      new Set(rows.map((r) => String(r.row_key || (isGroupOnly() ? r.product_group : r.product))))
+    ).sort((a, b) => a.localeCompare(b, "ru"));
 
     const values = {};
-    products.forEach((product) => {
-      values[product] = {};
+    rowLabels.forEach((rowLabel) => {
+      values[rowLabel] = {};
       stages.forEach((stage) => {
-        const match = rows.find((r) => String(r.product) === product && String(r.stage_key) === stage);
-        values[product][stage] = match ? match.value : null;
+        const match = rows.find(
+          (r) =>
+            String(r.row_key || (isGroupOnly() ? r.product_group : r.product)) === rowLabel &&
+            String(r.stage_key) === stage
+        );
+        values[rowLabel][stage] = match ? match.value : null;
       });
     });
 
-    return { tb, metric, indicator, stages, products, values };
+    return { tb, metric, indicator, stages, rows: rowLabels, products: rowLabels, values, row_dimension: rowDimension() };
   }
 
   function metaLine() {
     if (!payload?.meta) return "JSON не загружен";
     const m = payload.meta;
-    return `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | перцентили: ${(m.percentiles || []).join(", ")}`;
+    return `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | продукты: ${m.product_analysis_mode || "group_product"} | перцентили: ${(m.percentiles || []).join(", ")}`;
   }
 
   return {
@@ -172,12 +204,17 @@ const KanbanData = (() => {
     metrics,
     indicators,
     distributionSeries,
+    seriesPoints,
+    seriesPointCount,
     pivotFlat,
     tbOptions,
     uniqueValues,
     filterSeries,
     groupSeriesForCharts,
     buildPivotMatrix,
+    isGroupOnly,
+    rowDimension,
+    rowLabel,
     metaLine,
   };
 })();

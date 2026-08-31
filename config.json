@@ -56,6 +56,7 @@
     "empty_stage_values": ["", "-", "nan", "None"],
     "dedup_same_date_agg": "max",
     "pick_across_dates": "max_days_then_latest_report_date",
+    "group_only_product_label": "—",
     "audit_row_counts": true,
     "duration_fallback_to_columns": true
   },
@@ -64,7 +65,9 @@
     "reserve_cpu_cores": 1,
     "read_only_required_columns": true,
     "downcast_numeric": true,
-    "free_memory_between_stages": true
+    "free_memory_between_stages": true,
+    "compact_distribution_series": true,
+    "precompute_pivot_matrices": false
   },
   "progress": {
     "enabled": true,
@@ -176,6 +179,7 @@
   ],
   "duration_source": "columns",
   "stage_analysis_mode": "status",
+  "product_analysis_mode": "group_product",
   "percentiles": [20, 50, 80],
   "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
   "dashboard": {

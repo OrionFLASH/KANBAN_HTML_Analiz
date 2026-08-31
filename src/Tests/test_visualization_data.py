@@ -9,11 +9,12 @@ from src.visualization_data import (
     build_pivot_flat,
     build_pivot_matrix,
     build_visualization_payload,
+    series_chart_points,
 )
 
 
 def test_distribution_points_sorted() -> None:
-    """Точки кривой отсортированы по возрастанию дней."""
+    """Кривая распределения отсортирована по возрастанию дней (компактный days_sorted)."""
     records = pd.DataFrame(
         {
             "ТБ": ["T1", "T1", "T1"],
@@ -36,12 +37,20 @@ def test_distribution_points_sorted() -> None:
         "stages_order": ["S"],
         "dashboard": {"all_tb_label": "__ALL__"},
         "excel": {"category_markers": {}},
+        "performance": {"compact_distribution_series": True},
     }
     series = build_distribution_series(records, config)
     assert len(series) == 1
-    days = [p["days"] for p in series[0]["points"]]
-    assert days == [10, 20, 30]
-    assert [p["lead_index"] for p in series[0]["points"]] == [1, 2, 3]
+    assert series[0]["days_sorted"] == [10, 20, 30]
+    points = series[0].get("points")
+    assert points is None
+
+
+def test_series_chart_points_from_days_sorted() -> None:
+    """series_chart_points восстанавливает lead_index из days_sorted."""
+    series = {"days_sorted": [5, 10, 15], "total_leads": 3}
+    points = series_chart_points(series)
+    assert points == [{"lead_index": 1, "days": 5}, {"lead_index": 2, "days": 10}, {"lead_index": 3, "days": 15}]
 
 
 def test_pivot_matrix_value() -> None:
@@ -51,6 +60,7 @@ def test_pivot_matrix_value() -> None:
             "tb": "__ALL__",
             "product_group": "G",
             "product": "ProdA",
+            "row_key": "ProdA",
             "stage_key": "К ПРОДАЖЕ",
             "metric": "days_on_stage",
             "indicator": "p80",
@@ -60,6 +70,7 @@ def test_pivot_matrix_value() -> None:
     config = {
         "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
         "percentiles": [80],
+        "product_analysis_mode": "group_product",
         "dashboard": {"all_tb_label": "__ALL__"},
         "excel": {"category_markers": {}},
         "aggregation": {"metrics": ["days_on_stage"]},

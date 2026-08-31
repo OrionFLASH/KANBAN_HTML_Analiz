@@ -9,7 +9,7 @@ import pandas as pd
 
 from src.data_audit import audit_lead_coverage, log_missing_metrics
 from src.progress import ProgressReporter
-from src.settings import col, empty_stage_values
+from src.settings import col, empty_stage_values, group_only_product_label, is_group_only_analysis
 
 logger: logging.Logger = logging.getLogger("kanban.lead_tracker")
 
@@ -93,15 +93,17 @@ def _build_level_records_vectorized(
     rows_in: int = len(work)
 
     if level_name == "substage":
-        # Только режим substages: строки без подстадии не участвуют в этом уровне (как в ТЗ)
         work = work[~_mask_empty_stage(work[deal_stage], config)]
-        key_cols: list[str] = [lead_id, product_group, product, tb, deal_stage]
+        key_cols: list[str] = [lead_id, product_group, tb, deal_stage]
         stage_label_col: str = deal_stage
         skip_reason: str = "режим substages — пустая «Стадия сделки»"
     else:
-        key_cols = [lead_id, product_group, product, tb, current_status]
+        key_cols = [lead_id, product_group, tb, current_status]
         stage_label_col = current_status
         skip_reason = ""
+
+    if not is_group_only_analysis(config):
+        key_cols.insert(2, product)
 
     if level_name == "substage" and rows_in > len(work):
         logger.info(
@@ -150,6 +152,8 @@ def _build_level_records_vectorized(
     best["stage_key"] = best[stage_label_col]
     best["current_status"] = best[current_status]
     best["deal_stage"] = "" if level_name == "status" else best[deal_stage].astype(str)
+    if is_group_only_analysis(config):
+        best[product] = group_only_product_label(config)
 
     keep_cols: list[str] = [
         lead_id,

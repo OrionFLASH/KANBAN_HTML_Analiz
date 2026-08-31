@@ -11,6 +11,7 @@ from src.project_paths import resolve_path
 from src.settings import normalize_config
 
 VALID_DURATION_SOURCES: set[str] = {"columns", "dates"}
+VALID_PRODUCT_ANALYSIS_MODES: set[str] = {"group_product", "group_only"}
 VALID_STAGE_MODES: set[str] = {"status", "substages", "both"}
 VALID_EXCEL_THEMES: set[str] = {"green_red", "minimal"}
 
@@ -55,6 +56,12 @@ def _validate_config(config: dict[str, Any]) -> None:
     stage_mode: str = config.get("stage_analysis_mode", "status")
     if stage_mode not in VALID_STAGE_MODES:
         raise ValueError(f"stage_analysis_mode должен быть одним из: {VALID_STAGE_MODES}")
+
+    product_mode: str = config.get("product_analysis_mode", "group_product")
+    if product_mode not in VALID_PRODUCT_ANALYSIS_MODES:
+        raise ValueError(
+            f"product_analysis_mode должен быть одним из: {VALID_PRODUCT_ANALYSIS_MODES}"
+        )
 
     theme: str = config.get("excel_theme", "green_red")
     if theme not in VALID_EXCEL_THEMES:

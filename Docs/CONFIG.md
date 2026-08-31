@@ -242,6 +242,27 @@
 "stage_analysis_mode": "both"
 ```
 
+### `product_analysis_mode`
+
+Режим детализации по продуктам:
+
+| Значение | Описание |
+|----------|----------|
+| `"group_product"` | **По умолчанию.** Полный анализ: **ГРУППА + ПРОДУКТ** |
+| `"group_only"` | Только **ГРУППА** — расчёт без разреза по продуктам |
+
+```json
+"product_analysis_mode": "group_product"
+```
+
+Только по группам:
+
+```json
+"product_analysis_mode": "group_only"
+```
+
+При `group_only` трекинг и агрегация идут по `лид × группа × ТБ × стадия`; в Excel/HTML строки матрицы — **группы**. Подпись в колонке «Продукт»: `processing.group_only_product_label` (по умолчанию `—`).
+
 ### `percentiles`
 
 Список перцентилей для сводки. Для каждого P и каждой метрики (`days_on_stage`, `days_since_deal`) считаются **четыре колонки**:
@@ -333,6 +354,8 @@ JSON содержит блок `visualizations`:
 | `read_only_required_columns` | `true` | Читать только нужные **колонки** (все **строки** сохраняются) |
 | `downcast_numeric` | `true` | Уменьшить типы **флагов** (сроки не трогаются) |
 | `free_memory_between_stages` | `true` | `gc.collect()` между этапами |
+| `compact_distribution_series` | `true` | В JSON серии как `days_sorted` вместо `{lead_index, days}` — меньше размер, те же данные |
+| `precompute_pivot_matrices` | `false` | Не дублировать матрицы в JSON (HTML строит из `pivot_flat`) |
 
 **Слабый ПК / работа параллельно с другими задачами:**
 

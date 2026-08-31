@@ -36,7 +36,8 @@ def _resolve_table_range(
     table_name: str,
 ) -> str | None:
     """Возвращает диапазон именованной таблицы Excel или None."""
-    wb = load_workbook(file_path, read_only=False, data_only=True)
+    # read_only не поддерживает ws.tables — только метаданные, без загрузки ячеек
+    wb = load_workbook(file_path, read_only=False, data_only=True, keep_links=False)
     try:
         if sheet_name not in wb.sheetnames:
             return None
@@ -124,41 +125,39 @@ def _downcast_frame(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     Уменьшает типы флагов для экономии памяти.
     Колонки сроков (days_*) не downcast — сохраняем точные значения из Excel.
     """
-    result: pd.DataFrame = df.copy()
-    c = config["columns"]
+    c: dict[str, str] = config["columns"]
     flag_keys: tuple[str, ...] = ("change_conditions", "data_entry", "efs_flag")
     for key in flag_keys:
         name: str = c[key]
-        if name in result.columns:
-            result[name] = pd.to_numeric(result[name], errors="coerce", downcast="integer")
-    return result
+        if name in df.columns:
+            df[name] = pd.to_numeric(df[name], errors="coerce", downcast="integer")
+    return df
 
 
 def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Приводит ключевые колонки к нужным типам."""
-    result: pd.DataFrame = df.copy()
-    c = config["columns"]
+    """Приводит ключевые колонки к нужным типам (без лишней копии DataFrame)."""
+    c: dict[str, str] = config["columns"]
 
     for key in ("report_date", "work_start_date", "deal_created_date"):
         name: str = c[key]
-        if name in result.columns:
-            result[name] = parse_date_column(result[name], config, name)
+        if name in df.columns:
+            df[name] = parse_date_column(df[name], config, name)
 
     for key in ("days_on_stage", "days_since_deal", "change_conditions", "data_entry", "efs_flag"):
         name = c[key]
-        if name in result.columns:
-            result[name] = pd.to_numeric(result[name], errors="coerce")
+        if name in df.columns:
+            df[name] = pd.to_numeric(df[name], errors="coerce")
 
     for key in ("current_status", "deal_stage", "product_group", "product", "tb", "lead_id"):
         name = c[key]
-        if name in result.columns:
-            result[name] = result[name].astype(str).str.strip()
+        if name in df.columns:
+            df[name] = df[name].astype(str).str.strip()
 
     deal_stage_col: str = c["deal_stage"]
-    if deal_stage_col in result.columns:
-        result[deal_stage_col] = result[deal_stage_col].replace("nan", "")
+    if deal_stage_col in df.columns:
+        df[deal_stage_col] = df[deal_stage_col].replace("nan", "")
 
-    return result
+    return df
 
 
 def load_all_files(
@@ -232,7 +231,7 @@ def load_all_files(
     if progress:
         progress.step(f"Объединение {len(frames)} таблиц…")
 
-    combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
+    combined: pd.DataFrame = pd.concat(frames, ignore_index=True, copy=False)
     logger.info("Объединено строк: %d из %d файлов (все строки файлов сохранены)", len(combined), len(frames))
     if progress:
         progress.done(f"Загрузка: {len(combined):,} строк из {len(frames)} файлов — полный объём")

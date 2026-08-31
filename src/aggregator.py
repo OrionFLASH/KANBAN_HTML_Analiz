@@ -53,7 +53,7 @@ def aggregate_statistics(
         return pd.DataFrame()
 
     rows: list[dict[str, Any]] = []
-    grouped = records.groupby(base_cols, dropna=False, observed=True)
+    grouped = records.groupby(base_cols, dropna=False, observed=True, sort=False)
 
     for keys, group in grouped:
         if not isinstance(keys, tuple):
@@ -67,24 +67,30 @@ def aggregate_statistics(
     return result
 
 
+def _tb_sheets_from_by_tb(by_tb: pd.DataFrame, tb_col: str) -> dict[str, pd.DataFrame]:
+    """Листы по ТБ без повторной агрегации — срез из by_tb."""
+    tb_sheets: dict[str, pd.DataFrame] = {}
+    if tb_col not in by_tb.columns or by_tb.empty:
+        return tb_sheets
+
+    for tb_name in sorted(by_tb[tb_col].dropna().unique(), key=str):
+        tb_sheets[str(tb_name)] = (
+            by_tb.loc[by_tb[tb_col] == tb_name].drop(columns=[tb_col]).reset_index(drop=True)
+        )
+    return tb_sheets
+
+
 def build_all_statistics(
     records: pd.DataFrame,
     config: dict[str, Any],
 ) -> dict[str, pd.DataFrame]:
-    """Формирует общую сводку, сводку без ТБ и разрез по каждому ТБ."""
+    """Формирует общую сводку, сводку по ТБ и разрез по каждому ТБ."""
     percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
     tb_col: str = col(config, "tb")
 
-    overall: pd.DataFrame = aggregate_statistics(records, config, percentiles, include_tb=False)
     by_tb: pd.DataFrame = aggregate_statistics(records, config, percentiles, include_tb=True)
-
-    tb_sheets: dict[str, pd.DataFrame] = {}
-    if tb_col in records.columns:
-        for tb_name in sorted(records[tb_col].dropna().unique()):
-            tb_records: pd.DataFrame = records[records[tb_col] == tb_name]
-            tb_sheets[str(tb_name)] = aggregate_statistics(
-                tb_records, config, percentiles, include_tb=False
-            )
+    overall: pd.DataFrame = aggregate_statistics(records, config, percentiles, include_tb=False)
+    tb_sheets: dict[str, pd.DataFrame] = _tb_sheets_from_by_tb(by_tb, tb_col)
 
     return {
         "overall": overall,
