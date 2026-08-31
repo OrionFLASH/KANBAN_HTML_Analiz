@@ -1,4 +1,4 @@
-/** Компактный мультивыбор с поиском, бейджем и сворачиванием. */
+/** Компактный мультивыбор с иконками, поиском, бейджем и сворачиванием. */
 
 const KanbanMultiFilter = (() => {
   class Widget {
@@ -14,6 +14,7 @@ const KanbanMultiFilter = (() => {
      * @param {() => void} opts.onChange
      * @param {(event: Event, widget: Widget) => void|null} opts.onItemChange
      * @param {boolean} opts.startCollapsed
+     * @param {string|null} opts.defaultIcon — иконка пунктов по умолчанию
      */
     constructor(opts) {
       this.listEl = opts.listEl;
@@ -25,7 +26,7 @@ const KanbanMultiFilter = (() => {
       this.noneBtn = opts.noneBtn || null;
       this.onChange = opts.onChange || (() => {});
       this.onItemChange = opts.onItemChange || null;
-      this.emptyLabel = "Все";
+      this.defaultIcon = opts.defaultIcon || null;
       this.allItems = [];
 
       if (this.searchEl) {
@@ -66,9 +67,10 @@ const KanbanMultiFilter = (() => {
     }
 
     setItems(items, selectedValues) {
-      this.allItems = items.map(({ value, label }) => ({
+      this.allItems = items.map(({ value, label, icon }) => ({
         value: String(value),
         label: String(label),
+        icon: icon || this.defaultIcon || null,
       }));
       const selected = new Set((selectedValues || []).map(String));
       if (this.searchEl) this.searchEl.value = "";
@@ -82,6 +84,12 @@ const KanbanMultiFilter = (() => {
 
     getSelectedSet() {
       return new Set(this.getSelected());
+    }
+
+    isAllSelected() {
+      const selected = this.getSelected();
+      const total = this.allItems.length;
+      return !total || !selected.length || selected.length >= total;
     }
 
     selectAll() {
@@ -102,12 +110,9 @@ const KanbanMultiFilter = (() => {
       if (!this.badgeEl) return;
       const selected = this.getSelected();
       const total = this.allItems.length;
-      if (!selected.length) {
-        this.badgeEl.textContent = this.emptyLabel;
+      if (this.isAllSelected()) {
+        this.badgeEl.textContent = total ? `Все · ${total}` : "Все";
         this.badgeEl.dataset.state = "all";
-      } else if (selected.length === total) {
-        this.badgeEl.textContent = `Все (${total})`;
-        this.badgeEl.dataset.state = "all-picked";
       } else {
         this.badgeEl.textContent = `${selected.length} / ${total}`;
         this.badgeEl.dataset.state = "partial";
@@ -130,7 +135,7 @@ const KanbanMultiFilter = (() => {
         return;
       }
 
-      visible.forEach(({ value, label }) => {
+      visible.forEach(({ value, label, icon }) => {
         const row = document.createElement("label");
         row.className = "multi-filter__item";
         row.title = label;
@@ -139,12 +144,21 @@ const KanbanMultiFilter = (() => {
         cb.type = "checkbox";
         cb.value = value;
         cb.checked = selected.has(value);
+        cb.className = "multi-filter__item-check";
+
+        if (icon && typeof KanbanIcons !== "undefined") {
+          const iconWrap = document.createElement("span");
+          iconWrap.className = "multi-filter__item-icon";
+          iconWrap.appendChild(KanbanIcons.create(icon, "icon icon--sm"));
+          row.appendChild(iconWrap);
+        }
+
+        row.appendChild(cb);
 
         const text = document.createElement("span");
         text.className = "multi-filter__item-label";
         text.textContent = label;
 
-        row.appendChild(cb);
         row.appendChild(text);
         this.listEl.appendChild(row);
       });

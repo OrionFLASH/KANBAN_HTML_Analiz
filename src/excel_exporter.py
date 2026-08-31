@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from src.manager_analytics import manager_analytics_to_excel_frame
 from src.pivot_excel import add_visualization_sheets
 from src.settings import build_percentile_column_mapping, col
 
@@ -119,6 +120,7 @@ def export_excel(
     output_path: Path,
     config: dict[str, Any],
     visualizations: dict[str, Any] | None = None,
+    manager_payload: dict[str, Any] | None = None,
 ) -> None:
     """Записывает Excel с листами из config.output.excel_sheets."""
     out_cfg: dict[str, Any] = config["output"]
@@ -135,6 +137,12 @@ def export_excel(
         safe_name: str = str(tb_name)[:max_len]
         sheets[safe_name] = _rename_columns_for_export(tb_df, config)
 
+    if manager_payload:
+        managers_sheet: str = sheet_names.get("managers", "Менеджеры")
+        mgr_frame: pd.DataFrame = manager_analytics_to_excel_frame(manager_payload, config)
+        if not mgr_frame.empty:
+            sheets[managers_sheet] = mgr_frame
+
     with pd.ExcelWriter(output_path, engine=config["excel"].get("engine", "openpyxl")) as writer:
         for sheet_name, frame in sheets.items():
             if frame.empty:
@@ -146,6 +154,9 @@ def export_excel(
         if sheet_name.startswith("_"):
             continue
         if sheet_name in {out_cfg["excel_sheets"].get("matrix", "Матрица"), out_cfg["excel_sheets"].get("charts", "Графики")}:
+            continue
+        if sheet_name == out_cfg["excel_sheets"].get("managers", "Менеджеры"):
+            _format_sheet(wb[sheet_name], config)
             continue
         _format_sheet(wb[sheet_name], config)
 

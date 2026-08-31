@@ -153,6 +153,10 @@ def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
         if name in df.columns:
             df[name] = df[name].astype(str).str.strip()
 
+    km_key: str | None = c.get("km")
+    if km_key and km_key in df.columns:
+        df[km_key] = df[km_key].astype(str).str.strip()
+
     deal_stage_col: str = c["deal_stage"]
     if deal_stage_col in df.columns:
         df[deal_stage_col] = df[deal_stage_col].replace("nan", "")

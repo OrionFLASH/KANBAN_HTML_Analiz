@@ -19,6 +19,7 @@
     "days_since_deal": "Количество дней с создания сделки",
     "tb": "ТБ",
     "label": "Метка",
+    "km": "КМ",
     "change_conditions": "_Изменение условий",
     "data_entry": "_Ввод данных",
     "efs_flag": "ЕФС флаг"
@@ -98,13 +99,15 @@
       "summary": "Сводная",
       "overall": "Общий",
       "matrix": "Матрица",
-      "charts": "Графики"
+      "charts": "Графики",
+      "managers": "Менеджеры"
     },
     "excel_max_sheet_name_length": 31,
     "column_labels": {
       "product_group": "ГРУППА",
       "product": "ПРОДУКТ",
       "tb": "ТБ",
+      "km": "КМ",
       "current_status": "Текущий статус",
       "deal_stage": "Стадия сделки",
       "stage_key": "Ключ стадии",
@@ -190,7 +193,15 @@
     "default_metric": "days_on_stage",
     "default_indicator": "p80",
     "excel_max_chart_series": 8,
-    "max_chart_series": 12
+    "max_chart_series": 12,
+    "precompute_html_filter_slices": true
+  },
+  "manager_analytics": {
+    "enabled": true,
+    "metric": "days_on_stage",
+    "percentile": 80,
+    "threshold_scope": "overall",
+    "top_managers_per_tb": 3
   },
   "parallel_workers": 0,
   "excel_theme": "green_red",
@@ -214,7 +225,15 @@
       "enabled": false,
       "column_key": "label",
       "contains": "Стратегия",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "exclusive_group": "strategy_label"
+    },
+    "strategy_label_2026": {
+      "enabled": false,
+      "column_key": "label",
+      "contains_all": ["Стратегия", "2026"],
+      "case_sensitive": false,
+      "exclusive_group": "strategy_label"
     }
   }
 }

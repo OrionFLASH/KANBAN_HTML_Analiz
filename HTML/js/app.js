@@ -9,9 +9,13 @@
   const filterStats = document.getElementById("filterStats");
   const filterScopeBanner = document.getElementById("filterScopeBanner");
   const productFilterBlock = document.getElementById("productFilterBlock");
+  const pipelineFilterList = document.getElementById("pipelineFilterList");
+  const pipelineFilterBlock = document.getElementById("pipelineFilterBlock");
+  const managersPanel = document.getElementById("managersPanel");
 
   const controls = {
     jsonFile: document.getElementById("jsonFile"),
+    managersJsonFile: document.getElementById("managersJsonFile"),
     aggregationMode: document.getElementById("aggregationMode"),
     chartMode: document.getElementById("chartMode"),
     metricSelect: document.getElementById("metricSelect"),
@@ -28,26 +32,6 @@
   let groupWidget;
   let productWidget;
 
-  function onTbItemChange(event, widget) {
-    const allLabel = KanbanData.allTbLabel();
-    const target = event.target;
-    const allCb = widget.listEl.querySelector(`input[value="${CSS.escape(allLabel)}"]`);
-
-    if (target instanceof HTMLInputElement && target.type === "checkbox") {
-      if (target.value === allLabel && target.checked) {
-        widget.listEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-          if (cb !== target) cb.checked = false;
-        });
-      } else if (target.value !== allLabel && target.checked && allCb) {
-        allCb.checked = false;
-      }
-    }
-
-    if (!widget.getSelected().length && allCb) {
-      allCb.checked = true;
-    }
-  }
-
   function initFilterWidgets() {
     tbWidget = new KanbanMultiFilter.Widget({
       listEl: document.getElementById("tbFilterList"),
@@ -55,19 +39,10 @@
       panelEl: document.getElementById("tbFilterPanel"),
       toggleEl: document.getElementById("tbFilterToggle"),
       allBtn: document.getElementById("tbSelectAll"),
-      noneBtn: null,
+      noneBtn: document.getElementById("tbSelectNone"),
       onChange: () => refreshKeepPivotSort(),
-      onItemChange: onTbItemChange,
+      defaultIcon: "tb",
       startCollapsed: false,
-    });
-
-    document.getElementById("tbSelectNone").addEventListener("click", () => {
-      const allLabel = KanbanData.allTbLabel();
-      tbWidget.selectNone();
-      const allCb = tbWidget.listEl.querySelector(`input[value="${CSS.escape(allLabel)}"]`);
-      if (allCb) allCb.checked = true;
-      tbWidget.updateBadge();
-      refreshKeepPivotSort();
     });
 
     groupWidget = new KanbanMultiFilter.Widget({
@@ -82,6 +57,7 @@
         syncProductListFromGroups();
         refreshKeepPivotSort();
       },
+      defaultIcon: "group",
       startCollapsed: false,
     });
 
@@ -94,11 +70,20 @@
       allBtn: document.getElementById("productSelectAll"),
       noneBtn: document.getElementById("productSelectNone"),
       onChange: () => refreshKeepPivotSort(),
+      defaultIcon: "product",
       startCollapsed: true,
     });
   }
 
   initFilterWidgets();
+
+  KanbanIcons.setIcon(document.getElementById("tbToggleIcon"), "tb");
+  KanbanIcons.setIcon(document.getElementById("groupToggleIcon"), "group");
+  KanbanIcons.setIcon(document.getElementById("productToggleIcon"), "product");
+  KanbanIcons.setIcon(document.getElementById("pipelineBlockIcon"), "pipeline");
+  KanbanIcons.setIcon(document.getElementById("stageBlockIcon"), "stage");
+  KanbanIcons.setIcon(document.getElementById("levelBlockIcon"), "level");
+  KanbanIcons.setIcon(document.getElementById("resetFilters"), "reset");
 
   function getFilters() {
     const productGroups = groupWidget.getSelected();
@@ -114,6 +99,12 @@
     };
   }
 
+  function selectionSummaryLabel(widget) {
+    if (widget.isAllSelected()) return "все";
+    const n = widget.getSelected().length;
+    return String(n);
+  }
+
   function fillSelect(select, items, keepFirst = false) {
     const first = keepFirst ? select.options[0]?.outerHTML : null;
     select.innerHTML = first || "";
@@ -127,19 +118,26 @@
 
   function populateTbFilter(preferredTbs) {
     const options = KanbanData.tbOptions();
-    const preferred = new Set(
-      (preferredTbs && preferredTbs.length ? preferredTbs : [KanbanData.allTbLabel()]).map(String)
-    );
-    tbWidget.setItems(options, Array.from(preferred));
+    const allLabel = KanbanData.allTbLabel();
+    const real = options.map((o) => o.value);
+    let selected = [];
 
-    if (!tbWidget.getSelected().length) {
-      const fallback = options.find((o) => o.value === KanbanData.allTbLabel()) || options[0];
-      if (fallback) tbWidget.setItems(options, [fallback.value]);
+    if (preferredTbs?.length) {
+      const pref = preferredTbs.map(String).filter((tb) => tb !== allLabel);
+      if (pref.length && pref.length < real.length) {
+        selected = pref.filter((tb) => real.includes(tb));
+      }
     }
+
+    tbWidget.setItems(options, selected);
   }
 
   function populateGroupFilter() {
-    const groups = KanbanData.uniqueValues("product_group").map((value) => ({ value, label: value }));
+    const groups = KanbanData.uniqueValues("product_group").map((value) => ({
+      value,
+      label: value,
+      icon: "group",
+    }));
     groupWidget.setItems(groups, []);
   }
 
@@ -150,6 +148,7 @@
     const products = KanbanData.productOptionsForGroups(selectedGroups).map((value) => ({
       value,
       label: value,
+      icon: "product",
     }));
     const stillValid = products.filter((p) => prevSelected.has(p.value)).map((p) => p.value);
     productWidget.setItems(products, stillValid);
@@ -163,6 +162,118 @@
 
   function populateProductFilter() {
     syncProductListFromGroups();
+  }
+
+  function createPipelineToggle(item, isActive) {
+    const { name, toggle_label: toggleLabel, html_label: htmlLabel, exclusive_group: exclusiveGroup } = item;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pipeline-toggle";
+    btn.dataset.filter = name;
+    if (exclusiveGroup) btn.dataset.exclusiveGroup = exclusiveGroup;
+    btn.title = htmlLabel || toggleLabel;
+    btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+    const iconEl = document.createElement("span");
+    iconEl.className = "pipeline-toggle__icon";
+    iconEl.appendChild(KanbanIcons.create(KanbanIcons.pipelineIcon(name), "icon icon--sm"));
+
+    const text = document.createElement("span");
+    text.className = "pipeline-toggle__label";
+    text.textContent = toggleLabel || htmlLabel;
+
+    const state = document.createElement("span");
+    state.className = "pipeline-toggle__state";
+    state.textContent = isActive ? "ВКЛ" : "ВЫКЛ";
+
+    btn.appendChild(iconEl);
+    btn.appendChild(text);
+    btn.appendChild(state);
+    return btn;
+  }
+
+  function syncPipelineToggleUi(activeNames) {
+    if (!pipelineFilterList) return;
+    const active = new Set(activeNames || []);
+    pipelineFilterList.querySelectorAll(".pipeline-toggle").forEach((btn) => {
+      const on = active.has(btn.dataset.filter);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      const state = btn.querySelector(".pipeline-toggle__state");
+      if (state) state.textContent = on ? "ВКЛ" : "ВЫКЛ";
+    });
+  }
+
+  function populatePipelineFilters() {
+    if (!pipelineFilterList) return;
+    const catalog = KanbanData.filterCatalog();
+    pipelineFilterList.innerHTML = "";
+    if (!catalog.length) {
+      if (pipelineFilterBlock) pipelineFilterBlock.hidden = true;
+      return;
+    }
+    if (pipelineFilterBlock) pipelineFilterBlock.hidden = false;
+    const active = new Set(KanbanData.getActivePipelineFilters());
+
+    const binary = catalog.filter((item) => !item.exclusive_group);
+    const labelVariants = catalog.filter((item) => item.exclusive_group === "strategy_label");
+
+    binary.forEach((item) => {
+      pipelineFilterList.appendChild(createPipelineToggle(item, active.has(item.name)));
+    });
+
+    if (labelVariants.length) {
+      const group = document.createElement("div");
+      group.className = "pipeline-toggle-group";
+      group.dataset.exclusiveGroup = "strategy_label";
+
+      const groupTitle = document.createElement("div");
+      groupTitle.className = "pipeline-toggle-group__title";
+      groupTitle.textContent = "Метка";
+      group.appendChild(groupTitle);
+
+      labelVariants.forEach((item) => {
+        group.appendChild(createPipelineToggle(item, active.has(item.name)));
+      });
+      pipelineFilterList.appendChild(group);
+    }
+  }
+
+  function readPipelineFiltersFromUi() {
+    if (!pipelineFilterList) return [];
+    return Array.from(pipelineFilterList.querySelectorAll('.pipeline-toggle[aria-pressed="true"]')).map(
+      (btn) => btn.dataset.filter
+    );
+  }
+
+  function onPipelineToggleClick(event) {
+    const btn = event.target.closest(".pipeline-toggle");
+    if (!btn) return;
+
+    const name = btn.dataset.filter;
+    const catalog = KanbanData.filterCatalog();
+    const item = catalog.find((c) => c.name === name);
+    const active = new Set(KanbanData.getActivePipelineFilters());
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+
+    if (turningOn) {
+      if (item?.exclusive_group) {
+        catalog
+          .filter((c) => c.exclusive_group === item.exclusive_group && c.name !== name)
+          .forEach((other) => active.delete(other.name));
+      }
+      active.add(name);
+    } else {
+      active.delete(name);
+    }
+
+    KanbanData.setActivePipelineFilters(Array.from(active));
+    syncPipelineToggleUi(Array.from(active));
+    metaInfo.textContent = KanbanData.metaLine();
+    updateFilterScopeBanner();
+    populateGroupFilter();
+    populateProductFilter();
+    KanbanPivot.resetSort();
+    refresh();
   }
 
   function updateAggregationUi() {
@@ -201,6 +312,7 @@
     const defaultView = KanbanData.getPayload()?.visualizations?.default_view || {};
 
     populateAggregationControl();
+    populatePipelineFilters();
 
     fillSelect(
       controls.metricSelect,
@@ -211,7 +323,7 @@
       KanbanData.indicators().map((i) => ({ value: i, label: KanbanData.INDICATOR_LABELS[i] || i }))
     );
 
-    populateTbFilter([defaultView.tb || KanbanData.allTbLabel()]);
+    populateTbFilter(defaultView.tb ? [defaultView.tb] : []);
     populateGroupFilter();
     populateProductFilter();
 
@@ -232,9 +344,14 @@
   function updateFilterScopeBanner() {
     if (!filterScopeBanner) return;
     const line = KanbanData.filtersSummaryLine();
-    if (line) {
+    const missing =
+      KanbanData.getActivePipelineFilters().length &&
+      KanbanData.resolveFilterSliceKey() !== KanbanData.filterSliceKey(KanbanData.getActivePipelineFilters())
+        ? " (срез не найден в JSON — выберите другую комбинацию)"
+        : "";
+    if (line || missing) {
       filterScopeBanner.hidden = false;
-      filterScopeBanner.textContent = line;
+      filterScopeBanner.textContent = (line || "") + missing;
     } else {
       filterScopeBanner.hidden = true;
       filterScopeBanner.textContent = "";
@@ -254,18 +371,26 @@
 
   function updateStats(filteredCount) {
     const total = KanbanData.distributionSeries().length;
-    const groupCount = groupWidget.getSelected().length;
-    const productCount = productWidget.getSelected().length;
     const groupOnly = KanbanData.isGroupOnly();
-    const productLine = groupOnly
-      ? ""
-      : ` · Продукты: <b>${productCount || "все"}</b>`;
+    const productLine = groupOnly ? "" : ` · Продукты: <b>${selectionSummaryLabel(productWidget)}</b>`;
+    const slice = KanbanData.filterSliceData();
+    const pipelineLine = KanbanData.getActivePipelineFilters().length
+      ? KanbanData.getActivePipelineFilters().join(" + ")
+      : "нет";
     filterStats.innerHTML =
-      `Серий в JSON: <b>${total}</b><br>` +
-      `После фильтров: <b>${filteredCount}</b><br>` +
-      `ТБ: <b>${tbWidget.getSelected().length || "все"}</b> · ` +
-      `${groupOnly ? "Группы (выбранные)" : "Группы"}: <b>${groupCount || "все"}</b>${productLine}<br>` +
+      `Срез JSON: <b>${KanbanData.resolveFilterSliceKey()}</b> (${slice.record_count ?? "—"} записей)<br>` +
+      `Pipeline: <b>${pipelineLine}</b><br>` +
+      `Серий в срезе: <b>${total}</b><br>` +
+      `После UI-фильтров: <b>${filteredCount}</b><br>` +
+      `ТБ: <b>${selectionSummaryLabel(tbWidget)}</b> · ` +
+      `${groupOnly ? "Группы (выбранные)" : "Группы"}: <b>${selectionSummaryLabel(groupWidget)}</b>${productLine}<br>` +
       `Точек: <b>${KanbanData.distributionSeries().reduce((s, x) => s + KanbanData.seriesPointCount(x), 0)}</b>`;
+  }
+
+  function renderManagers(filters) {
+    if (managersPanel) {
+      KanbanManagers.render(managersPanel, filters);
+    }
   }
 
   function refresh() {
@@ -284,6 +409,7 @@
 
     const matrix = KanbanData.buildPivotMatrix(filters);
     KanbanPivot.render(pivotTable, matrix, pivotCaption);
+    renderManagers(filters);
   }
 
   function refreshKeepPivotSort() {
@@ -300,6 +426,7 @@
 
     const matrix = KanbanData.buildPivotMatrix(filters);
     KanbanPivot.render(pivotTable, matrix, pivotCaption);
+    renderManagers(filters);
   }
 
   function onJsonLoaded(text) {
@@ -330,6 +457,23 @@
     reader.readAsText(file, "UTF-8");
   });
 
+  controls.managersJsonFile?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        KanbanManagers.loadJson(String(reader.result));
+        refreshKeepPivotSort();
+      } catch (err) {
+        console.error("[KANBAN] managers JSON failed:", err);
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  });
+
+  pipelineFilterList?.addEventListener("click", onPipelineToggleClick);
+
   controls.aggregationMode.addEventListener("change", () => {
     KanbanData.setAggregationMode(controls.aggregationMode.value);
     updateAggregationUi();
@@ -355,10 +499,12 @@
   controls.resetFilters.addEventListener("click", () => {
     controls.stageFilter.value = "";
     controls.levelFilter.value = "";
-    const defaultView = KanbanData.getPayload()?.visualizations?.default_view || {};
-    populateTbFilter([defaultView.tb || KanbanData.allTbLabel()]);
+    KanbanData.setActivePipelineFilters([]);
+    populatePipelineFilters();
+    populateTbFilter([]);
     populateGroupFilter();
     populateProductFilter();
+    const defaultView = KanbanData.getPayload()?.visualizations?.default_view || {};
     controls.metricSelect.value = defaultView.metric || "days_on_stage";
     controls.indicatorSelect.value = defaultView.indicator || "p80";
     refresh();
@@ -381,6 +527,120 @@
 
   bindSidebarToggle("btn-settings-hide", "btn-settings-show", "is-sidebar-collapsed");
   bindSidebarToggle("btn-filters-hide", "btn-filters-show", "is-filters-collapsed");
+
+  initFiltersPanelResize();
+
+  function initFiltersPanelResize() {
+    const handle = document.getElementById("filtersResizeHandle");
+    if (!handle || !app) return;
+
+    const STORAGE_KEY = "kanban_filters_panel_width";
+    const MIN = 280;
+    const MAX = 560;
+    const STEP = 12;
+
+    function readCssFiltersWidth() {
+      const raw = getComputedStyle(app).getPropertyValue("--filters-w").trim();
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? n : 360;
+    }
+
+    function clampWidth(px) {
+      return Math.min(MAX, Math.max(MIN, Math.round(px)));
+    }
+
+    function applyWidth(px, persist) {
+      const w = clampWidth(px);
+      app.style.setProperty("--filters-w", `${w}px`);
+      handle.setAttribute("aria-valuenow", String(w));
+      if (persist) {
+        try {
+          localStorage.setItem(STORAGE_KEY, String(w));
+        } catch (_) {
+          /* localStorage недоступен */
+        }
+      }
+      return w;
+    }
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) applyWidth(Number(saved), false);
+      else applyWidth(readCssFiltersWidth(), false);
+    } catch (_) {
+      applyWidth(readCssFiltersWidth(), false);
+    }
+
+    let dragging = false;
+    let startX = 0;
+    let startW = 0;
+
+    function onPointerMove(clientX) {
+      const delta = startX - clientX;
+      applyWidth(startW + delta, false);
+    }
+
+    function stopDrag() {
+      if (!dragging) return;
+      dragging = false;
+      app.classList.remove("is-resizing-filters");
+      applyWidth(readCssFiltersWidth(), true);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", stopDrag);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", stopDrag);
+    }
+
+    function onMouseMove(event) {
+      if (!dragging) return;
+      event.preventDefault();
+      onPointerMove(event.clientX);
+    }
+
+    function onTouchMove(event) {
+      if (!dragging || !event.touches.length) return;
+      event.preventDefault();
+      onPointerMove(event.touches[0].clientX);
+    }
+
+    function startDrag(clientX) {
+      if (app.classList.contains("is-filters-collapsed")) return;
+      dragging = true;
+      startX = clientX;
+      startW = readCssFiltersWidth();
+      app.classList.add("is-resizing-filters");
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", stopDrag);
+      window.addEventListener("touchmove", onTouchMove, { passive: false });
+      window.addEventListener("touchend", stopDrag);
+    }
+
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      startDrag(event.clientX);
+    });
+
+    handle.addEventListener("touchstart", (event) => {
+      if (!event.touches.length) return;
+      startDrag(event.touches[0].clientX);
+    }, { passive: true });
+
+    handle.addEventListener("keydown", (event) => {
+      if (app.classList.contains("is-filters-collapsed")) return;
+      let next = readCssFiltersWidth();
+      if (event.key === "ArrowLeft") next += STEP;
+      else if (event.key === "ArrowRight") next -= STEP;
+      else if (event.key === "Home") next = MAX;
+      else if (event.key === "End") next = MIN;
+      else return;
+      event.preventDefault();
+      applyWidth(next, true);
+    });
+
+    handle.addEventListener("dblclick", () => {
+      applyWidth(360, true);
+    });
+  }
 
   document.querySelectorAll(".mode-tabs .tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -405,6 +665,26 @@
     "/OUT/kanban_report_latest.json",
   ];
 
+  const MANAGERS_AUTOLOAD_URLS = [
+    "data/kanban_managers_latest.json",
+    "../OUT/kanban_report_managers_latest.json",
+    "/OUT/kanban_report_managers_latest.json",
+  ];
+
+  async function autoloadManagersJson() {
+    if (window.location.protocol === "file:") return;
+    for (const url of MANAGERS_AUTOLOAD_URLS) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        KanbanManagers.loadJson(await response.text());
+        return;
+      } catch (err) {
+        console.warn("[KANBAN] managers autoload failed for", url, err);
+      }
+    }
+  }
+
   async function autoloadJson() {
     if (window.location.protocol === "file:") {
       metaInfo.textContent =
@@ -427,5 +707,6 @@
       "JSON не найден. Выполните run.py или выберите kanban_report_*.json вручную.";
   }
 
+  autoloadManagersJson();
   autoloadJson();
 })();

@@ -38,7 +38,10 @@ def _active_pipeline_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(flt, dict) or not flt.get("enabled"):
             continue
         entry: dict[str, Any] = {"name": name, "column_key": flt.get("column_key")}
-        if "contains" in flt:
+        if "contains_all" in flt:
+            entry["contains_all"] = list(flt.get("contains_all") or [])
+            entry["case_sensitive"] = flt.get("case_sensitive", False)
+        elif "contains" in flt:
             entry["contains"] = flt.get("contains")
             entry["case_sensitive"] = flt.get("case_sensitive", False)
         else:
@@ -122,6 +125,7 @@ def export_json(
     config: dict[str, Any],
     output_path: Path,
     visualizations: dict[str, Any] | None = None,
+    filter_catalog: list[dict[str, Any]] | None = None,
 ) -> None:
     """Сохраняет JSON с обеими агрегациями (продукт + группа) для HTML-дашборда."""
     excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
@@ -147,9 +151,12 @@ def export_json(
             "filters_applied": _active_pipeline_filters(config),
             "filters_active": bool(_active_pipeline_filters(config)),
             "data_scope_note": (
-                "Excel формируется по config.product_analysis_mode. В JSON — обе агрегации "
-                "(group_product и group_only). HTML выбирает срез на странице."
+                "Excel — по config.product_analysis_mode и filters.enabled. JSON содержит срезы "
+                "visualizations.filter_slices (все комбинации HTML-фильтров) и обе агрегации."
             ),
+            "filter_catalog": filter_catalog
+            or ((visualizations or {}).get("filter_catalog")),
+            "filter_slice_keys": list((visualizations or {}).get("filter_slices", {}).keys()),
             "columns": config.get("columns"),
             "stages_order": config.get("stages_order"),
         },

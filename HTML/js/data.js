@@ -4,6 +4,8 @@ const KanbanData = (() => {
   let payload = null;
   /** Выбранная агрегация на HTML-странице (не путать с config → Excel). */
   let aggregationMode = "group_product";
+  /** Активные pipeline-фильтры (имена из config.filters). */
+  let activePipelineFilters = [];
 
   const AGGREGATION_LABELS = {
     group_product: "По продуктам",
@@ -55,10 +57,44 @@ const KanbanData = (() => {
     return AGGREGATION_LABELS[mode] || mode;
   }
 
-  /** Срез visualizations для текущей HTML-агрегации. */
+  function filterCatalog() {
+    return viz().filter_catalog || payload?.meta?.filter_catalog || [];
+  }
+
+  function filterSliceKey(activeNames) {
+    if (!activeNames || !activeNames.length) return "none";
+    return [...activeNames].sort().join("+");
+  }
+
+  function setActivePipelineFilters(names) {
+    activePipelineFilters = [...(names || [])].sort();
+  }
+
+  function getActivePipelineFilters() {
+    return [...activePipelineFilters];
+  }
+
+  function resolveFilterSliceKey() {
+    const key = filterSliceKey(activePipelineFilters);
+    const slices = viz().filter_slices || {};
+    if (slices[key]) return key;
+    if (slices.none) return "none";
+    return key;
+  }
+
+  function filterSliceData() {
+    const key = resolveFilterSliceKey();
+    const slices = viz().filter_slices || {};
+    if (slices[key]) return slices[key];
+    return { aggregations: viz().aggregations, label: "Без pipeline-фильтров", active_filters: [] };
+  }
+
+  /** Срез visualizations для текущей HTML-агрегации и pipeline-фильтров. */
   function aggSlice() {
-    const aggs = viz().aggregations;
+    const slice = filterSliceData();
+    const aggs = slice.aggregations || viz().aggregations;
     if (aggs && aggs[aggregationMode]) return aggs[aggregationMode];
+    if (aggs && aggs.group_product) return aggs.group_product;
     return viz();
   }
 
@@ -124,20 +160,35 @@ const KanbanData = (() => {
     return aggSlice().pivot_flat || [];
   }
 
-  function tbOptions() {
+  function realTbValues() {
+    /** Реальные ТБ из данных (без псевдо-сводки __ALL__). */
+    const allLabel = allTbLabel();
     const set = new Set();
-    distributionSeries().forEach((s) => set.add(String(s.tb)));
-    pivotFlat().forEach((row) => set.add(String(row.tb)));
-    const label = allTbLabel();
-    const items = Array.from(set).sort((a, b) => {
-      if (a === label) return -1;
-      if (b === label) return 1;
-      return a.localeCompare(b, "ru");
+    distributionSeries().forEach((s) => {
+      const tb = String(s.tb);
+      if (tb !== allLabel) set.add(tb);
     });
-    return items.map((value) => ({
+    pivotFlat().forEach((row) => {
+      const tb = String(row.tb);
+      if (tb !== allLabel) set.add(tb);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
+  }
+
+  function tbOptions() {
+    return realTbValues().map((value) => ({
       value,
-      label: value === label ? allTbDisplay() : value,
+      label: value,
+      icon: "tb",
     }));
+  }
+
+  function isTbSelectionAll(selected) {
+    const real = realTbValues();
+    if (!real.length) return true;
+    if (!selected || !selected.length) return true;
+    const picked = new Set(selected.map(String).filter((tb) => tb !== allTbLabel()));
+    return picked.size === 0 || picked.size >= real.length;
   }
 
   function uniqueValues(field) {
@@ -183,17 +234,16 @@ const KanbanData = (() => {
   }
 
   function resolveTbSet(filters) {
-    /** Нормализует список выбранных ТБ для фильтрации. */
+    /** Пустой или полный выбор в UI = все ТБ (свод __ALL__ в JSON). */
     const allLabel = allTbLabel();
     let tbs = filters.tbs;
     if (!tbs || !tbs.length) {
       if (filters.tb) tbs = [String(filters.tb)];
-      else tbs = [allLabel];
+      else return [allLabel];
     }
-    tbs = tbs.map(String);
-    const specific = tbs.filter((tb) => tb !== allLabel);
-    if (specific.length === 0) return [allLabel];
-    return specific;
+    tbs = tbs.map(String).filter((tb) => tb !== allLabel);
+    if (isTbSelectionAll(tbs)) return [allLabel];
+    return tbs;
   }
 
   function matchesTbFilter(seriesTb, filters) {
@@ -282,12 +332,25 @@ const KanbanData = (() => {
 
   function filtersSummaryLine() {
     const applied = filtersApplied();
-    if (!applied.length) return "";
-    const parts = applied.map((f) => {
-      if (f.contains) return `${f.name}: «${f.contains}»`;
-      return `${f.name}=${f.value}`;
-    });
-    return `Pipeline-фильтры (данные уже срезаны): ${parts.join("; ")}`;
+    const slice = filterSliceData();
+    const parts = [];
+    if (activePipelineFilters.length) {
+      const catalog = filterCatalog();
+      const labels = activePipelineFilters.map((name) => {
+        const item = catalog.find((c) => c.name === name);
+        return item?.html_label || name;
+      });
+      parts.push(`HTML-фильтры: ${labels.join(" + ")}`);
+    } else if (slice.label && viz().filter_slices) {
+      parts.push(slice.label);
+    }
+    if (applied.length) {
+      parts.push(
+        `Excel (config): ${applied.map((f) => (f.contains ? `${f.name}: «${f.contains}»` : `${f.name}=${f.value}`)).join("; ")}`
+      );
+    }
+    if (!parts.length) return "";
+    return parts.join(" · ");
   }
 
   function selectedGroupsHint(filters) {
@@ -464,10 +527,11 @@ const KanbanData = (() => {
     const m = payload.meta;
     const excelMode = m.excel_product_analysis_mode || m.product_analysis_mode || "group_product";
     const viewLabel = aggregationLabel(aggregationMode);
-    const filterNote = filtersActive() ? " | фильтры pipeline: да" : "";
+    const sliceKey = resolveFilterSliceKey();
+    const filterNote = filtersActive() ? " | Excel-фильтры config: да" : "";
     return (
       `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | ` +
-      `Excel: ${aggregationLabel(excelMode)} | HTML: ${viewLabel}${filterNote} | ` +
+      `Excel: ${aggregationLabel(excelMode)} | HTML: ${viewLabel} | срез: ${sliceKey}${filterNote} | ` +
       `перцентили: ${(m.percentiles || []).join(", ")}`
     );
   }
@@ -477,6 +541,12 @@ const KanbanData = (() => {
     getPayload,
     setAggregationMode,
     getAggregationMode,
+    setActivePipelineFilters,
+    getActivePipelineFilters,
+    filterCatalog,
+    filterSliceKey,
+    resolveFilterSliceKey,
+    filterSliceData,
     availableAggregationModes,
     aggregationLabel,
     METRIC_LABELS,
@@ -492,6 +562,8 @@ const KanbanData = (() => {
     seriesPointCount,
     pivotFlat,
     tbOptions,
+    realTbValues,
+    isTbSelectionAll,
     resolveTbSet,
     productOptionsForGroups,
     matchesMulti,

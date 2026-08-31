@@ -22,6 +22,8 @@ KANBAN_HTML_Analiz/
 │   ├── excel_loader.py
 │   ├── lead_tracker.py
 │   ├── aggregator.py
+│   ├── filter_slices.py
+│   ├── manager_analytics.py
 │   ├── visualization_data.py
 │   ├── json_exporter.py
 │   ├── excel_exporter.py
@@ -34,7 +36,9 @@ KANBAN_HTML_Analiz/
 │   │   └── dashboard.css
 │   └── js/
 │       ├── data.js
+│       ├── icons.js
 │       ├── multi-filter.js
+│       ├── managers.js
 │       ├── charts.js
 │       ├── pivot.js
 │       └── app.js
@@ -77,12 +81,15 @@ python -m http.server 8080
 
 | Раздел | Описание |
 |--------|----------|
-| Левая панель | Загрузка JSON, **агрегация строк**, режим графика, метрика, показатель матрицы |
+| Левая панель | Загрузка JSON, **pipeline-фильтры**, агрегация строк, режим графика, метрика |
 | Правая панель | Мультивыбор ТБ, групп, продуктов (поиск, сворачивание) |
 | Графики | Режим «свод + каждый»: сверху все выбранные сущности, ниже — по одной карточке |
 | Режим «По ТБ» | Графики в **одну колонку** (друг под другом) |
 | Матрица | Группа/продукт × стадия; сортировка по клику на заголовок колонки |
-| Pipeline-фильтры | Если при `run.py` были `filters.enabled=true` — баннер вверху вкладки «Графики» |
+| BOTTOM менеджеры | На вкладке матрицы: топ-3 КМ по ТБ (превышения P80); JSON `kanban_managers_*.json` |
+| Pipeline-фильтры | Левая панель «Настройки» — кнопки ВКЛ/ВЫКЛ; баннер среза — на вкладке «Графики» |
+
+После `run.py` в `HTML/data/`: `kanban_report_latest.json`, при наличии колонки **КМ** — `kanban_managers_latest.json`.
 
 Режим Excel задаётся `config.product_analysis_mode`. В JSON — обе агрегации; на HTML переключатель «По продуктам» / «По группам».
 

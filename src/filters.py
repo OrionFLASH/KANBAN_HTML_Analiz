@@ -12,6 +12,23 @@ from src.settings import filter_column_name
 logger: logging.Logger = logging.getLogger("kanban.filters")
 
 
+def _text_match_mask(series: pd.Series, flt: dict[str, Any]) -> pd.Series:
+    """Маска для contains / contains_all."""
+    case: bool = bool(flt.get("case_sensitive", False))
+    text: pd.Series = series.astype(str)
+    if "contains_all" in flt:
+        tokens: list[str] = [str(t) for t in flt["contains_all"] if str(t)]
+        if not tokens:
+            return pd.Series(True, index=series.index)
+        mask: pd.Series = pd.Series(True, index=series.index)
+        for token in tokens:
+            mask &= text.str.contains(token, case=case, na=False)
+        return mask
+    if "contains" in flt:
+        return text.str.contains(str(flt["contains"]), case=case, na=False)
+    raise ValueError("Фильтр не содержит contains или contains_all")
+
+
 def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """Оставляет только строки, прошедшие все включённые фильтры (AND)."""
     result: pd.DataFrame = df.copy()
@@ -30,11 +47,8 @@ def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
             logger.warning("Колонка фильтра '%s' (%s) не найдена, пропуск", name, column)
             continue
 
-        if "contains" in flt:
-            case: bool = bool(flt.get("case_sensitive", False))
-            mask = result[column].astype(str).str.contains(
-                flt["contains"], case=case, na=False
-            )
+        if "contains" in flt or "contains_all" in flt:
+            mask = _text_match_mask(result[column], flt)
         else:
             value = flt.get("value", 1)
             mask = pd.to_numeric(result[column], errors="coerce") == value

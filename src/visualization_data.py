@@ -317,27 +317,30 @@ def build_aggregation_visualization(
 
 
 def build_json_visualization_payload(
-    records: pd.DataFrame,
-    stats_by_mode: dict[str, dict[str, pd.DataFrame]],
     config: dict[str, Any],
+    filter_slices: dict[str, Any],
+    filter_catalog: list[dict[str, Any]],
+    default_slice_key: str = "none",
 ) -> dict[str, Any]:
-    """Блок visualizations для JSON: обе агрегации (продукт + группа)."""
-    from src.settings import with_product_analysis_mode
-
+    """Блок visualizations для JSON: агрегации × срезы pipeline-фильтров."""
     dash_cfg: dict[str, Any] = config.get("dashboard", {})
     all_tb_label: str = str(dash_cfg.get("all_tb_label", "__ALL__"))
     default_tb: str = str(dash_cfg.get("default_tb", all_tb_label))
     default_metric: str = str(dash_cfg.get("default_metric", "days_on_stage"))
     default_indicator: str = str(dash_cfg.get("default_indicator", "p80"))
-
-    aggregations: dict[str, Any] = {}
-    for mode in JSON_AGGREGATION_MODES:
-        mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
-        mode_stats: dict[str, pd.DataFrame] = stats_by_mode[mode]
-        aggregations[mode] = build_aggregation_visualization(records, mode_stats, mode_config)
-
     excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
-    excel_slice: dict[str, Any] = aggregations.get(excel_mode, aggregations["group_product"])
+
+    default_slice: dict[str, Any] = filter_slices.get(default_slice_key) or next(iter(filter_slices.values()))
+    aggregations: dict[str, Any] = default_slice.get("aggregations", {})
+    excel_slice: dict[str, Any] = aggregations.get(excel_mode, aggregations.get("group_product", {}))
+
+    public_slices: dict[str, Any] = {}
+    for key, slice_data in filter_slices.items():
+        public_slices[key] = {
+            k: v
+            for k, v in slice_data.items()
+            if k not in ("_stats_by_mode",)
+        }
 
     return {
         "stage_order": stage_order(config),
@@ -350,9 +353,11 @@ def build_json_visualization_payload(
             "metric": default_metric,
             "indicator": default_indicator,
             "aggregation": "group_product",
+            "filter_slice": default_slice_key,
         },
+        "filter_catalog": filter_catalog,
+        "filter_slices": public_slices,
         "aggregations": aggregations,
-        # Совместимость: плоские поля = срез Excel-режима из config
         "product_analysis_mode": excel_mode,
         "row_dimension": excel_slice.get("row_dimension"),
         "distribution_series": excel_slice.get("distribution_series", []),

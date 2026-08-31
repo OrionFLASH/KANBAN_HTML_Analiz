@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from src.data_audit import audit_rows
 from src.aggregator import build_all_statistics
@@ -14,9 +15,14 @@ from src.config_loader import get_file_list, get_input_dir, get_output_dir, load
 from src.dictionaries import build_dimensions
 from src.excel_exporter import export_excel
 from src.excel_loader import load_all_files
+from src.filter_slices import build_all_filter_slices, filter_slice_key
 from src.filters import apply_filters
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
+from src.manager_analytics import (
+    build_manager_analytics,
+    export_manager_json,
+)
 from src.visualization_data import (
     JSON_AGGREGATION_MODES,
     build_json_visualization_payload,
@@ -74,44 +80,97 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         config,
         reason="активные фильтры в config" if filters_active else None,
     )
-    progress.done(f"После фильтров: {len(filtered_df):,} строк")
-    del raw_df
-    _maybe_free_memory(config)
+    progress.done(f"После фильтров Excel: {len(filtered_df):,} строк")
 
     progress.stage("Справочники")
     dimensions = build_dimensions(filtered_df, config)
     progress.done("Справочники построены")
 
-    progress.stage("Трекинг лидов по стадиям", f"{len(filtered_df):,} строк")
+    progress.stage("Трекинг лидов по стадиям (Excel)", f"{len(filtered_df):,} строк")
     records = build_lead_stage_records(filtered_df, config, progress)
     progress.done(f"Записей lead×стадия: {len(records):,}")
-    del filtered_df
-    _maybe_free_memory(config)
 
     if records.empty:
         logger.error("Нет данных для агрегации после обработки")
         progress.step("ОШИБКА: нет данных для агрегации")
         sys.exit(1)
 
-    progress.stage("Агрегация статистики", f"{len(records):,} записей")
+    progress.stage("Агрегация статистики (Excel)", f"{len(records):,} записей")
     stats: dict = build_all_statistics(records, config)
-    stats_by_mode: dict[str, dict] = {config.get("product_analysis_mode", "group_product"): stats}
-    for mode in JSON_AGGREGATION_MODES:
-        if mode not in stats_by_mode:
-            stats_by_mode[mode] = build_all_statistics(records, with_product_analysis_mode(config, mode))
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
-    progress.stage("Визуализация")
+    progress.stage("Визуализация (Excel)")
     visualizations: dict = build_visualization_payload(records, stats, config)
-    json_visualizations: dict = build_json_visualization_payload(records, stats_by_mode, config)
-    progress.done("Данные для графиков и матрицы подготовлены")
+    progress.done("Данные для Excel подготовлены")
+
+    progress.stage("JSON: срезы фильтров и агрегаций")
+    precompute_slices: bool = bool(
+        config.get("dashboard", {}).get("precompute_html_filter_slices", True)
+    )
+    filter_catalog: list[dict[str, Any]] = []
+    filter_slices: dict[str, Any] = {}
+    if precompute_slices:
+        filter_catalog, filter_slices = build_all_filter_slices(raw_df, config, progress)
+    else:
+        stats_by_mode_json: dict[str, dict] = {
+            config.get("product_analysis_mode", "group_product"): stats
+        }
+        for mode in JSON_AGGREGATION_MODES:
+            if mode not in stats_by_mode_json:
+                stats_by_mode_json[mode] = build_all_statistics(
+                    records, with_product_analysis_mode(config, mode)
+                )
+        from src.filter_slices import build_slice_aggregations, build_filter_catalog
+
+        filter_catalog = build_filter_catalog(config)
+        filter_slices = {
+            "none": {
+                "active_filters": [],
+                "label": "Без pipeline-фильтров",
+                **build_slice_aggregations(records, config),
+            }
+        }
+
+    json_visualizations: dict = build_json_visualization_payload(
+        config, filter_slices, filter_catalog, default_slice_key="none"
+    )
+    none_slice: dict[str, Any] = filter_slices.get("none", {})
+    stats_by_mode: dict[str, dict] = none_slice.get("_stats_by_mode", {})
+    if not stats_by_mode:
+        stats_by_mode = {config.get("product_analysis_mode", "group_product"): stats}
+        for mode in JSON_AGGREGATION_MODES:
+            if mode not in stats_by_mode:
+                stats_by_mode[mode] = build_all_statistics(
+                    records, with_product_analysis_mode(config, mode)
+                )
+    progress.done(f"JSON-срезов: {len(filter_slices)}")
+
+    progress.stage("Аналитика менеджеров (КМ)")
+    manager_payload: dict[str, Any] | None = build_manager_analytics(records, stats, config)
+    managers_json_path: Path = output_dir / f"{prefix}_managers_{timestamp}.json"
+    if manager_payload:
+        export_manager_json(manager_payload, managers_json_path, config)
+        progress.done(f"Менеджеры: топ записей {len(manager_payload.get('top_by_tb', []))}")
+    else:
+        progress.done("Аналитика менеджеров пропущена (нет КМ или порогов)")
+
+    del filtered_df
+    del raw_df
+    _maybe_free_memory(config)
 
     progress.stage("Экспорт Excel")
-    export_excel(stats, excel_path, config, visualizations=visualizations)
+    export_excel(stats, excel_path, config, visualizations=visualizations, manager_payload=manager_payload)
     progress.done(f"Excel: {excel_path.name}")
 
     progress.stage("Экспорт JSON")
-    export_json(stats_by_mode, dimensions, config, json_path, visualizations=json_visualizations)
+    export_json(
+        stats_by_mode,
+        dimensions,
+        config,
+        json_path,
+        visualizations=json_visualizations,
+        filter_catalog=filter_catalog,
+    )
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline

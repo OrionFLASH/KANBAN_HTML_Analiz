@@ -19,8 +19,14 @@
           <p class="brand-sub" id="metaInfo">Загрузите JSON-отчёт из OUT/</p>
         </div>
         <div class="mode-tabs" role="tablist" aria-label="Режим просмотра">
-          <button type="button" class="btn tab active" data-tab="charts" role="tab" aria-selected="true">Графики</button>
-          <button type="button" class="btn tab" data-tab="pivot" role="tab" aria-selected="false">Сводная матрица</button>
+          <button type="button" class="btn tab active" data-tab="charts" role="tab" aria-selected="true">
+            <svg class="icon icon--tab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            Графики
+          </button>
+          <button type="button" class="btn tab" data-tab="pivot" role="tab" aria-selected="false">
+            <svg class="icon icon--tab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+            Сводная матрица
+          </button>
         </div>
       </div>
     </header>
@@ -39,6 +45,20 @@
               <input type="file" id="jsonFile" class="file-pick__input" accept=".json,application/json">
             </label>
             <p class="filter-block__hint">Файл из каталога OUT/ после <code>python run.py</code></p>
+            <label class="file-pick file-pick--secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <span>Менеджеры: kanban_managers_*.json</span>
+              <input type="file" id="managersJsonFile" class="file-pick__input" accept=".json,application/json">
+            </label>
+          </div>
+
+          <div class="filter-block filter-block--pipeline" id="pipelineFilterBlock">
+            <div class="filter-block__label filter-block__label--icon">
+              <span class="filter-block__label-icon" id="pipelineBlockIcon" aria-hidden="true"></span>
+              Pipeline-фильтры
+            </div>
+            <p class="filter-block__hint">Срезы из config.filters. Комбинации предрасчитаны в JSON.</p>
+            <div id="pipelineFilterList" class="pipeline-toggle-grid" role="group" aria-label="Pipeline-фильтры"></div>
           </div>
 
           <div class="filter-block">
@@ -100,29 +120,43 @@
           </section>
 
           <section id="pivotTab" class="tab-panel">
-            <div class="panel">
-              <div class="panel-head">
-                <h2 class="panel-title">Сводная матрица</h2>
-                <p class="panel-intro" id="pivotCaption">Свод: строка × стадия</p>
+            <div class="panel pivot-layout">
+              <div class="pivot-layout__matrix">
+                <div class="panel-head">
+                  <h2 class="panel-title">Сводная матрица</h2>
+                  <p class="panel-intro" id="pivotCaption">Свод: строка × стадия</p>
+                </div>
+                <div class="table-wrap">
+                  <table id="pivotTable" class="pivot-table">
+                    <thead></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
               </div>
-              <div class="table-wrap">
-                <table id="pivotTable" class="pivot-table">
-                  <thead></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
+              <div class="pivot-layout__managers" id="managersPanel"></div>
             </div>
           </section>
         </div>
       </main>
 
       <aside class="sidebar sidebar--filters" id="filters-sidebar" aria-label="Фильтры">
+        <button
+          type="button"
+          class="panel-resize-handle"
+          id="filtersResizeHandle"
+          aria-label="Изменить ширину панели фильтров"
+          aria-orientation="vertical"
+          aria-valuemin="280"
+          aria-valuemax="560"
+          tabindex="0"
+        ></button>
         <div class="sidebar-head">
           <div class="side-block-title">Фильтры</div>
         </div>
         <div class="filters-scroll">
           <div class="filter-block filter-block--multi">
             <button type="button" class="multi-filter__toggle" id="tbFilterToggle" aria-expanded="true" aria-controls="tbFilterPanel">
+              <span class="multi-filter__toggle-icon" id="tbToggleIcon" aria-hidden="true"></span>
               <span class="multi-filter__title">ТБ</span>
               <span class="multi-filter__badge" id="tbFilterBadge">Все</span>
               <span class="multi-filter__chevron" aria-hidden="true"></span>
@@ -130,14 +164,19 @@
             <div class="multi-filter__panel" id="tbFilterPanel">
               <div id="tbFilterList" class="multi-filter__list multi-filter__list--compact" role="group" aria-label="Фильтр по ТБ"></div>
               <div class="multi-filter__actions">
-                <button type="button" class="btn btn-compact btn-link" id="tbSelectAll">Все ТБ</button>
-                <button type="button" class="btn btn-compact btn-link" id="tbSelectNone">Сброс</button>
+                <button type="button" class="btn-icon" id="tbSelectAll" title="Отметить все ТБ" aria-label="Отметить все ТБ">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </button>
+                <button type="button" class="btn-icon btn-icon--muted" id="tbSelectNone" title="Сбросить выбор ТБ" aria-label="Сбросить выбор ТБ">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                </button>
               </div>
             </div>
           </div>
 
           <div class="filter-block filter-block--multi">
             <button type="button" class="multi-filter__toggle" id="groupFilterToggle" aria-expanded="true" aria-controls="groupFilterPanel">
+              <span class="multi-filter__toggle-icon" id="groupToggleIcon" aria-hidden="true"></span>
               <span class="multi-filter__title">Группы продуктов</span>
               <span class="multi-filter__badge" id="groupFilterBadge">Все</span>
               <span class="multi-filter__chevron" aria-hidden="true"></span>
@@ -146,14 +185,19 @@
               <input type="search" class="multi-filter__search" id="groupFilterSearch" placeholder="Поиск группы…" autocomplete="off">
               <div id="groupFilterList" class="multi-filter__list" role="group" aria-label="Фильтр по группам"></div>
               <div class="multi-filter__actions">
-                <button type="button" class="btn btn-compact btn-link" id="groupSelectAll">Все</button>
-                <button type="button" class="btn btn-compact btn-link" id="groupSelectNone">Сброс</button>
+                <button type="button" class="btn-icon" id="groupSelectAll" title="Отметить все группы" aria-label="Отметить все группы">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </button>
+                <button type="button" class="btn-icon btn-icon--muted" id="groupSelectNone" title="Сбросить выбор групп" aria-label="Сбросить выбор групп">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                </button>
               </div>
             </div>
           </div>
 
           <div class="filter-block filter-block--multi" id="productFilterBlock">
             <button type="button" class="multi-filter__toggle" id="productFilterToggle" aria-expanded="false" aria-controls="productFilterPanel">
+              <span class="multi-filter__toggle-icon" id="productToggleIcon" aria-hidden="true"></span>
               <span class="multi-filter__title">Продукты</span>
               <span class="multi-filter__badge" id="productFilterBadge">Все</span>
               <span class="multi-filter__chevron" aria-hidden="true"></span>
@@ -162,19 +206,29 @@
               <input type="search" class="multi-filter__search" id="productFilterSearch" placeholder="Поиск продукта…" autocomplete="off">
               <div id="productFilterList" class="multi-filter__list multi-filter__list--tall" role="group" aria-label="Фильтр по продуктам"></div>
               <div class="multi-filter__actions">
-                <button type="button" class="btn btn-compact btn-link" id="productSelectAll">Все</button>
-                <button type="button" class="btn btn-compact btn-link" id="productSelectNone">Сброс</button>
+                <button type="button" class="btn-icon" id="productSelectAll" title="Отметить все продукты" aria-label="Отметить все продукты">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </button>
+                <button type="button" class="btn-icon btn-icon--muted" id="productSelectNone" title="Сбросить выбор продуктов" aria-label="Сбросить выбор продуктов">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                </button>
               </div>
             </div>
           </div>
           <div class="filter-block">
-            <div class="filter-block__label">Стадия (статус)</div>
+            <div class="filter-block__label filter-block__label--icon">
+              <span class="filter-block__label-icon" id="stageBlockIcon" aria-hidden="true"></span>
+              Стадия (статус)
+            </div>
             <select id="stageFilter" class="field-control">
               <option value="">Все стадии</option>
             </select>
           </div>
           <div class="filter-block">
-            <div class="filter-block__label">Уровень анализа</div>
+            <div class="filter-block__label filter-block__label--icon">
+              <span class="filter-block__label-icon" id="levelBlockIcon" aria-hidden="true"></span>
+              Уровень анализа
+            </div>
             <select id="levelFilter" class="field-control">
               <option value="">Любой</option>
               <option value="status">status</option>
@@ -183,7 +237,7 @@
           </div>
           <div class="filter-block filter-block--bulk">
             <div class="filter-block__label">Сброс</div>
-            <button type="button" class="btn btn-compact" id="resetFilters">Сбросить фильтры</button>
+            <button type="button" class="btn-icon btn-icon--wide" id="resetFilters" title="Сбросить все фильтры" aria-label="Сбросить все фильтры"></button>
             <div class="stats-box" id="filterStats"></div>
           </div>
         </div>
@@ -209,9 +263,11 @@
   </div>
 
   <script src="js/data.js"></script>
+  <script src="js/icons.js"></script>
   <script src="js/multi-filter.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/pivot.js"></script>
+  <script src="js/managers.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

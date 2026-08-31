@@ -329,6 +329,7 @@ HTML-дашборд выбирает срез переключателем «А�
 | `default_indicator` | `min`, `max`, `p20`, `p50`, `p80` |
 | `excel_max_chart_series` | Число графиков на листе Excel |
 | `max_chart_series` | Макс. линий на одном HTML-графике |
+| `precompute_html_filter_slices` | `true` — все комбинации `config.filters` в JSON (пустые пропускаются) |
 
 JSON содержит блок `visualizations`:
 
@@ -339,15 +340,42 @@ JSON содержит блок `visualizations`:
 | `pivot_flat` | Длинный формат для матрицы (HTML строит матрицу из него) |
 | `pivot_matrices` | Предрасчёт (по умолчанию пусто, см. `performance.precompute_pivot_matrices`) |
 | `default_pivot_matrix` | Срез по умолчанию |
-| `default_view` | `{ tb, metric, indicator }` для UI |
+| `default_view` | `{ tb, metric, indicator, aggregation, filter_slice }` для UI |
+| `filter_catalog` | Описание фильтров из `config.filters` для HTML |
+| `filter_slices` | Предрасчитанные срезы: ключ `none` или `name1+name2` → `{ aggregations, record_count, series_count }` |
+| `aggregations` | Срез по умолчанию (`none`) — совместимость со старым HTML |
+
+Структура `filter_slices` (без дублирования `stage_order` / `metrics`):
+
+```json
+"filter_slices": {
+  "none": {
+    "active_filters": [],
+    "label": "Без pipeline-фильтров",
+    "record_count": 13182,
+    "series_count": 308,
+    "aggregations": {
+      "group_product": { "distribution_series": [], "pivot_flat": [] },
+      "group_only": { "distribution_series": [], "pivot_flat": [] }
+    }
+  },
+  "efs_flag+strategy_label": { "...": "..." }
+}
+```
+
+Пустые комбинации в JSON не попадают. `dashboard.precompute_html_filter_slices` (по умолчанию `true`) — предрасчёт всех 2^N комбинаций.
 
 В `meta` JSON дополнительно:
 
 | Ключ | Описание |
 |------|----------|
-| `filters_applied` | Список включённых pipeline-фильтров (`filters.*.enabled=true`) |
-| `filters_active` | `true`, если хотя бы один фильтр применён при экспорте |
-| `data_scope_note` | Пояснение: все данные уже после pipeline-фильтров |
+| `filter_catalog` | Каталог HTML-фильтров (подписи, column_key, type) |
+| `filter_slice_keys` | Список ключей срезов в JSON |
+| `excel_product_analysis_mode` | Режим Excel из config |
+| `json_aggregation_modes` | `["group_product", "group_only"]` |
+| `filters_applied` | Фильтры с `enabled=true` в config (только Excel) |
+| `filters_active` | `true`, если Excel-фильтры включены в config |
+| `data_scope_note` | Excel vs JSON vs HTML |
 
 В `dimensions.filter_dimensions` — фактические значения колонок фильтров в отфильтрованном срезе.
 
@@ -357,13 +385,13 @@ JSON содержит блок `visualizations`:
 
 | Возможность | Описание |
 |-------------|----------|
-| Агрегация строк | Переключатель «По продуктам» / «По группам» — срез из `visualizations.aggregations` |
+| Агрегация строк | Переключатель «По продуктам» / «По группам» — срез из `filter_slices.*.aggregations` |
+| Pipeline-фильтры | Левая панель: кнопки ВКЛ/ВЫКЛ по `filter_catalog` |
 | Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск, сворачивание |
 | Графики «свод + каждый» | Сверху все выбранные ТБ/группы/продукты; ниже — отдельная карточка на каждый |
 | Режим «По группам» | Фильтр продуктов скрыт; строки матрицы и графики — группы |
-| Режим «Пo ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
+| Режим «По ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
 | Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
-| Pipeline-фильтры | Оранжевый баннер, если `meta.filters_active` |
 
 Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/multi-filter.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
 
@@ -566,29 +594,73 @@ HEX без `#`: min — зелёный, max — красный.
 }
 ```
 
-### Текстовый фильтр
+### Фильтры по метке (взаимоисключающие в HTML)
 
-`strategy_label`:
+Два варианта для колонки «Метка». В **Excel** включается один из них через `enabled: true`. В **JSON** предрасчитываются оба (+ комбинации с другими фильтрами). В **HTML** — кнопки ВКЛ/ВЫКЛ; одновременно активен не более одного варианта метки.
+
+| Имя | Условие |
+|-----|---------|
+| `strategy_label` | Метка содержит «Стратегия» (без учёта регистра) |
+| `strategy_label_2026` | Метка содержит **и** «Стратегия», **и** «2026» (без учёта регистра) |
 
 | Поле | Описание |
 |------|----------|
-| `enabled` | `true` / `false` |
+| `enabled` | `true` / `false` (Excel) |
 | `column_key` | `"label"` |
-| `contains` | Подстрока в «Метка» |
+| `contains` | Одна подстрока (`strategy_label`) |
+| `contains_all` | Список подстрок, все обязательны (`strategy_label_2026`) |
 | `case_sensitive` | `false` — без учёта регистра |
+| `exclusive_group` | `"strategy_label"` — группа взаимоисключения в HTML |
 
 ```json
 "strategy_label": {
-  "enabled": true,
+  "enabled": false,
   "column_key": "label",
   "contains": "Стратегия",
-  "case_sensitive": false
+  "case_sensitive": false,
+  "exclusive_group": "strategy_label"
+},
+"strategy_label_2026": {
+  "enabled": false,
+  "column_key": "label",
+  "contains_all": ["Стратегия", "2026"],
+  "case_sensitive": false,
+  "exclusive_group": "strategy_label"
 }
 ```
 
 > Без включённых фильтров анализируются **все** строки.
 
-При экспорте JSON в `meta.filters_applied` попадают только фильтры с `enabled: true`. HTML-дашборд показывает баннер — данные уже срезаны pipeline, повторно не фильтрует по `config.filters`.
+При экспорте JSON в `meta.filters_applied` попадают только фильтры с `enabled: true` (Excel). HTML переключает срезы из `visualizations.filter_slices` кнопками **ВКЛ/ВЫКЛ** по `filter_catalog`.
+
+---
+
+## 14. Аналитика менеджеров (`manager_analytics`, колонка `km`)
+
+Менеджер — **ФИО** из колонки Excel **КМ** (`columns.km`).
+
+| Поле | Описание |
+|------|----------|
+| `enabled` | `true` / `false` |
+| `metric` | Метрика срока (обычно `days_on_stage`) |
+| `percentile` | Порог перцентиля (обычно `80`) |
+| `threshold_scope` | `overall` — порог из общей сводки без ТБ |
+| `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) |
+
+**Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ; в Excel — лист **Менеджеры**, отдельный JSON `kanban_report_managers_*.json`, HTML — блок BOTTOM на вкладке матрицы.
+
+> Если колонки **КМ** нет во входных файлах, этап пропускается без ошибки.
+
+```json
+"columns": { "km": "КМ" },
+"manager_analytics": {
+  "enabled": true,
+  "metric": "days_on_stage",
+  "percentile": 80,
+  "threshold_scope": "overall",
+  "top_managers_per_tb": 3
+}
+```
 
 ---
 

@@ -12,8 +12,13 @@ from src.visualization_data import (
     build_visualization_payload,
     series_chart_points,
 )
-from src.settings import with_product_analysis_mode
-from src.aggregator import build_all_statistics
+from src.filter_slices import (
+    apply_filter_subset,
+    build_filter_catalog,
+    build_slice_aggregations,
+    filter_slice_key,
+    iter_filter_combinations,
+)
 
 
 def test_distribution_points_sorted() -> None:
@@ -176,16 +181,16 @@ def test_json_payload_contains_both_aggregations() -> None:
         "stages_order": ["S"],
         "performance": {"compact_distribution_series": True},
     }
-    stats_product = build_all_statistics(records, config)
-    stats_group = build_all_statistics(records, with_product_analysis_mode(config, "group_only"))
     payload = build_json_visualization_payload(
-        records,
-        {"group_product": stats_product, "group_only": stats_group},
         config,
+        {
+            "none": {
+                "active_filters": [],
+                "label": "Без pipeline-фильтров",
+                **build_slice_aggregations(records, config),
+            }
+        },
+        build_filter_catalog(config),
     )
     assert "aggregations" in payload
-    product_series = payload["aggregations"]["group_product"]["distribution_series"]
-    group_series = payload["aggregations"]["group_only"]["distribution_series"]
-    assert len(product_series) > len(group_series)
-    assert all(s["row_key"] == "G1" for s in group_series if s["tb"] == "T1")
-    assert payload["excel_product_analysis_mode"] == "group_product"
+    assert payload["filter_slices"]["none"]
