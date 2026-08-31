@@ -27,6 +27,7 @@ KANBAN_HTML_Analiz/
 │   ├── lead_tracker.py
 │   ├── filters.py
 │   ├── aggregator.py
+│   ├── percentile_stats.py
 │   ├── excel_exporter.py
 │   ├── json_exporter.py
 │   ├── data_audit.py
@@ -34,7 +35,8 @@ KANBAN_HTML_Analiz/
 │   ├── performance.py
 │   ├── progress.py
 │   └── Tests/
-│       └── test_excel_loader.py
+│       ├── test_excel_loader.py
+│       └── test_percentile_stats.py
 └── Docs/
     ├── CONFIG.md         # справочник config.json
     ├── BT_KANBAN.md

@@ -119,6 +119,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "min_header_marker": "Мин",
             "max_header_marker": "Макс",
         },
+        "percentile_column_labels": {
+            "days_on_stage": {
+                "days": "П{p} дней",
+                "count": "П{p} лидов",
+                "min": "П{p} мин",
+                "max": "П{p} макс"
+            },
+            "days_since_deal": {
+                "days": "П{p} дн.сделки",
+                "count": "П{p} лид.сделки",
+                "min": "П{p} мин сд.",
+                "max": "П{p} макс сд."
+            }
+        },
         "excel_format": {
             "freeze_panes": "A2",
             "float_format": "0.00",
@@ -250,3 +264,31 @@ def aggregation_group_columns(config: dict[str, Any], records_columns: set[str])
 def empty_stage_values(config: dict[str, Any]) -> set[str]:
     """Значения, считающиеся пустой подстадией."""
     return {str(v) for v in config["processing"]["empty_stage_values"]}
+
+
+def percentile_display_value(p: float) -> str:
+    """Число перцентиля для подстановки в заголовок (20, 50)."""
+    return str(int(p)) if float(p).is_integer() else str(p)
+
+
+def build_percentile_column_mapping(config: dict[str, Any]) -> dict[str, str]:
+    """Генерирует mapping колонок перцентилей → русские заголовки Excel."""
+    from src.percentile_stats import percentile_label
+
+    templates: dict[str, dict[str, str]] = config["output"].get(
+        "percentile_column_labels",
+        DEFAULT_CONFIG["output"]["percentile_column_labels"],
+    )
+    metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
+    percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
+
+    mapping: dict[str, str] = {}
+    for metric in metrics:
+        metric_templates: dict[str, str] = templates.get(metric, templates.get("days_on_stage", {}))
+        for p in percentiles:
+            p_text: str = percentile_display_value(p)
+            label: str = percentile_label(p)
+            for suffix, template in metric_templates.items():
+                col_name: str = f"{metric}_{label}_{suffix}"
+                mapping[col_name] = template.format(p=p_text)
+    return mapping

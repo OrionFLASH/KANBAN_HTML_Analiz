@@ -115,7 +115,7 @@
 | 6.1 | `aggregate_statistics(records, group_cols, percentiles)` | `src/aggregator.py` | `[v]` |
 | 6.2 | Группировка: общая (без ТБ) | `src/aggregator.py` | `[v]` |
 | 6.3 | Группировка: по ТБ | `src/aggregator.py` | `[v]` |
-| 6.4 | Метрики: min, max, p20, p50, p80, count | `src/aggregator.py` | `[v]` |
+| 6.4 | Метрики: min, max, count + для каждого P: дней, лидов, min, max | `src/percentile_stats.py`, `src/aggregator.py` | `[v]` |
 | 6.5 | Отдельная агрегация для `days_since_deal` | `src/aggregator.py` | `[v]` |
 | 6.6 | Тест агрегации | `src/Tests/test_aggregator.py` | `[ ]` |
 

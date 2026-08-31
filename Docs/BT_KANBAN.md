@@ -179,7 +179,16 @@
       "current_status": "...",
       "deal_stage": "...|null",
       "metrics": {
-        "days_on_stage": { "min": 0, "max": 100, "p20": 5, "p50": 15, "p80": 30, "count": 42 },
+        "days_on_stage": {
+          "min": 0,
+          "max": 100,
+          "count": 42,
+          "percentiles": {
+            "p20": { "days": 5, "count": 9, "min": 0, "max": 5 },
+            "p50": { "days": 15, "count": 21, "min": 0, "max": 15 },
+            "p80": { "days": 30, "count": 34, "min": 0, "max": 30 }
+          }
+        },
         "days_since_deal": { "...": "..." }
       }
     }
@@ -227,7 +236,8 @@
 | `excel_loader.py` | Параллельное чтение xlsx (ProcessPoolExecutor) |
 | `dictionaries.py` | Построение справочников ТБ/стадий/продуктов |
 | `lead_tracker.py` | Трекинг стадий по ID ПрПр |
-| `aggregator.py` | Min/max/percentiles через pandas |
+| `aggregator.py` | Min/max и эмпирические перцентили (целые дни) |
+| `percentile_stats.py` | Расчёт перцентилей по шкале лидов |
 | `filters.py` | Применение бинарных и текстовых фильтров |
 | `excel_exporter.py` | Форматированный xlsx (openpyxl) |
 | `json_exporter.py` | JSON для HTML |

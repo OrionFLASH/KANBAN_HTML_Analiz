@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from src.settings import col
+from src.settings import build_percentile_column_mapping, col
 
 logger: logging.Logger = logging.getLogger("kanban.excel_exporter")
 
@@ -34,6 +34,7 @@ def _build_export_mapping(config: dict[str, Any]) -> dict[str, str]:
         "days_since_deal_max": labels.get("days_since_deal_max", "Макс дней с создания сделки"),
         "days_since_deal_count": labels.get("days_since_deal_count", "Число лидов (сделка)"),
     }
+    mapping.update(build_percentile_column_mapping(config))
     return mapping
 
 

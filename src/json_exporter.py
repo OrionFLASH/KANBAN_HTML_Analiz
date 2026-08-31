@@ -10,9 +10,31 @@ from typing import Any
 
 import pandas as pd
 
+from src.percentile_stats import percentile_label
 from src.settings import col
 
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
+
+PERCENTILE_METHOD: str = "empirical_bottom_tail_integer_days"
+PERCENTILE_METHOD_DESCRIPTION: str = (
+    "Сроки лидов сортируются по возрастанию. Перцентиль P — нижние p% лидов "
+    "(округление вверх: ceil(p/100×N), минимум 1). Значение P — целое число дней "
+    "на границе этой доли; min/max — среди этих же лидов."
+)
+
+
+def _extract_percentiles(row: dict[str, Any], metric: str, percentiles: list[float]) -> dict[str, Any]:
+    """Собирает вложенный блок percentiles для одной метрики."""
+    result: dict[str, Any] = {}
+    for p in percentiles:
+        label: str = percentile_label(p)
+        result[label] = {
+            "days": row.get(f"{metric}_{label}_days"),
+            "count": row.get(f"{metric}_{label}_count"),
+            "min": row.get(f"{metric}_{label}_min"),
+            "max": row.get(f"{metric}_{label}_max"),
+        }
+    return result
 
 
 def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -24,6 +46,7 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
     group_name: str = col(config, "product_group")
     product_name: str = col(config, "product")
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
+    percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
 
     records: list[dict[str, Any]] = []
     for row in frame.to_dict(orient="records"):
@@ -42,17 +65,8 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
                 "min": row.get(f"{metric}_min"),
                 "max": row.get(f"{metric}_max"),
                 "count": row.get(f"{metric}_count"),
+                "percentiles": _extract_percentiles(row, metric, percentiles),
             }
-        for key, value in row.items():
-            key_str: str = str(key)
-            for metric in metrics:
-                prefix = f"{metric}_"
-                if key_str.startswith(prefix) and key_str not in {
-                    f"{metric}_min",
-                    f"{metric}_max",
-                    f"{metric}_count",
-                }:
-                    item["metrics"][metric][key_str.replace(prefix, "")] = value
         records.append(item)
     return records
 
@@ -71,6 +85,8 @@ def export_json(
             "duration_source": config.get("duration_source"),
             "stage_analysis_mode": config.get("stage_analysis_mode"),
             "percentiles": config.get("percentiles"),
+            "percentile_method": PERCENTILE_METHOD,
+            "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
             "filters": config.get("filters"),
             "columns": config.get("columns"),
         },

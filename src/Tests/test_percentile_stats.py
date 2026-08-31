@@ -1,0 +1,38 @@
+"""Тесты эмпирических перцентилей."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from src.percentile_stats import compute_metric_percentiles, empirical_percentile_stats
+
+
+def test_empirical_p20_ten_leads() -> None:
+    """10 лидов: нижние 20% = 2 лида с минимальными сроками."""
+    values: np.ndarray = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], dtype=np.int64)
+    stats = empirical_percentile_stats(values, 20.0)
+    assert stats == {"days": 20, "count": 2, "min": 10, "max": 20}
+
+
+def test_empirical_p50_ten_leads() -> None:
+    """Медиана по шкале лидов — 5-й по счёту срок."""
+    values: np.ndarray = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], dtype=np.int64)
+    stats = empirical_percentile_stats(values, 50.0)
+    assert stats == {"days": 50, "count": 5, "min": 10, "max": 50}
+
+
+def test_integer_days_only() -> None:
+    """Колонки перцентилей содержат только целые дни."""
+    values: np.ndarray = np.array([1, 2, 3, 4, 5], dtype=np.int64)
+    row = compute_metric_percentiles(values, [20, 50], "days_on_stage")
+    assert row["days_on_stage_p20_days"] == 1
+    assert row["days_on_stage_p50_days"] == 3
+    assert isinstance(row["days_on_stage_p20_days"], int)
+
+
+def test_empty_group() -> None:
+    """Пустая выборка — нули и None без дробей."""
+    row = compute_metric_percentiles(np.array([], dtype=np.int64), [20], "days_on_stage")
+    assert row["days_on_stage_count"] == 0
+    assert row["days_on_stage_p20_days"] is None
+    assert row["days_on_stage_p20_count"] == 0

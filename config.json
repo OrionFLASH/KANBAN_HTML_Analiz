@@ -112,6 +112,20 @@
       "min_header_marker": "Мин",
       "max_header_marker": "Макс"
     },
+    "percentile_column_labels": {
+      "days_on_stage": {
+        "days": "П{p} дней",
+        "count": "П{p} лидов",
+        "min": "П{p} мин",
+        "max": "П{p} макс"
+      },
+      "days_since_deal": {
+        "days": "П{p} дн.сделки",
+        "count": "П{p} лид.сделки",
+        "min": "П{p} мин сд.",
+        "max": "П{p} макс сд."
+      }
+    },
     "excel_format": {
       "freeze_panes": "A2",
       "float_format": "0.00",
