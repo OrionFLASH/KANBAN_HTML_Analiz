@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -108,5 +109,8 @@ def export_json(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
+
+    latest_path: Path = output_path.parent / "kanban_report_latest.json"
+    shutil.copy2(output_path, latest_path)
 
     logger.info("JSON сохранён: %s", output_path)

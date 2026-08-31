@@ -79,6 +79,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "progress": {
         "enabled": True,
         "log_every_seconds": 3,
+        "show_timing_summary": True,
     },
     "dates": {
         "dayfirst": True,

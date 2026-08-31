@@ -61,9 +61,16 @@
     );
     fillSelect(controls.tbFilter, KanbanData.tbOptions());
 
+    const preferredTb = defaultView.tb || KanbanData.allTbLabel();
+    const hasTbSeries = (tb) =>
+      KanbanData.distributionSeries().some((s) => String(s.tb) === tb);
+    const tbOptions = KanbanData.tbOptions();
+    controls.tbFilter.value = hasTbSeries(preferredTb)
+      ? preferredTb
+      : (tbOptions[0]?.value || preferredTb);
+
     controls.metricSelect.value = defaultView.metric || "days_on_stage";
     controls.indicatorSelect.value = defaultView.indicator || "p80";
-    controls.tbFilter.value = defaultView.tb || KanbanData.allTbLabel();
 
     fillSelect(
       controls.groupFilter,

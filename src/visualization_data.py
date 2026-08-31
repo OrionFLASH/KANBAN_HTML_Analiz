@@ -197,9 +197,50 @@ def build_all_pivot_matrices(
     return matrices
 
 
+def _append_distribution_series(
+    series_list: list[dict[str, Any]],
+    group: pd.DataFrame,
+    tb_name: str,
+    product_group: str,
+    product: str,
+    stage_key: str,
+    config: dict[str, Any],
+    metrics: list[str],
+) -> None:
+    """Добавляет серии распределения для одной группы лидов."""
+    for metric in metrics:
+        if metric not in group.columns:
+            continue
+        int_days: np.ndarray = to_integer_days(group[metric])
+        if len(int_days) == 0:
+            continue
+
+        sorted_days: np.ndarray = np.sort(int_days)
+        row_label: str = str(product_group if is_group_only_analysis(config) else product)
+        series_entry: dict[str, Any] = {
+            "tb": str(tb_name),
+            "product_group": str(product_group),
+            "product": str(product),
+            "row_key": row_label,
+            "row_dimension": analysis_row_key(config),
+            "stage_key": str(stage_key),
+            "analysis_level": str(group["analysis_level"].iloc[0]) if "analysis_level" in group.columns else None,
+            "metric": metric,
+            "total_leads": int(len(sorted_days)),
+        }
+        if config.get("performance", {}).get("compact_distribution_series", True):
+            series_entry["days_sorted"] = [int(day) for day in sorted_days]
+        else:
+            series_entry["points"] = [
+                {"lead_index": idx + 1, "days": int(day)} for idx, day in enumerate(sorted_days)
+            ]
+        series_list.append(series_entry)
+
+
 def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Кумулятивные кривые для графика: X — номер лида (1..N), Y — срок в днях (сортировка по возрастанию).
+    Серии по каждому ТБ и сводная серия с меткой all_tb_label (__ALL__).
     """
     if records.empty:
         return []
@@ -208,14 +249,17 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
     group_col: str = col(config, "product_group")
     product_col: str = col(config, "product")
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
-    group_columns: list[str] = [tb_col, group_col, "stage_key"]
+    all_tb_label: str = str(config.get("dashboard", {}).get("all_tb_label", "__ALL__"))
+
+    group_columns_tb: list[str] = [tb_col, group_col, "stage_key"]
+    group_columns_all: list[str] = [group_col, "stage_key"]
     if not is_group_only_analysis(config):
-        group_columns.insert(2, product_col)
+        group_columns_tb.insert(2, product_col)
+        group_columns_all.insert(1, product_col)
 
     series_list: list[dict[str, Any]] = []
-    grouped = records.groupby(group_columns, dropna=False, observed=True)
 
-    for keys, group in grouped:
+    for keys, group in records.groupby(group_columns_tb, dropna=False, observed=True):
         if not isinstance(keys, tuple):
             keys = (keys,)
         if is_group_only_analysis(config):
@@ -223,34 +267,21 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
             product = group_only_product_label(config)
         else:
             tb_name, product_group, product, stage_key = keys
+        _append_distribution_series(
+            series_list, group, tb_name, product_group, product, stage_key, config, metrics
+        )
 
-        for metric in metrics:
-            if metric not in group.columns:
-                continue
-            int_days: np.ndarray = to_integer_days(group[metric])
-            if len(int_days) == 0:
-                continue
-
-            sorted_days: np.ndarray = np.sort(int_days)
-            row_label: str = str(product_group if is_group_only_analysis(config) else product)
-            series_entry: dict[str, Any] = {
-                "tb": str(tb_name),
-                "product_group": str(product_group),
-                "product": str(product),
-                "row_key": row_label,
-                "row_dimension": analysis_row_key(config),
-                "stage_key": str(stage_key),
-                "analysis_level": str(group["analysis_level"].iloc[0]) if "analysis_level" in group.columns else None,
-                "metric": metric,
-                "total_leads": int(len(sorted_days)),
-            }
-            if config.get("performance", {}).get("compact_distribution_series", True):
-                series_entry["days_sorted"] = [int(day) for day in sorted_days]
-            else:
-                series_entry["points"] = [
-                    {"lead_index": idx + 1, "days": int(day)} for idx, day in enumerate(sorted_days)
-                ]
-            series_list.append(series_entry)
+    for keys, group in records.groupby(group_columns_all, dropna=False, observed=True):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        if is_group_only_analysis(config):
+            product_group, stage_key = keys
+            product = group_only_product_label(config)
+        else:
+            product_group, product, stage_key = keys
+        _append_distribution_series(
+            series_list, group, all_tb_label, product_group, product, stage_key, config, metrics
+        )
 
     return series_list
 

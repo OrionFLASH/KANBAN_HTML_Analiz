@@ -40,10 +40,42 @@ def test_distribution_points_sorted() -> None:
         "performance": {"compact_distribution_series": True},
     }
     series = build_distribution_series(records, config)
-    assert len(series) == 1
-    assert series[0]["days_sorted"] == [10, 20, 30]
-    points = series[0].get("points")
-    assert points is None
+    assert len(series) == 2
+    by_tb = [s for s in series if s["tb"] == "T1"]
+    by_all = [s for s in series if s["tb"] == "__ALL__"]
+    assert len(by_tb) == 1
+    assert len(by_all) == 1
+    assert by_tb[0]["days_sorted"] == [10, 20, 30]
+    assert by_all[0]["days_sorted"] == [10, 20, 30]
+
+
+def test_distribution_series_all_tb_multiple_banks() -> None:
+    """Сводные серии __ALL__ объединяют лиды всех ТБ."""
+    records = pd.DataFrame(
+        {
+            "ТБ": ["T1", "T2"],
+            "Группа продукта": ["G", "G"],
+            "Продукт": ["P", "P"],
+            "stage_key": ["S", "S"],
+            "analysis_level": ["status", "status"],
+            "days_on_stage": [10, 30],
+            "days_since_deal": [1, 1],
+        }
+    )
+    config = {
+        "columns": {"tb": "ТБ", "product_group": "Группа продукта", "product": "Продукт"},
+        "aggregation": {"metrics": ["days_on_stage"]},
+        "percentiles": [50],
+        "stages_order": ["S"],
+        "dashboard": {"all_tb_label": "__ALL__"},
+        "excel": {"category_markers": {}},
+        "performance": {"compact_distribution_series": True},
+    }
+    series = build_distribution_series(records, config)
+    all_series = [s for s in series if s["tb"] == "__ALL__"]
+    assert len(all_series) == 1
+    assert all_series[0]["days_sorted"] == [10, 30]
+    assert all_series[0]["total_leads"] == 2
 
 
 def test_series_chart_points_from_days_sorted() -> None:

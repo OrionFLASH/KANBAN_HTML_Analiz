@@ -55,7 +55,7 @@ log/                 # логи INFO/DEBUG
 | `excel` | Лист, таблица Base, движок |
 | `processing` | Дедупликация, аудит, fallback сроков |
 | `performance` | Workers, память, оптимизация чтения |
-| `progress` | Вывод статуса в консоль |
+| `progress` | Вывод статуса, тайминг этапов, сводка в конце |
 | `dates` | Форматы дат, пустые значения |
 | `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа |
 | `aggregation` | Группировки и метрики |
@@ -124,3 +124,4 @@ cd HTML && python -m http.server 8080
 | 0.4.0 | 2026-08-31 | Аудит полноты данных, Docs/CONFIG.md |
 | 0.5.0 | 2026-08-31 | HTML-дашборд, Excel Матрица/Графики, visualizations в JSON |
 | 0.6.0 | 2026-08-31 | Оптимизация: один проход viz, compact JSON, tb_sheets из by_tb, itertuples |
+| 0.6.1 | 2026-08-31 | Серии __ALL__ для графиков, тайминг этапов pipeline, kanban_report_latest.json |

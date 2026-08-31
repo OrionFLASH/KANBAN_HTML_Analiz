@@ -39,8 +39,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     progress = ProgressReporter(config, logger)
 
     workers: int = resolve_parallel_workers(config)
-    progress.stage("Старт", f"режим={config['mode']}, workers={workers}")
-    logger.info("Старт pipeline Kanban Analiz")
+    logger.info("Старт pipeline Kanban Analiz (режим=%s, workers=%d)", config["mode"], workers)
 
     input_dir: Path = get_input_dir(config)
     filenames: list[str] = get_file_list(config)
@@ -78,8 +77,9 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     dimensions = build_dimensions(filtered_df, config)
     progress.done("Справочники построены")
 
-    progress.stage("Трекинг лидов по стадиям")
+    progress.stage("Трекинг лидов по стадиям", f"{len(filtered_df):,} строк")
     records = build_lead_stage_records(filtered_df, config, progress)
+    progress.done(f"Записей lead×стадия: {len(records):,}")
     del filtered_df
     _maybe_free_memory(config)
 
@@ -92,7 +92,9 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     stats = build_all_statistics(records, config)
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
+    progress.stage("Визуализация")
     visualizations: dict = build_visualization_payload(records, stats, config)
+    progress.done("Данные для графиков и матрицы подготовлены")
 
     progress.stage("Экспорт Excel")
     export_excel(stats, excel_path, config, visualizations=visualizations)
@@ -103,7 +105,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline
-    progress.done(f"Pipeline завершён за {elapsed:.1f} сек")
+    progress.timing_summary(total_wall=elapsed)
     logger.info("Готово за %.1f сек. Excel: %s, JSON: %s", elapsed, excel_path, json_path)
     return excel_path, json_path
 

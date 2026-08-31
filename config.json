@@ -71,7 +71,8 @@
   },
   "progress": {
     "enabled": true,
-    "log_every_seconds": 3
+    "log_every_seconds": 3,
+    "show_timing_summary": true
   },
   "dates": {
     "dayfirst": true,
