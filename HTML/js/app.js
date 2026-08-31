@@ -11,6 +11,8 @@
   const productFilterBlock = document.getElementById("productFilterBlock");
   const pipelineFilterList = document.getElementById("pipelineFilterList");
   const pipelineFilterBlock = document.getElementById("pipelineFilterBlock");
+  const configLockedFiltersBlock = document.getElementById("configLockedFiltersBlock");
+  const configLockedFiltersList = document.getElementById("configLockedFiltersList");
   const managersPanel = document.getElementById("managersPanel");
 
   const controls = {
@@ -95,7 +97,7 @@
       metric: controls.metricSelect.value,
       indicator: controls.indicatorSelect.value,
       stage: controls.stageFilter.value,
-      level: controls.levelFilter.value,
+      level: KanbanData.isAnalysisLevelLocked() ? "" : controls.levelFilter?.value || "",
     };
   }
 
@@ -203,10 +205,102 @@
     });
   }
 
+  function lockedFilterUi(item) {
+    const labels = {
+      change_conditions: { title: "Изм. условий", hint: "Изменение условий сделки" },
+      data_entry: { title: "Ввод данных", hint: "Флаг ввода данных" },
+      efs_flag: { title: "ЕФС", hint: "Единый фронт продаж" },
+      exclude_deal_otkaz: { title: "Без отказа", hint: "Исключить стадии/статусы с «отказ»" },
+      exclude_deal_zakryta: { title: "Без закрытых", hint: "Исключить стадии с «закрыта»" },
+      exclude_deal_zaklyuchen: { title: "Без заключён.", hint: "Исключить стадии с «заключен»" },
+      exclude_current_for_sale: {
+        title: "Без «К ПРОДАЖЕ»",
+        hint: "Только лиды с текущим статусом ≠ «К ПРОДАЖЕ»",
+      },
+    };
+    const meta = labels[item.name] || {
+      title: item.short_label || item.name,
+      hint: item.column_label || item.name,
+    };
+
+    let stateText = "выкл";
+    let stateKind = "off";
+    if (item.filter_mode === "exclude") {
+      if (item.enabled) {
+        stateText = "искл.";
+        stateKind = "on";
+      } else {
+        stateText = "выкл";
+        stateKind = "off";
+      }
+    } else if (!item.enabled) {
+      stateText = "все";
+      stateKind = "off";
+    } else if (Number(item.value) === 1) {
+      stateText = "вкл";
+      stateKind = "on";
+    } else {
+      stateText = "выкл";
+      stateKind = "off";
+    }
+
+    return {
+      title: meta.title,
+      stateText,
+      stateKind,
+      tooltip: item.tooltip || `${meta.hint}. Сейчас: ${stateText}`,
+    };
+  }
+
+  function populateConfigLockedFilters() {
+    if (!configLockedFiltersBlock || !configLockedFiltersList) return;
+    const locked = KanbanData.configLockedFilters();
+    configLockedFiltersList.innerHTML = "";
+    if (!locked.length) {
+      configLockedFiltersBlock.hidden = true;
+      return;
+    }
+    configLockedFiltersBlock.hidden = false;
+
+    locked.forEach((item) => {
+      const ui = lockedFilterUi(item);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "locked-chip";
+      chip.setAttribute("role", "listitem");
+      chip.classList.toggle("is-on", ui.stateKind === "on");
+      chip.classList.toggle("is-off", ui.stateKind === "off");
+      chip.title = ui.tooltip;
+      chip.setAttribute("aria-label", ui.tooltip);
+
+      const iconWrap = document.createElement("span");
+      iconWrap.className = "locked-chip__icon";
+      iconWrap.appendChild(KanbanIcons.create(KanbanIcons.pipelineIcon(item.name), "icon icon--sm"));
+
+      const body = document.createElement("span");
+      body.className = "locked-chip__body";
+
+      const text = document.createElement("span");
+      text.className = "locked-chip__text";
+      text.textContent = ui.title;
+
+      const mark = document.createElement("span");
+      mark.className = "locked-chip__mark";
+      mark.textContent = ui.stateText;
+
+      body.appendChild(text);
+      body.appendChild(mark);
+      chip.appendChild(iconWrap);
+      chip.appendChild(body);
+      configLockedFiltersList.appendChild(chip);
+    });
+  }
+
   function populatePipelineFilters() {
     if (!pipelineFilterList) return;
     const catalog = KanbanData.filterCatalog();
     pipelineFilterList.innerHTML = "";
+    populateConfigLockedFilters();
     if (!catalog.length) {
       if (pipelineFilterBlock) pipelineFilterBlock.hidden = true;
       return;
@@ -229,7 +323,7 @@
 
       const groupTitle = document.createElement("div");
       groupTitle.className = "pipeline-toggle-group__title";
-      groupTitle.textContent = "Исключить терминальные стадии сделки";
+      groupTitle.textContent = "Исключить терминальные стадии";
       group.appendChild(groupTitle);
 
       exclusion.forEach((item) => {
@@ -240,7 +334,7 @@
 
     if (labelVariants.length) {
       const group = document.createElement("div");
-      group.className = "pipeline-toggle-group";
+      group.className = "pipeline-toggle-group pipeline-toggle-group--exclusive";
       group.dataset.exclusiveGroup = "strategy_label";
 
       const groupTitle = document.createElement("div");
@@ -248,8 +342,15 @@
       groupTitle.textContent = "Метка";
       group.appendChild(groupTitle);
 
+      const hint = document.createElement("p");
+      hint.className = "pipeline-toggle-group__hint";
+      hint.textContent = "Одна или все выкл — не обе сразу";
+      group.appendChild(hint);
+
       labelVariants.forEach((item) => {
-        group.appendChild(createPipelineToggle(item, active.has(item.name)));
+        const toggle = createPipelineToggle(item, active.has(item.name));
+        toggle.classList.add("pipeline-toggle--exclusive");
+        group.appendChild(toggle);
       });
       pipelineFilterList.appendChild(group);
     }
@@ -269,14 +370,23 @@
     const name = btn.dataset.filter;
     const catalog = KanbanData.filterCatalog();
     const item = catalog.find((c) => c.name === name);
+    const exclusiveGroup = item?.exclusive_group || btn.dataset.exclusiveGroup || null;
     const active = new Set(KanbanData.getActivePipelineFilters());
     const turningOn = btn.getAttribute("aria-pressed") !== "true";
 
     if (turningOn) {
-      if (item?.exclusive_group) {
+      // Метки: либо одна, либо ни одной — при включении второй гасим первую
+      if (exclusiveGroup) {
         catalog
-          .filter((c) => c.exclusive_group === item.exclusive_group && c.name !== name)
+          .filter((c) => c.exclusive_group === exclusiveGroup && c.name !== name)
           .forEach((other) => active.delete(other.name));
+        pipelineFilterList
+          ?.querySelectorAll(`.pipeline-toggle[data-exclusive-group="${exclusiveGroup}"]`)
+          .forEach((otherBtn) => {
+            if (otherBtn.dataset.filter !== name) {
+              active.delete(otherBtn.dataset.filter);
+            }
+          });
       }
       active.add(name);
     } else {
@@ -284,7 +394,7 @@
     }
 
     KanbanData.setActivePipelineFilters(Array.from(active));
-    syncPipelineToggleUi(Array.from(active));
+    syncPipelineToggleUi(KanbanData.getActivePipelineFilters());
 
     if (KanbanData.isSplitBundle()) {
       metaInfo.textContent = "Загрузка среза pipeline…";
@@ -325,16 +435,52 @@
   function populateAggregationControl() {
     const modes = KanbanData.availableAggregationModes();
     const current = KanbanData.getAggregationMode();
-    controls.aggregationMode.innerHTML = "";
-    modes.forEach((mode) => {
-      const opt = document.createElement("option");
-      opt.value = mode;
-      opt.textContent = KanbanData.aggregationLabel(mode);
-      controls.aggregationMode.appendChild(opt);
-    });
-    controls.aggregationMode.value = modes.includes(current) ? current : modes[0];
-    KanbanData.setAggregationMode(controls.aggregationMode.value);
+    const lockedEl = document.getElementById("aggregationModeLocked");
+    const mode = modes.includes(current) ? current : modes[0] || "group_product";
+    KanbanData.setAggregationMode(mode);
+    if (controls.aggregationMode) {
+      controls.aggregationMode.value = mode;
+      controls.aggregationMode.hidden = true;
+    }
+    if (lockedEl) {
+      const label = KanbanData.aggregationLabel(mode);
+      lockedEl.querySelector(".locked-chip__text").textContent = label;
+      lockedEl.classList.toggle("is-on", true);
+      lockedEl.title =
+        `Фиксировано в config: product_analysis_mode = ${mode}. ` +
+        "Смена только через config.json (пересчёт JSON).";
+      lockedEl.setAttribute("aria-label", lockedEl.title);
+    }
     updateAggregationUi();
+  }
+
+  function syncAnalysisLevelUi() {
+    const block = document.getElementById("levelFilterBlock");
+    const lockedEl = document.getElementById("levelModeLocked");
+    const locked = KanbanData.isAnalysisLevelLocked();
+    const level = KanbanData.lockedAnalysisLevel();
+
+    if (controls.levelFilter) {
+      controls.levelFilter.hidden = locked;
+      if (locked) controls.levelFilter.value = "";
+    }
+    if (lockedEl) {
+      lockedEl.hidden = !locked;
+      if (locked) {
+        const label =
+          level === "status" ? "Статус" : level === "substage" ? "Подстадии" : level || "status";
+        const text = lockedEl.querySelector(".locked-chip__text");
+        if (text) text.textContent = label;
+        lockedEl.classList.toggle("is-on", true);
+        lockedEl.title =
+          `Фиксировано в config: stage_analysis_mode = ${KanbanData.stageAnalysisMode() || level}. ` +
+          "Фильтр уровня в UI отключён.";
+        lockedEl.setAttribute("aria-label", lockedEl.title);
+      }
+    }
+    if (block && !locked && !controls.levelFilter) {
+      block.hidden = true;
+    }
   }
 
   function populateControlsFromPayload() {
@@ -367,6 +513,7 @@
       true
     );
 
+    syncAnalysisLevelUi();
     updateFilterScopeBanner();
   }
 
@@ -489,25 +636,110 @@
     renderManagers(filters);
   }
 
-  async function onJsonLoaded(text) {
+  function syncManagersTabVisibility() {
+    const show = Boolean(KanbanData.getPayload()?.meta?.show_managers_tab);
+    const btn = document.getElementById("managersTabBtn");
+    const panel = document.getElementById("managersTab");
+    const filePick = document.getElementById("managersFilePick");
+    if (btn) btn.hidden = !show;
+    if (!show && btn?.classList.contains("active")) {
+      btn.classList.remove("active");
+      btn.setAttribute("aria-selected", "false");
+      panel?.classList.remove("active");
+      const chartsBtn = document.querySelector('.mode-tabs .tab[data-tab="charts"]');
+      const chartsPanel = document.getElementById("chartsTab");
+      chartsBtn?.classList.add("active");
+      chartsBtn?.setAttribute("aria-selected", "true");
+      chartsPanel?.classList.add("active");
+    }
+    if (filePick) filePick.hidden = true;
+  }
+
+  const jsonLoadPanel = document.getElementById("jsonLoadPanel");
+  const jsonLoadedPanel = document.getElementById("jsonLoadedPanel");
+  const jsonLoadedName = document.getElementById("jsonLoadedName");
+  const btnResetJson = document.getElementById("btnResetJson");
+  let loadedJsonFileName = "";
+
+  function setJsonLoadUi(loaded, fileName) {
+    if (jsonLoadPanel) jsonLoadPanel.hidden = Boolean(loaded);
+    if (jsonLoadedPanel) jsonLoadedPanel.hidden = !loaded;
+    if (loaded && jsonLoadedName) {
+      const name = fileName || loadedJsonFileName || "Файл загружен";
+      jsonLoadedName.textContent = name;
+      jsonLoadedName.title = name;
+    }
+    const loadLabel = document.getElementById("jsonLoadBlock")?.querySelector(".filter-block__label");
+    if (loadLabel) loadLabel.textContent = loaded ? "Данные" : "Загрузка JSON";
+  }
+
+  function resetDashboardUi() {
+    KanbanData.clearPayload();
+    KanbanManagers.clearPayload();
+    KanbanPivot.resetSort();
+    loadedJsonFileName = "";
+    if (controls.jsonFile) controls.jsonFile.value = "";
+    if (controls.managersJsonFile) controls.managersJsonFile.value = "";
+
+    setJsonLoadUi(false);
+    syncManagersTabVisibility();
+
+    if (pipelineFilterList) pipelineFilterList.innerHTML = "";
+    if (pipelineFilterBlock) pipelineFilterBlock.hidden = true;
+    if (configLockedFiltersBlock) configLockedFiltersBlock.hidden = true;
+    if (configLockedFiltersList) configLockedFiltersList.innerHTML = "";
+
+    chartsGrid.innerHTML =
+      `<div class="empty-state panel"><p class="empty-state__title">Загрузите JSON-отчёт</p>` +
+      `<p>Выберите файл <code>OUT/kanban_report_*.json</code>.</p></div>`;
+    if (pivotTable) {
+      const thead = pivotTable.querySelector("thead");
+      const tbody = pivotTable.querySelector("tbody");
+      if (thead) thead.innerHTML = "";
+      if (tbody) tbody.innerHTML = "";
+    }
+    if (pivotCaption) pivotCaption.textContent = "";
+    if (managersPanel) managersPanel.innerHTML = "";
+    updateStats(0);
+    metaInfo.textContent = "Выберите OUT/kanban_report_*.json (один файл). Сервер не нужен.";
+  }
+
+  async function onJsonLoaded(text, fileName) {
     try {
       KanbanData.loadJson(text);
+      const data = KanbanData.getPayload();
+      loadedJsonFileName = fileName || loadedJsonFileName || "kanban_report.json";
+      setJsonLoadUi(true, loadedJsonFileName);
+      syncManagersTabVisibility();
+
+      if (data?.managers) {
+        KanbanManagers.loadPayload(data.managers);
+      }
+
       if (KanbanData.isSplitBundle()) {
         metaInfo.textContent = "Загрузка среза данных…";
         await KanbanData.prepareActiveSlice();
       }
       metaInfo.textContent = KanbanData.metaLine();
       KanbanPivot.resetSort();
-    populateControlsFromPayload();
-    updateChartModeUi(controls.chartMode.value);
-    refresh();
+      populateControlsFromPayload();
+      updateChartModeUi(controls.chartMode.value);
+      refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      metaInfo.textContent = `Ошибка загрузки JSON: ${message}`;
+      metaInfo.textContent = `Ошибка загрузки: ${message}`;
       console.error("[KANBAN] loadJson failed:", err);
+      setJsonLoadUi(false);
+      const isFetch =
+        /fetch|срез|Failed to fetch|NetworkError|не удалось загрузить срез/i.test(message);
       chartsGrid.innerHTML =
-        `<div class="empty-state panel"><p class="empty-state__title">Не удалось разобрать JSON</p>` +
-        `<p>${message}</p></div>`;
+        `<div class="empty-state panel"><p class="empty-state__title">${
+          isFetch
+            ? "Не удалось подгрузить срез (режим split)"
+            : "Не удалось загрузить JSON"
+        }</p>` +
+        `<p>${message}</p>` +
+        `<p class="filter-block__hint">Нужен monolith: <code>OUT/kanban_report_*.json</code> после <code>run.py</code>.</p></div>`;
     }
   }
 
@@ -515,11 +747,15 @@
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => onJsonLoaded(String(reader.result));
+    reader.onload = () => onJsonLoaded(String(reader.result), file.name);
     reader.onerror = () => {
       metaInfo.textContent = "Не удалось прочитать выбранный файл.";
     };
     reader.readAsText(file, "UTF-8");
+  });
+
+  btnResetJson?.addEventListener("click", () => {
+    resetDashboardUi();
   });
 
   controls.managersJsonFile?.addEventListener("change", (event) => {
@@ -539,7 +775,7 @@
 
   pipelineFilterList?.addEventListener("click", onPipelineToggleClick);
 
-  controls.aggregationMode.addEventListener("change", () => {
+  controls.aggregationMode?.addEventListener("change", () => {
     KanbanData.setAggregationMode(controls.aggregationMode.value);
     updateAggregationUi();
     populateGroupFilter();
@@ -563,7 +799,9 @@
 
   controls.resetFilters.addEventListener("click", () => {
     controls.stageFilter.value = "";
-    controls.levelFilter.value = "";
+    if (!KanbanData.isAnalysisLevelLocked() && controls.levelFilter) {
+      controls.levelFilter.value = "";
+    }
     KanbanData.setActivePipelineFilters(KanbanData.defaultActivePipelineFilters());
     populatePipelineFilters();
     populateTbFilter([]);
@@ -572,6 +810,7 @@
     const defaultView = KanbanData.getPayload()?.visualizations?.default_view || {};
     controls.metricSelect.value = defaultView.metric || "days_on_stage";
     controls.indicatorSelect.value = defaultView.indicator || "p80";
+    syncAnalysisLevelUi();
     refresh();
   });
 
@@ -579,12 +818,25 @@
     const hideBtn = document.getElementById(hideId);
     const showBtn = document.getElementById(showId);
     hideBtn?.addEventListener("click", () => {
+      if (collapsedClass === "is-filters-collapsed") {
+        const cur = parseInt(getComputedStyle(app).getPropertyValue("--filters-w"), 10);
+        if (Number.isFinite(cur) && cur > 0) {
+          app.dataset.filtersWidthBeforeCollapse = String(cur);
+        }
+        app.style.setProperty("--filters-w", "0px");
+      }
       app.classList.add(collapsedClass);
       hideBtn.setAttribute("aria-expanded", "false");
       showBtn?.setAttribute("aria-expanded", "true");
     });
     showBtn?.addEventListener("click", () => {
       app.classList.remove(collapsedClass);
+      if (collapsedClass === "is-filters-collapsed") {
+        const saved = Number(app.dataset.filtersWidthBeforeCollapse || 0);
+        const fallback = 360;
+        const w = saved >= 280 ? saved : fallback;
+        app.style.setProperty("--filters-w", `${w}px`);
+      }
       showBtn.setAttribute("aria-expanded", "false");
       hideBtn?.setAttribute("aria-expanded", "true");
     });
@@ -716,12 +968,18 @@
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       tab.classList.add("active");
       tab.setAttribute("aria-selected", "true");
-      document.getElementById(`${tab.dataset.tab}Tab`).classList.add("active");
+      const panel = document.getElementById(`${tab.dataset.tab}Tab`);
+      panel?.classList.add("active");
       if (tab.dataset.tab === "pivot") {
         refreshKeepPivotSort();
+      } else if (tab.dataset.tab === "managers") {
+        renderManagers(getFilters());
+      } else if (tab.dataset.tab === "charts") {
+        refresh();
       }
     });
   });
 
-  metaInfo.textContent = "Выберите JSON отчёта (manifest или monolith) и при необходимости JSON менеджеров.";
+  metaInfo.textContent =
+    "Выберите OUT/kanban_report_*.json (один файл). Сервер не нужен.";
 })();

@@ -22,11 +22,11 @@ const KanbanData = (() => {
   function defaultActivePipelineFilters() {
     const catalog = filterCatalog();
     const fromCatalog = catalog.filter((item) => item.default_active).map((item) => item.name);
-    if (fromCatalog.length) return fromCatalog.sort();
+    if (fromCatalog.length) return normalizeExclusivePipelineFilters(fromCatalog);
     const defaultSlice =
       payload?.visualizations?.default_view?.filter_slice || payload?.meta?.default_slice;
     if (defaultSlice && defaultSlice !== "none") {
-      return defaultSlice.split("+").sort();
+      return normalizeExclusivePipelineFilters(defaultSlice.split("+"));
     }
     return [];
   }
@@ -54,6 +54,15 @@ const KanbanData = (() => {
     Object.keys(sliceCache).forEach((k) => delete sliceCache[k]);
     _initFromPayload(data);
     return payload;
+  }
+
+  function clearPayload() {
+    payload = null;
+    aggregationMode = "group_product";
+    activePipelineFilters = [];
+    bundleMode = "monolith";
+    slicesBase = "slices/";
+    Object.keys(sliceCache).forEach((k) => delete sliceCache[k]);
   }
 
   async function ensureSlice(key) {
@@ -116,8 +125,13 @@ const KanbanData = (() => {
   function availableAggregationModes() {
     const fromMeta = payload?.meta?.json_aggregation_modes;
     if (fromMeta?.length) return fromMeta;
-    const aggs = viz().aggregations;
-    if (aggs && typeof aggs === "object") return Object.keys(aggs);
+    const locked = payload?.meta?.product_analysis_mode;
+    if (locked) return [locked];
+    const sliceAggs = filterSliceData()?.aggregations;
+    if (sliceAggs && typeof sliceAggs === "object") {
+      const keys = Object.keys(sliceAggs);
+      if (keys.length) return keys;
+    }
     return ["group_product"];
   }
 
@@ -135,7 +149,25 @@ const KanbanData = (() => {
   }
 
   function setActivePipelineFilters(names) {
-    activePipelineFilters = [...(names || [])].sort();
+    activePipelineFilters = normalizeExclusivePipelineFilters(names || []);
+  }
+
+  /** В одной exclusive_group — не больше одного фильтра (метки Стратегия / 2026). */
+  function normalizeExclusivePipelineFilters(names) {
+    const catalog = filterCatalog();
+    const result = [];
+    const takenGroup = new Set();
+    // Идём с конца: последний выбранный в группе побеждает
+    for (const name of [...names].reverse()) {
+      const item = catalog.find((c) => c.name === name);
+      const group = item?.exclusive_group;
+      if (group) {
+        if (takenGroup.has(group)) continue;
+        takenGroup.add(group);
+      }
+      result.push(name);
+    }
+    return result.reverse().sort();
   }
 
   function getActivePipelineFilters() {
@@ -196,8 +228,62 @@ const KanbanData = (() => {
     return payload?.meta?.all_tb_display || "ВСЕ ТБ";
   }
 
+  const DEFAULT_STAGES_ORDER = [
+    "К ПРОДАЖЕ",
+    "ВЫЯВЛЕНИЕ ПОТРЕБНОСТИ",
+    "ОБСУЖДЕНИЕ УСЛОВИЙ",
+    "РЕАЛИЗАЦИЯ СДЕЛКИ",
+    "АКТИВАЦИЯ ПРОДУКТА",
+    "ПРОДАЖА ЗАВЕРШЕНА",
+  ];
+
+  function excludedStages() {
+    const fromMeta = payload?.meta?.excluded_stages;
+    if (Array.isArray(fromMeta) && fromMeta.length) {
+      return fromMeta.map((s) => String(s));
+    }
+    return [];
+  }
+
+  function withoutExcludedStages(stages) {
+    const excluded = new Set(excludedStages().map((s) => s.toLowerCase()));
+    if (!excluded.size) return stages;
+    return stages.filter((s) => !excluded.has(String(s).toLowerCase()));
+  }
+
   function stageOrder() {
-    return viz().stage_order || [];
+    const fromViz = viz().stage_order;
+    let order;
+    if (Array.isArray(fromViz) && fromViz.length && !(fromViz.length === 2 && fromViz[1] === "В РАБОТЕ")) {
+      order = fromViz.map((s) => String(s));
+    } else {
+      const fromMeta = payload?.meta?.stages_order;
+      order =
+        Array.isArray(fromMeta) && fromMeta.length
+          ? fromMeta.map((s) => String(s))
+          : DEFAULT_STAGES_ORDER.slice();
+    }
+    return withoutExcludedStages(order);
+  }
+
+  /** Колонки матрицы: stages_order + стадии из pivot_flat, которых нет в списке. */
+  function pivotStageColumns(rows) {
+    const order = stageOrder();
+    const present = [];
+    const seen = new Set();
+    const excluded = new Set(excludedStages().map((s) => s.toLowerCase()));
+    (rows || pivotFlat()).forEach((row) => {
+      const stage = String(row.stage_key || "");
+      if (!stage || seen.has(stage)) return;
+      if (excluded.has(stage.toLowerCase())) return;
+      seen.add(stage);
+      present.push(stage);
+    });
+    const ordered = order.filter((s) => seen.has(s));
+    present.forEach((s) => {
+      if (!ordered.includes(s)) ordered.push(s);
+    });
+    return ordered.length ? ordered : order;
   }
 
   function metrics() {
@@ -362,7 +448,12 @@ const KanbanData = (() => {
 
   function uniqueStagesFromSeries(seriesList) {
     const order = stageOrder();
-    const present = new Set(seriesList.map((s) => String(s.stage_key)));
+    const excluded = new Set(excludedStages().map((s) => s.toLowerCase()));
+    const present = new Set(
+      seriesList
+        .map((s) => String(s.stage_key))
+        .filter((stage) => stage && !excluded.has(stage.toLowerCase()))
+    );
     const ordered = order.filter((s) => present.has(s));
     present.forEach((s) => {
       if (!ordered.includes(s)) ordered.push(s);
@@ -396,12 +487,17 @@ const KanbanData = (() => {
     return payload?.meta?.filters_applied || [];
   }
 
+  function configLockedFilters() {
+    return payload?.meta?.config_locked_filters || [];
+  }
+
   function filtersActive() {
     return Boolean(payload?.meta?.filters_active) || filtersApplied().length > 0;
   }
 
   function filtersSummaryLine() {
     const applied = filtersApplied();
+    const locked = configLockedFilters();
     const slice = filterSliceData();
     const parts = [];
     if (activePipelineFilters.length) {
@@ -417,6 +513,12 @@ const KanbanData = (() => {
     if (applied.length) {
       parts.push(
         `Excel (config): ${applied.map((f) => (f.contains ? `${f.name}: «${f.contains}»` : `${f.name}=${f.value}`)).join("; ")}`
+      );
+    }
+    const lockedOn = locked.filter((f) => f.enabled);
+    if (lockedOn.length) {
+      parts.push(
+        `Config-only: ${lockedOn.map((f) => `${f.name}=${f.value}`).join("; ")}`
       );
     }
     if (!parts.length) return "";
@@ -544,7 +646,6 @@ const KanbanData = (() => {
     const tbs = resolveTbSet(filters);
     const metric = filters.metric || "days_on_stage";
     const indicator = filters.indicator || "p80";
-    const stages = stageOrder();
     const allLabel = allTbLabel();
 
     const rows = pivotFlat().filter(
@@ -557,6 +658,7 @@ const KanbanData = (() => {
         (!filters.stage || String(row.stage_key) === filters.stage)
     );
 
+    const stages = pivotStageColumns(rows);
     const rowKey = (r) => String(r.row_key || (isGroupOnly() ? r.product_group : r.product));
     const rowLabels = Array.from(new Set(rows.map(rowKey))).sort((a, b) => a.localeCompare(b, "ru"));
 
@@ -573,9 +675,16 @@ const KanbanData = (() => {
       const stage = String(row.stage_key);
       if (!values[label] || !(stage in values[label])) return;
       const val = row.value;
+      if (val == null) return;
+      const cell = {
+        value: Number(val),
+        leads_le: row.leads_le != null ? Number(row.leads_le) : null,
+        leads_gt: row.leads_gt != null ? Number(row.leads_gt) : null,
+      };
       const prev = values[label][stage];
-      if (prev == null || val > prev) {
-        values[label][stage] = val;
+      // Несколько ТБ: берём ячейку с большим сроком (как раньше max по дням)
+      if (prev == null || cell.value > prev.value) {
+        values[label][stage] = cell;
       }
     });
 
@@ -592,6 +701,25 @@ const KanbanData = (() => {
     };
   }
 
+  function stageAnalysisMode() {
+    return payload?.meta?.stage_analysis_mode || "status";
+  }
+
+  function lockedAnalysisLevel() {
+    if (payload?.meta?.analysis_level) return String(payload.meta.analysis_level);
+    const mode = stageAnalysisMode();
+    if (mode === "status") return "status";
+    if (mode === "substages") return "substage";
+    return null;
+  }
+
+  function isAnalysisLevelLocked() {
+    if (typeof payload?.meta?.analysis_level_locked === "boolean") {
+      return payload.meta.analysis_level_locked;
+    }
+    return stageAnalysisMode() !== "both";
+  }
+
   function metaLine() {
     if (!payload?.meta) return "JSON не загружен";
     const m = payload.meta;
@@ -599,15 +727,19 @@ const KanbanData = (() => {
     const viewLabel = aggregationLabel(aggregationMode);
     const sliceKey = resolveFilterSliceKey();
     const filterNote = filtersActive() ? " | Excel-фильтры config: да" : "";
+    const levelNote = isAnalysisLevelLocked()
+      ? ` | уровень: ${lockedAnalysisLevel() || stageAnalysisMode()}`
+      : "";
     return (
       `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | ` +
-      `Excel: ${aggregationLabel(excelMode)} | HTML: ${viewLabel} | срез: ${sliceKey}${filterNote} | ` +
+      `Excel: ${aggregationLabel(excelMode)} | HTML: ${viewLabel} | срез: ${sliceKey}${filterNote}${levelNote} | ` +
       `перцентили: ${(m.percentiles || []).join(", ")}`
     );
   }
 
   return {
     loadJson,
+    clearPayload,
     isSplitBundle,
     getSlicesBase,
     ensureSlice,
@@ -624,6 +756,9 @@ const KanbanData = (() => {
     filterSliceData,
     availableAggregationModes,
     aggregationLabel,
+    stageAnalysisMode,
+    lockedAnalysisLevel,
+    isAnalysisLevelLocked,
     METRIC_LABELS,
     INDICATOR_LABELS,
     allTbLabel,
@@ -651,6 +786,7 @@ const KanbanData = (() => {
     rowDimensionLabel,
     rowLabel,
     filtersApplied,
+    configLockedFilters,
     filtersActive,
     filtersSummaryLine,
     metaLine,

@@ -20,6 +20,20 @@ const KanbanManagers = (() => {
     return payload;
   }
 
+  /** Загрузка уже разобранного объекта (блок managers из monolith JSON). */
+  function loadPayload(data) {
+    payload = data || null;
+    selectedKey = null;
+    strategyFilter = payload?.meta?.rank_selection?.strategy_filter || "all";
+    return payload;
+  }
+
+  function clearPayload() {
+    payload = null;
+    selectedKey = null;
+    strategyFilter = "all";
+  }
+
   function getPayload() {
     return payload;
   }
@@ -105,17 +119,134 @@ const KanbanManagers = (() => {
     return Math.max(1, Number(payload?.meta?.top_stuck_items_per_hotspot) || 15);
   }
 
-  function buildStuckItem(row) {
+  function rankByTeam() {
+    return Boolean(payload?.meta?.rank_by_team);
+  }
+
+  function normalizePersonName(value) {
+    const text = String(value ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!text || text === "-" || text === "—" || text.toLowerCase() === "nan") return "";
+    return text;
+  }
+
+  function rolesForPersonOnLead(row, personName) {
+    const target = normalizePersonName(personName).toLowerCase();
+    if (!target) return [];
+    const team = Array.isArray(row.team) ? row.team : [];
+    const hit = team.find((m) => normalizePersonName(m?.name).toLowerCase() === target);
+    if (hit?.roles?.length) return hit.roles.map(String);
+    if (normalizePersonName(row.km).toLowerCase() === target) return ["КМ"];
+    return [];
+  }
+
+  function teamMembersOfRow(row) {
+    const team = Array.isArray(row.team) ? row.team : [];
+    const names = [];
+    const seen = new Set();
+    team.forEach((member) => {
+      const name = normalizePersonName(member?.name);
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      names.push({ name, roles: (member.roles || []).map(String) });
+    });
+    if (!names.length) {
+      const km = normalizePersonName(row.km);
+      if (km) names.push({ name: km, roles: ["КМ"] });
+    }
+    return names;
+  }
+
+  /** Сокращение юрформ по meta.client_display (или встроенный список). */
+  function clientAbbreviations() {
+    const cfg = payload?.meta?.client_display;
+    if (cfg && cfg.enabled === false) return [];
+    const list = cfg?.abbreviations;
+    if (Array.isArray(list) && list.length) {
+      return [...list]
+        .filter((x) => x && x.match && x.replace != null)
+        .sort((a, b) => String(b.match).length - String(a.match).length);
+    }
+    return [
+      { match: "публичное акционерное общество", replace: "ПАО" },
+      { match: "непубличное акционерное общество", replace: "НАО" },
+      { match: "закрытое акционерное общество", replace: "ЗАО" },
+      { match: "открытое акционерное общество", replace: "ОАО" },
+      { match: "общество с ограниченной ответственностью", replace: "ООО" },
+      { match: "акционерное общество", replace: "АО" },
+      { match: "индивидуальный предприниматель", replace: "ИП" },
+      { match: "федеральное государственное бюджетное учреждение", replace: "ФГБУ" },
+      { match: "федеральное государственное унитарное предприятие", replace: "ФГУП" },
+      { match: "государственное унитарное предприятие", replace: "ГУП" },
+      { match: "муниципальное унитарное предприятие", replace: "МУП" },
+      { match: "автономная некоммерческая организация", replace: "АНО" },
+      { match: "некоммерческая организация", replace: "НКО" },
+      { match: "товарищество собственников жилья", replace: "ТСЖ" },
+      { match: "товарищество собственников недвижимости", replace: "ТСН" },
+      { match: "крестьянское (фермерское) хозяйство", replace: "КФХ" },
+      { match: "крестьянское фермерское хозяйство", replace: "КФХ" },
+      { match: "производственный кооператив", replace: "ПК" },
+      { match: "сельскохозяйственный производственный кооператив", replace: "СПК" },
+      { match: "полное товарищество", replace: "ПТ" },
+      { match: "товарищество на вере", replace: "ТНВ" },
+      { match: "коммандитное товарищество", replace: "КТ" },
+    ];
+  }
+
+  function abbreviateClientName(name) {
+    if (name == null) return null;
+    let text = String(name).trim();
+    if (!text) return null;
+    const pairs = clientAbbreviations();
+    const shorts = [];
+    pairs.forEach((item) => {
+      const full = String(item.match).trim();
+      const short = String(item.replace).trim();
+      if (!full || !short) return;
+      shorts.push(short);
+      const escaped = full.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const wrapped = new RegExp(`[«\"'(]\\s*${escaped}\\.?\\s*[»\"')]`, "gi");
+      text = text.replace(wrapped, `${short} `);
+      const bare = new RegExp(`${escaped}\\.?`, "gi");
+      text = text.replace(bare, `${short} `);
+    });
+    text = text.replace(/\s{2,}/g, " ").replace(/^[,;\s]+|[,;\s]+$/g, "");
+    if (shorts.length) {
+      const alt = shorts
+        .sort((a, b) => b.length - a.length)
+        .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|");
+      text = text.replace(new RegExp(`(${alt})(?=[A-Za-zА-Яа-яЁё0-9«\"'(])`, "g"), "$1 ");
+      text = text.replace(/\s{2,}/g, " ").replace(/^[,;\s]+|[,;\s]+$/g, "");
+    }
+    return text || null;
+  }
+
+  function buildStuckItem(row, personName) {
     const days = Number(row.days_int) || 0;
     const thresh = Number(row.threshold_days) || 0;
+    const team = (Array.isArray(row.team) ? row.team : [])
+      .map((m) => ({
+        name: normalizePersonName(m?.name),
+        roles: (m?.roles || []).map(String),
+      }))
+      .filter((m) => m.name);
     return {
       lead_id: String(row.lead_id ?? ""),
       deal_id: row.deal_id != null && row.deal_id !== "" ? String(row.deal_id) : null,
       inn: row.inn != null && row.inn !== "" ? String(row.inn) : null,
+      client: abbreviateClientName(
+        row.client != null && String(row.client).trim() !== "" ? String(row.client).trim() : null
+      ),
       stage_key: String(row.stage_key ?? ""),
       days_int: Math.round(days * 10) / 10,
       threshold_days: Math.round(thresh * 10) / 10,
       overshoot: Math.round(Math.max(0, days - thresh) * 10) / 10,
+      member_roles: rolesForPersonOnLead(row, personName),
+      team,
     };
   }
 
@@ -168,12 +299,13 @@ const KanbanManagers = (() => {
     });
   }
 
-  function aggregateHotspots(exceededRows, limit) {
+  function aggregateHotspots(exceededRows, limit, personName) {
     const map = new Map();
     exceededRows.forEach((row) => {
+      const person = personName || String(row.km);
       const key = [
         String(row.tb),
-        String(row.km),
+        String(person),
         String(row.product_group),
         String(row.product ?? "—"),
         String(row.stage_key),
@@ -181,7 +313,7 @@ const KanbanManagers = (() => {
       if (!map.has(key)) {
         map.set(key, {
           tb: String(row.tb),
-          km: String(row.km),
+          km: String(person),
           product_group: String(row.product_group),
           product: row.product != null ? String(row.product) : "—",
           stage_key: String(row.stage_key),
@@ -202,7 +334,7 @@ const KanbanManagers = (() => {
       const thresh = Number(row.threshold_days) || 0;
       if (thresh > spot.threshold_days) spot.threshold_days = thresh;
       if (spot._stuck.length < stuckLimit()) {
-        spot._stuck.push(buildStuckItem(row));
+        spot._stuck.push(buildStuckItem(row, person));
       }
     });
 
@@ -244,30 +376,52 @@ const KanbanManagers = (() => {
     return hotspots.slice(0, limit);
   }
 
+  function collectRolesFromHotspots(hotspots) {
+    const roles = [];
+    const seen = new Set();
+    (hotspots || []).forEach((spot) => {
+      (spot.stuck_items || []).forEach((item) => {
+        (item.member_roles || []).forEach((role) => {
+          const key = String(role).toLowerCase();
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          roles.push(String(role));
+        });
+      });
+    });
+    return roles;
+  }
+
   function recomputeTop(filters) {
     const records = filterLeadRecords(filters);
     if (records.length) {
       const topN = topLimit();
       const hotLimit = Number(payload?.meta?.top_hotspots_per_manager) || 5;
       const byManager = new Map();
+      const useTeam = rankByTeam();
 
       records.forEach((row) => {
-        const key = managerKey(row.tb, row.km);
-        if (!byManager.has(key)) {
-          byManager.set(key, {
-            tb: String(row.tb),
-            km: String(row.km),
-            exceedance_count: 0,
-            total_leads: new Set(),
-            exceeded_rows: [],
-          });
-        }
-        const bucket = byManager.get(key);
-        bucket.total_leads.add(String(row.lead_id));
-        if (row.exceeded) {
-          bucket.exceedance_count += 1;
-          bucket.exceeded_rows.push(row);
-        }
+        const members = useTeam
+          ? teamMembersOfRow(row)
+          : [{ name: normalizePersonName(row.km), roles: ["КМ"] }].filter((m) => m.name);
+        members.forEach((member) => {
+          const key = managerKey(row.tb, member.name);
+          if (!byManager.has(key)) {
+            byManager.set(key, {
+              tb: String(row.tb),
+              km: member.name,
+              exceedance_count: 0,
+              total_leads: new Set(),
+              exceeded_rows: [],
+            });
+          }
+          const bucket = byManager.get(key);
+          bucket.total_leads.add(String(row.lead_id));
+          if (row.exceeded) {
+            bucket.exceedance_count += 1;
+            bucket.exceeded_rows.push(row);
+          }
+        });
       });
 
       const tbOrder = [...new Set(records.map((r) => String(r.tb)))].sort((a, b) =>
@@ -287,6 +441,8 @@ const KanbanManagers = (() => {
           .slice(0, topN);
 
         bucketRows.forEach((row, idx) => {
+          const hotspots = aggregateHotspots(row.exceeded_rows, hotLimit, row.km);
+          const memberRoles = collectRolesFromHotspots(hotspots);
           result.push({
             tb: row.tb,
             km: row.km,
@@ -294,7 +450,9 @@ const KanbanManagers = (() => {
             rank: idx + 1,
             exceedance_count: row.exceedance_count,
             total_leads: row.total_leads.size,
-            hotspots: aggregateHotspots(row.exceeded_rows, hotLimit),
+            hotspots,
+            member_roles: memberRoles,
+            roles_summary: memberRoles.length ? memberRoles.join(", ") : "—",
           });
         });
       });
@@ -495,25 +653,53 @@ const KanbanManagers = (() => {
     return order.map((tb) => ({ tb, managers: map.get(tb) }));
   }
 
+  function renderTeamChips(team) {
+    if (!team?.length) return "";
+    return (
+      `<div class="manager-team">` +
+      team
+        .map((member) => {
+          const roles = (member.roles || []).join(", ");
+          return (
+            `<span class="manager-team__chip" title="${escapeHtml(roles)}">` +
+            `<b>${escapeHtml(member.name)}</b>` +
+            (roles ? `<small>${escapeHtml(roles)}</small>` : "") +
+            `</span>`
+          );
+        })
+        .join("") +
+      `</div>`
+    );
+  }
+
   function renderStuckItems(items) {
     if (!items?.length) {
       return `<p class="manager-stuck-empty">Нет зависших лидов/сделок в этой зоне.</p>`;
     }
+    const showTeam = rankByTeam() || items.some((item) => item.team?.length || item.member_roles?.length);
     const head =
       `<thead><tr>` +
-      `<th>ИНН</th><th>ID ПрПр</th><th>ID сделки</th><th>Дней</th><th>+P80</th>` +
+      `<th>Клиент</th><th>ИНН</th><th>ID ПрПр</th><th>ID сделки</th><th>Дней</th><th>+P80</th>` +
+      (showTeam ? `<th>Роль</th><th>Команда</th>` : "") +
       `</tr></thead>`;
     const body = items
-      .map(
-        (item) =>
+      .map((item) => {
+        const roles = (item.member_roles || []).join(", ") || "—";
+        return (
           `<tr>` +
+          `<td class="manager-stuck-client" title="${escapeHtml(abbreviateClientName(item.client) || item.client || "")}">${escapeHtml(abbreviateClientName(item.client) || item.client || "—")}</td>` +
           `<td>${escapeHtml(item.inn || "—")}</td>` +
           `<td>${escapeHtml(item.lead_id || "—")}</td>` +
           `<td>${escapeHtml(item.deal_id || "—")}</td>` +
           `<td>${escapeHtml(item.days_int ?? "—")}</td>` +
           `<td class="manager-stuck-overshoot">+${escapeHtml(item.overshoot ?? "—")}</td>` +
+          (showTeam
+            ? `<td class="manager-stuck-roles">${escapeHtml(roles)}</td>` +
+              `<td class="manager-stuck-team">${renderTeamChips(item.team)}</td>`
+            : "") +
           `</tr>`
-      )
+        );
+      })
       .join("");
     return `<div class="manager-stuck-table-wrap"><table class="manager-stuck-table">${head}<tbody>${body}</tbody></table></div>`;
   }
@@ -549,6 +735,103 @@ const KanbanManagers = (() => {
     );
   }
 
+  function collectStuckItems(row) {
+    const items = [];
+    (row.hotspots || []).forEach((spot) => {
+      (spot.stuck_items || []).forEach((item) => {
+        items.push({
+          ...item,
+          product_group: spot.product_group,
+          product: spot.product,
+          stage_key: spot.stage_key || item.stage_key,
+        });
+      });
+    });
+    items.sort((a, b) => (Number(b.overshoot) || 0) - (Number(a.overshoot) || 0));
+    return items;
+  }
+
+  function renderInfographics(row) {
+    const hotspots = row.hotspots || [];
+    const stuck = collectStuckItems(row);
+    const maxHot = hotspots.reduce((m, s) => Math.max(m, Number(s.exceedance_count) || 0), 0) || 1;
+    const maxOver = stuck.reduce((m, s) => Math.max(m, Number(s.overshoot) || 0), 0) || 1;
+    const totalStuck = stuck.length;
+    const avgOver =
+      totalStuck > 0
+        ? Math.round((stuck.reduce((s, x) => s + (Number(x.overshoot) || 0), 0) / totalStuck) * 10) / 10
+        : 0;
+
+    const hotspotBars = hotspots.length
+      ? hotspots
+          .map((spot) => {
+            const count = Number(spot.exceedance_count) || 0;
+            const pct = Math.round((count / maxHot) * 100);
+            const severity = hotspotSeverity(spot);
+            return (
+              `<div class="mgr-infobar mgr-infobar--${severity}">` +
+              `<div class="mgr-infobar__label">` +
+              `<span>${escapeHtml(segmentLabel(spot))}</span>` +
+              `<span class="mgr-infobar__meta">${escapeHtml(spot.stage_key)} · ${count} сд. · +${spot.max_overshoot ?? 0}</span>` +
+              `</div>` +
+              `<div class="mgr-infobar__track"><span class="mgr-infobar__fill" style="width:${pct}%"></span></div>` +
+              `</div>`
+            );
+          })
+          .join("")
+      : `<p class="manager-detail__empty">Нет зон для диаграммы.</p>`;
+
+    const topStuck = stuck.slice(0, 12);
+    const stuckBars = topStuck.length
+      ? topStuck
+          .map((item) => {
+            const over = Number(item.overshoot) || 0;
+            const pct = Math.round((over / maxOver) * 100);
+            const name = abbreviateClientName(item.client) || item.inn || item.lead_id || "—";
+            return (
+              `<div class="mgr-infobar mgr-infobar--stuck">` +
+              `<div class="mgr-infobar__label">` +
+              `<span title="${escapeHtml(name)}">${escapeHtml(name)}</span>` +
+              `<span class="mgr-infobar__meta">${escapeHtml(item.stage_key || "")} · ${item.days_int ?? "—"} дн. · +${over}</span>` +
+              `</div>` +
+              `<div class="mgr-infobar__track"><span class="mgr-infobar__fill" style="width:${pct}%"></span></div>` +
+              `</div>`
+            );
+          })
+          .join("")
+      : `<p class="manager-detail__empty">Нет зависших сделок в топ-зонах.</p>`;
+
+    // Простая «полоса нагрузки»: доля превышений от лидов
+    const loadPct = row.total_leads
+      ? Math.min(100, Math.round((Number(row.exceedance_count) / Number(row.total_leads)) * 100))
+      : 0;
+
+    return (
+      `<section class="mgr-info">` +
+      `<div class="mgr-info__kpis">` +
+      `<div class="mgr-kpi"><b>${row.exceedance_count}</b><span>превышений</span></div>` +
+      `<div class="mgr-kpi"><b>${hotspots.length}</b><span>зон</span></div>` +
+      `<div class="mgr-kpi"><b>${totalStuck}</b><span>зависших в топе</span></div>` +
+      `<div class="mgr-kpi"><b>+${avgOver}</b><span>ср. +P80</span></div>` +
+      `</div>` +
+      `<div class="mgr-info__load">` +
+      `<div class="mgr-info__load-head"><span>Доля превышений в портфеле</span><b>${loadPct}%</b></div>` +
+      `<div class="mgr-infobar__track mgr-infobar__track--tall"><span class="mgr-infobar__fill mgr-infobar__fill--load" style="width:${loadPct}%"></span></div>` +
+      `</div>` +
+      `<div class="mgr-info__grid">` +
+      `<div class="mgr-info__card">` +
+      `<h5 class="mgr-info__title">Зоны превышения (число сделок)</h5>` +
+      `<div class="mgr-info__bars">${hotspotBars}</div>` +
+      `</div>` +
+      `<div class="mgr-info__card">` +
+      `<h5 class="mgr-info__title">Топ зависших по +P80</h5>` +
+      `<div class="mgr-info__bars">${stuckBars}</div>` +
+      `</div>` +
+      `</div>` +
+      `</section>`
+    );
+  }
+
   function renderDetailCard(row) {
     const hotspots = row.hotspots || [];
     const maxCount = hotspots.reduce((m, s) => Math.max(m, Number(s.exceedance_count) || 0), 0);
@@ -565,12 +848,15 @@ const KanbanManagers = (() => {
     }
 
     return (
-      `<article class="manager-detail" id="managerDetailCard">` +
+      `<article class="manager-detail manager-detail--fullscreen" id="managerDetailCard">` +
       `<div class="manager-detail__hero">` +
       `<div class="manager-detail__rank">${row.rank}</div>` +
       `<div class="manager-detail__identity">` +
-      `<h4 class="manager-detail__name">${escapeHtml(row.km)}</h4>` +
+      `<h4 class="manager-detail__name" id="managerOverlayTitle">${escapeHtml(row.km)}</h4>` +
       `<p class="manager-detail__tb">${escapeHtml(row.tb)}</p>` +
+      (row.roles_summary && row.roles_summary !== "—"
+        ? `<p class="manager-detail__roles">${escapeHtml(row.roles_summary)}</p>`
+        : "") +
       `</div>` +
       `<div class="manager-detail__totals">` +
       `<div class="manager-detail__stat">` +
@@ -584,16 +870,58 @@ const KanbanManagers = (() => {
       `</div>` +
       `</div>` +
       `<p class="manager-detail__intro">` +
-      `Топ нарушитель P80 в ${escapeHtml(row.tb)}: отклонения по клиентам (ИНН), лидам (ID ПрПр) и сделкам.` +
+      (rankByTeam()
+        ? "Участник команды зависших лидов: роли, команда сделки и превышения P80."
+        : "Детализация нарушителя P80: клиенты, лиды и сделки с превышением срока.") +
       `</p>` +
+      renderInfographics(row) +
       `<div class="manager-detail__legend">` +
       `<span class="manager-detail__legend-item manager-detail__legend-item--critical">сильное</span>` +
       `<span class="manager-detail__legend-item manager-detail__legend-item--warning">среднее</span>` +
       `<span class="manager-detail__legend-item manager-detail__legend-item--mild">умеренное</span>` +
       `</div>` +
+      `<h5 class="mgr-info__title mgr-info__title--section">Зоны и зависшие сделки</h5>` +
       hotspotsHtml +
       `</article>`
     );
+  }
+
+  function getOverlayEls() {
+    return {
+      overlay: document.getElementById("managerDetailOverlay"),
+      body: document.getElementById("managerOverlayBody"),
+      closeBtn: document.getElementById("managerOverlayClose"),
+    };
+  }
+
+  function closeDetailOverlay() {
+    const { overlay, body } = getOverlayEls();
+    if (!overlay) return;
+    overlay.hidden = true;
+    document.body.classList.remove("has-manager-overlay");
+    if (body) body.innerHTML = "";
+  }
+
+  function openDetailOverlay(row) {
+    const { overlay, body, closeBtn } = getOverlayEls();
+    if (!overlay || !body) return;
+    body.innerHTML = renderDetailCard(row);
+    overlay.hidden = false;
+    document.body.classList.add("has-manager-overlay");
+    closeBtn?.focus();
+  }
+
+  function bindOverlayOnce() {
+    const { overlay, closeBtn } = getOverlayEls();
+    if (!overlay || overlay.dataset.bound === "1") return;
+    overlay.dataset.bound = "1";
+    closeBtn?.addEventListener("click", closeDetailOverlay);
+    overlay.addEventListener("click", (event) => {
+      if (event.target?.dataset?.overlayClose === "1") closeDetailOverlay();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && overlay && !overlay.hidden) closeDetailOverlay();
+    });
   }
 
   function rankSelectionHint() {
@@ -634,13 +962,14 @@ const KanbanManagers = (() => {
 
   function render(container, filters) {
     if (!container) return;
+    bindOverlayOnce();
     container.innerHTML = "";
 
     if (!hasData()) {
       container.innerHTML =
         `<div class="managers-empty">` +
         `<p class="managers-empty__title">Нет данных по менеджерам</p>` +
-        `<p>Загрузите <code>kanban_report_managers_*.json</code> или выполните <code>run.py</code> с колонкой КМ.</p>` +
+        `<p>Загрузите monolith JSON с блоком <code>managers</code> или выполните <code>run.py</code> с колонкой КМ.</p>` +
         `</div>`;
       return;
     }
@@ -648,8 +977,8 @@ const KanbanManagers = (() => {
     const head = document.createElement("div");
     head.className = "managers-panel__head";
     head.innerHTML =
-      `<h3 class="managers-panel__title">Топ-3 нарушителя P80 по ТБ</h3>` +
-      `<p class="managers-panel__intro">${metaLine()} · клик по КМ — детализация по клиентам и сделкам</p>`;
+      `<h3 class="managers-panel__title">Топ нарушителей P80 по ТБ</h3>` +
+      `<p class="managers-panel__intro">${metaLine()} · нажмите на КМ — полная карточка с инфографикой</p>`;
     container.appendChild(head);
 
     renderStrategyControl(container, filters, () => render(container, filters));
@@ -661,12 +990,6 @@ const KanbanManagers = (() => {
       empty.textContent = "Нет нарушителей P80 для выбранных фильтров отбора.";
       container.appendChild(empty);
       return;
-    }
-
-    const validKeys = new Set(top.map((row) => managerKey(row.tb, row.km)));
-    if (!selectedKey || !validKeys.has(selectedKey)) {
-      const first = top.find((row) => row.exceedance_count > 0) || top[0];
-      selectedKey = managerKey(first.tb, first.km);
     }
 
     const grouped = groupTopByTb(top);
@@ -685,7 +1008,7 @@ const KanbanManagers = (() => {
         `</header>`;
 
       const cards = document.createElement("div");
-      cards.className = "managers-top-grid managers-top-grid--tb";
+      cards.className = "managers-top-grid managers-top-grid--tb managers-top-grid--screen";
       managers.forEach((row) => {
         const key = managerKey(row.tb, row.km);
         const btn = document.createElement("button");
@@ -696,13 +1019,18 @@ const KanbanManagers = (() => {
           `<div class="manager-card__rank">${row.rank}</div>` +
           `<div class="manager-card__body">` +
           `<div class="manager-card__name">${escapeHtml(row.km)}</div>` +
+          (row.roles_summary && row.roles_summary !== "—"
+            ? `<div class="manager-card__roles">${escapeHtml(row.roles_summary)}</div>`
+            : "") +
           `<div class="manager-card__stat"><span>${row.exceedance_count}</span> превыш. · ${row.total_leads} лид.</div>` +
           (row.hotspots?.length
-            ? `<div class="manager-card__hint">${escapeHtml(segmentLabel(row.hotspots[0]))} · ${escapeHtml(row.hotspots[0].stage_key)}</div>`
-            : "") +
+            ? `<div class="manager-card__hint">${escapeHtml(segmentLabel(row.hotspots[0]))} · ${escapeHtml(row.hotspots[0].stage_key)}</div>` +
+              `<div class="manager-card__cta">Открыть карточку →</div>`
+            : `<div class="manager-card__cta">Открыть карточку →</div>`) +
           `</div>`;
         btn.addEventListener("click", () => {
           selectedKey = key;
+          openDetailOverlay(row);
           render(container, filters);
         });
         cards.appendChild(btn);
@@ -712,18 +1040,12 @@ const KanbanManagers = (() => {
     });
 
     container.appendChild(sectionsWrap);
-
-    const selected = top.find((row) => managerKey(row.tb, row.km) === selectedKey);
-    if (selected) {
-      const detailWrap = document.createElement("div");
-      detailWrap.className = "manager-detail-wrap";
-      detailWrap.innerHTML = renderDetailCard(selected);
-      container.appendChild(detailWrap);
-    }
   }
 
   return {
     loadJson,
+    loadPayload,
+    clearPayload,
     getPayload,
     getStrategyFilter,
     setStrategyFilter,
@@ -732,5 +1054,6 @@ const KanbanManagers = (() => {
     metaLine,
     buildChartGroups,
     render,
+    closeDetailOverlay,
   };
 })();

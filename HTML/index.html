@@ -27,6 +27,10 @@
             <svg class="icon icon--tab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
             Сводная матрица
           </button>
+          <button type="button" class="btn tab" data-tab="managers" role="tab" aria-selected="false" id="managersTabBtn" hidden>
+            <svg class="icon icon--tab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Менеджеры
+          </button>
         </div>
       </div>
     </header>
@@ -37,17 +41,28 @@
           <div class="side-block-title">Настройки</div>
         </div>
         <div class="sidebar-scroll">
-          <div class="filter-block filter-block--search">
+          <div class="filter-block filter-block--search" id="jsonLoadBlock">
             <div class="filter-block__label">Загрузка JSON</div>
-            <label class="file-pick">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
-              <span>Выбрать kanban_report_*.json</span>
-              <input type="file" id="jsonFile" class="file-pick__input" accept=".json,application/json">
-            </label>
-            <p class="filter-block__hint">Файл из каталога OUT/ после <code>python run.py</code></p>
-            <label class="file-pick file-pick--secondary">
+            <div id="jsonLoadPanel">
+              <label class="file-pick" id="jsonFilePick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
+                <span>Выбрать отчёт: kanban_report_*.json</span>
+                <input type="file" id="jsonFile" class="file-pick__input" accept=".json,application/json">
+              </label>
+              <p class="filter-block__hint">Один файл из <code>OUT/</code> после <code>python run.py</code>. Открывайте <code>HTML/index.html</code> локально — сервер не нужен.</p>
+            </div>
+            <div id="jsonLoadedPanel" hidden>
+              <div class="json-loaded-card">
+                <div class="json-loaded-card__name" id="jsonLoadedName" title="">Файл загружен</div>
+                <button type="button" class="btn-reset-json" id="btnResetJson" title="Сбросить данные и выбрать другой файл">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  <span>Сбросить</span>
+                </button>
+              </div>
+            </div>
+            <label class="file-pick file-pick--secondary" id="managersFilePick" hidden>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              <span>Менеджеры: kanban_managers_*.json</span>
+              <span>Менеджеры (опционально, если отдельно)</span>
               <input type="file" id="managersJsonFile" class="file-pick__input" accept=".json,application/json">
             </label>
           </div>
@@ -57,18 +72,27 @@
               <span class="filter-block__label-icon" id="pipelineBlockIcon" aria-hidden="true"></span>
               Pipeline-фильтры
             </div>
-            <p class="filter-block__hint">Срезы из config.filters. Комбинации предрасчитаны в JSON.</p>
+            <p class="filter-block__hint">Только переключаемые срезы (html_slice). Комбинации в JSON.</p>
             <div id="pipelineFilterList" class="pipeline-toggle-grid" role="group" aria-label="Pipeline-фильтры"></div>
+          </div>
+
+          <div class="filter-block filter-block--locked" id="configLockedFiltersBlock" hidden>
+            <div class="filter-block__label">Зафиксированные фильтры</div>
+            <p class="filter-block__hint">Заданы в config, в UI не переключаются. Наведите для подробностей.</p>
+            <div id="configLockedFiltersList" class="locked-filters-grid" role="list" aria-label="Зафиксированные фильтры"></div>
           </div>
 
           <div class="filter-block">
             <div class="filter-block__label">График</div>
-            <label class="field">
-              <span class="field-label">Агрегация строк</span>
-              <select id="aggregationMode" class="field-control">
+            <label class="field" id="aggregationModeField">
+              <span class="field-label">Агрегация</span>
+              <select id="aggregationMode" class="field-control" hidden>
                 <option value="group_product">По продуктам</option>
                 <option value="group_only">По группам</option>
               </select>
+              <button type="button" id="aggregationModeLocked" class="locked-chip is-on" title="Задано в config.product_analysis_mode">
+                <span class="locked-chip__text">По продуктам</span>
+              </button>
             </label>
             <label class="field">
               <span class="field-label">Режим линий</span>
@@ -135,8 +159,11 @@
                   </table>
                 </div>
               </div>
-              <div class="pivot-layout__managers" id="managersPanel"></div>
             </div>
+          </section>
+
+          <section id="managersTab" class="tab-panel tab-panel--fill">
+            <div class="managers-screen panel" id="managersPanel"></div>
           </section>
         </div>
       </main>
@@ -226,16 +253,19 @@
               <option value="">Все стадии</option>
             </select>
           </div>
-          <div class="filter-block">
+          <div class="filter-block" id="levelFilterBlock">
             <div class="filter-block__label filter-block__label--icon">
               <span class="filter-block__label-icon" id="levelBlockIcon" aria-hidden="true"></span>
               Уровень анализа
             </div>
-            <select id="levelFilter" class="field-control">
+            <select id="levelFilter" class="field-control" hidden>
               <option value="">Любой</option>
               <option value="status">status</option>
               <option value="substage">substage</option>
             </select>
+            <button type="button" id="levelModeLocked" class="locked-chip is-on" hidden title="Задано в config.stage_analysis_mode">
+              <span class="locked-chip__text">Статус</span>
+            </button>
           </div>
           <div class="filter-block filter-block--bulk">
             <div class="filter-block__label">Сброс</div>
@@ -261,6 +291,14 @@
         <span class="sidebar-edge-btn__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></span>
         <span class="sidebar-edge-btn__label">Фильтры</span>
       </button>
+    </div>
+  </div>
+
+  <div id="managerDetailOverlay" class="manager-overlay" hidden>
+    <div class="manager-overlay__backdrop" data-overlay-close="1"></div>
+    <div class="manager-overlay__dialog" role="dialog" aria-modal="true" aria-labelledby="managerOverlayTitle">
+      <button type="button" class="manager-overlay__close" id="managerOverlayClose" aria-label="Закрыть">×</button>
+      <div id="managerOverlayBody" class="manager-overlay__body"></div>
     </div>
   </div>
 

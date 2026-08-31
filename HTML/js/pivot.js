@@ -5,6 +5,12 @@ const KanbanPivot = (() => {
   let sortDir = "asc";
   let lastRenderArgs = null;
 
+  function cellDays(cell) {
+    if (cell == null) return null;
+    if (typeof cell === "number") return cell;
+    return cell.value != null ? Number(cell.value) : null;
+  }
+
   function heatColor(value, min, max) {
     if (value == null || min == null || max == null || min === max) return "";
     const t = (value - min) / (max - min);
@@ -18,8 +24,8 @@ const KanbanPivot = (() => {
     if (!stage) return rowLabels;
     const sorted = [...rowLabels];
     sorted.sort((a, b) => {
-      const va = values[a]?.[stage];
-      const vb = values[b]?.[stage];
+      const va = cellDays(values[a]?.[stage]);
+      const vb = cellDays(values[b]?.[stage]);
       if (va == null && vb == null) return a.localeCompare(b, "ru");
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -44,6 +50,57 @@ const KanbanPivot = (() => {
   function resetSort() {
     sortStage = null;
     sortDir = "asc";
+  }
+
+  function countBadge(kind, value) {
+    const isGt = kind === "gt";
+    const title = isGt
+      ? "Лидов со сроком больше порога"
+      : "Лидов со сроком не выше порога (≤)";
+    const icon = isGt
+      ? `<svg class="pivot-cell__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5 12.5 9H9.5v3.5h-3V9H3.5L8 3.5z"/></svg>`
+      : `<svg class="pivot-cell__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5 3.5 7H6.5V3.5h3V7H12.5L8 12.5z"/></svg>`;
+    const shown = value != null ? String(value) : "—";
+    const zeroClass = value === 0 ? " pivot-cell__count--zero" : "";
+    return (
+      `<span class="pivot-cell__count pivot-cell__count--${kind}${zeroClass}" title="${title}">` +
+      icon +
+      `<b>${shown}</b>` +
+      `</span>`
+    );
+  }
+
+  function renderCell(cell, days, min, max) {
+    const td = document.createElement("td");
+    td.className = "cell-heat pivot-cell";
+    if (days == null) {
+      td.textContent = "—";
+      return td;
+    }
+
+    td.style.background = heatColor(days, min, max);
+    td.style.color = days > (min + max) / 2 ? "#0f1419" : "#e2e8f0";
+
+    const le = cell && typeof cell === "object" ? cell.leads_le : null;
+    const gt = cell && typeof cell === "object" ? cell.leads_gt : null;
+    const hasCounts = le != null || gt != null;
+
+    if (!hasCounts) {
+      td.textContent = String(days);
+      td.title = `${days} дн.`;
+      return td;
+    }
+
+    td.innerHTML =
+      `<div class="pivot-cell__grid">` +
+      `<span class="pivot-cell__days" title="Срок (дней)">${days}</span>` +
+      `<div class="pivot-cell__counts">` +
+      countBadge("gt", gt) +
+      countBadge("le", le) +
+      `</div>` +
+      `</div>`;
+    td.title = `${days} дн. · ↑ выше порога: ${gt ?? "—"} · ↓ не выше: ${le ?? "—"}`;
+    return td;
   }
 
   function render(table, matrix, captionEl) {
@@ -76,8 +133,9 @@ const KanbanPivot = (() => {
     const rowHeader = rowDim === "product_group" || KanbanData.isGroupOnly() ? "Группа" : "Продукт";
     captionEl.textContent =
       `Свод: ${tbLabel} | ${KanbanData.METRIC_LABELS[metric] || metric} | ${KanbanData.INDICATOR_LABELS[indicator] || indicator}` +
-      (tbNames.length > 1 ? " | ячейка: max по выбранным ТБ" : "") +
-      (sortStage ? ` | сортировка: ${sortStage} (${sortDir === "asc" ? "↑ возр." : "↓ убыв."})` : "");
+      ` | ячейка: дни · ↑ красное >порога · ↓ бирюзовое ≤порога` +
+      (tbNames.length > 1 ? " | при нескольких ТБ: max по дням" : "") +
+      (sortStage ? ` | сортировка: ${sortStage} по дням (${sortDir === "asc" ? "↑" : "↓"})` : "");
 
     const headerRow = document.createElement("tr");
     const corner = document.createElement("th");
@@ -103,7 +161,7 @@ const KanbanPivot = (() => {
         icon.setAttribute("aria-hidden", "true");
         th.appendChild(icon);
       }
-      th.title = "Сортировка по колонке «" + stage + "»";
+      th.title = "Сортировка по дням в колонке «" + stage + "»";
       th.addEventListener("click", () => onHeaderClick(stage));
       headerRow.appendChild(th);
     });
@@ -113,7 +171,7 @@ const KanbanPivot = (() => {
     let max = -Infinity;
     rowLabels.forEach((rowLabel) => {
       stages.forEach((stage) => {
-        const val = values[rowLabel]?.[stage];
+        const val = cellDays(values[rowLabel]?.[stage]);
         if (val != null) {
           min = Math.min(min, val);
           max = Math.max(max, val);
@@ -132,15 +190,8 @@ const KanbanPivot = (() => {
       tr.appendChild(nameTd);
 
       stages.forEach((stage) => {
-        const td = document.createElement("td");
-        const val = values[rowLabel]?.[stage];
-        td.textContent = val == null ? "—" : String(val);
-        td.className = "cell-heat";
-        if (val != null) {
-          td.style.background = heatColor(val, min, max);
-          td.style.color = val > (min + max) / 2 ? "#0f1419" : "#e2e8f0";
-        }
-        tr.appendChild(td);
+        const cell = values[rowLabel]?.[stage];
+        tr.appendChild(renderCell(cell, cellDays(cell), min, max));
       });
       tbody.appendChild(tr);
     });
