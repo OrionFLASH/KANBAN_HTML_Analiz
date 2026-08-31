@@ -1,4 +1,4 @@
-"""Трекинг стадий лидов и расчёт сроков нахождения."""
+"""Трекинг стадий лидов и расчёт сроков нахождения (векторизованная версия)."""
 
 from __future__ import annotations
 
@@ -7,22 +7,31 @@ from typing import Any
 
 import pandas as pd
 
+from src.data_audit import audit_lead_coverage, log_missing_metrics
+from src.progress import ProgressReporter
 from src.settings import col, empty_stage_values
 
 logger: logging.Logger = logging.getLogger("kanban.lead_tracker")
 
 
-def _is_empty_stage(value: object, config: dict[str, Any]) -> bool:
-    """Проверяет, что подстадия пустая."""
-    text: str = str(value).strip()
+def _mask_empty_stage(series: pd.Series, config: dict[str, Any]) -> pd.Series:
+    """Векторная проверка пустой подстадии."""
     empty: set[str] = empty_stage_values(config)
-    return text in empty or text.lower() == "nan"
+    lowered: set[str] = {v.lower() for v in empty}
+    as_str: pd.Series = series.astype(str).str.strip()
+    return as_str.isin(empty) | as_str.str.lower().isin(lowered)
 
 
 def _prepare_duration_columns(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Добавляет колонки сроков по колонкам отчёта и по датам."""
+    """
+    Добавляет колонки сроков.
+    При duration_source=dates и пустых датах — fallback на колонки отчёта (если включён в config).
+    Строки не удаляются.
+    """
     result: pd.DataFrame = df.copy()
     duration_source: str = config.get("duration_source", "columns")
+    proc: dict[str, Any] = config.get("processing", {})
+    use_fallback: bool = bool(proc.get("duration_fallback_to_columns", True))
 
     days_on_stage_col: str = col(config, "days_on_stage")
     days_since_deal_col: str = col(config, "days_since_deal")
@@ -36,12 +45,14 @@ def _prepare_duration_columns(df: pd.DataFrame, config: dict[str, Any]) -> pd.Da
 
     start_ref: pd.Series = result[work_start_col]
     deal_ref: pd.Series = result[deal_created_col].fillna(start_ref)
-    has_deal_stage: pd.Series = ~result[deal_stage_col].apply(lambda v: _is_empty_stage(v, config))
+    has_deal_stage: pd.Series = ~_mask_empty_stage(result[deal_stage_col], config)
 
     result["_days_dates"] = (result[report_date_col] - start_ref).dt.days
-    result.loc[has_deal_stage, "_days_dates"] = (
-        result.loc[has_deal_stage, report_date_col] - deal_ref.loc[has_deal_stage]
-    ).dt.days
+    if has_deal_stage.any():
+        deal_days: pd.Series = (
+            result.loc[has_deal_stage, report_date_col] - deal_ref.loc[has_deal_stage]
+        ).dt.days
+        result.loc[has_deal_stage, "_days_dates"] = deal_days
 
     result["_days_since_deal_dates"] = (
         result[report_date_col] - result[deal_created_col]
@@ -53,42 +64,22 @@ def _prepare_duration_columns(df: pd.DataFrame, config: dict[str, Any]) -> pd.Da
     else:
         result["days_on_stage"] = result["_days_dates"]
         result["days_since_deal"] = result["_days_since_deal_dates"]
+        if use_fallback:
+            result["days_on_stage"] = result["days_on_stage"].fillna(result["_days_col"])
+            result["days_since_deal"] = result["days_since_deal"].fillna(
+                result["_days_since_deal_col"]
+            )
 
     return result
 
 
-def _deduplicate_same_date(group: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """На одну дату отчёта и стадию — агрегация из config.processing."""
-    agg_mode: str = config["processing"].get("dedup_same_date_agg", "max")
-    agg_map: dict[str, str] = {
-        "days_on_stage": agg_mode,
-        "days_since_deal": agg_mode,
-        col(config, "product_group"): "first",
-        col(config, "product"): "first",
-        col(config, "tb"): "first",
-        col(config, "current_status"): "first",
-        col(config, "deal_stage"): "first",
-    }
-    present: dict[str, str] = {k: v for k, v in agg_map.items() if k in group.columns}
-    report_date_col: str = col(config, "report_date")
-    return group.groupby(report_date_col, as_index=False).agg(present)
-
-
-def _pick_best_across_dates(group: pd.DataFrame, config: dict[str, Any]) -> pd.Series:
-    """Выбирает запись с максимальным сроком; при равенстве — более поздняя дата отчёта."""
-    max_days: float = group["days_on_stage"].max()
-    candidates: pd.DataFrame = group[group["days_on_stage"] == max_days]
-    report_date_col: str = col(config, "report_date")
-    row: pd.Series = candidates.sort_values(report_date_col).iloc[-1]
-    return row
-
-
-def _build_level_records(
+def _build_level_records_vectorized(
     df: pd.DataFrame,
     config: dict[str, Any],
     level_name: str,
+    progress: ProgressReporter | None = None,
 ) -> pd.DataFrame:
-    """Строит записи лид × стадия для одного уровня анализа."""
+    """Векторизованное построение записей лид × стадия — без потери групп."""
     work: pd.DataFrame = df.copy()
     lead_id: str = col(config, "lead_id")
     product_group: str = col(config, "product_group")
@@ -97,34 +88,69 @@ def _build_level_records(
     current_status: str = col(config, "current_status")
     deal_stage: str = col(config, "deal_stage")
     report_date: str = col(config, "report_date")
+    agg_mode: str = config["processing"].get("dedup_same_date_agg", "max")
+
+    rows_in: int = len(work)
 
     if level_name == "substage":
-        work = work[~work[deal_stage].apply(lambda v: _is_empty_stage(v, config))]
+        # Только режим substages: строки без подстадии не участвуют в этом уровне (как в ТЗ)
+        work = work[~_mask_empty_stage(work[deal_stage], config)]
         key_cols: list[str] = [lead_id, product_group, product, tb, deal_stage]
         stage_label_col: str = deal_stage
+        skip_reason: str = "режим substages — пустая «Стадия сделки»"
     else:
         key_cols = [lead_id, product_group, product, tb, current_status]
         stage_label_col = current_status
+        skip_reason = ""
+
+    if level_name == "substage" and rows_in > len(work):
+        logger.info(
+            "Аудит [трекинг/%s]: %s → %s строк (%s)",
+            level_name,
+            f"{rows_in:,}",
+            f"{len(work):,}",
+            skip_reason,
+        )
 
     if work.empty:
         return pd.DataFrame()
 
-    records: list[pd.Series] = []
-    grouped = work.groupby(key_cols, dropna=False)
-    for _, group in grouped:
-        deduped: pd.DataFrame = _deduplicate_same_date(group, config)
-        best: pd.Series = _pick_best_across_dates(deduped, config)
-        best = best.copy()
-        best["analysis_level"] = level_name
-        best["stage_key"] = best[stage_label_col]
-        best["current_status"] = best[current_status]
-        best["deal_stage"] = "" if level_name == "status" else str(best.get(deal_stage, ""))
-        records.append(best)
+    if progress:
+        progress.step(f"Трекинг [{level_name}]: дедупликация по дате отчёта ({len(work):,} строк)…")
 
-    if not records:
-        return pd.DataFrame()
+    dedup_cols: list[str] = key_cols + [report_date]
+    meta_first: dict[str, str] = {
+        current_status: "first",
+        deal_stage: "first",
+        product_group: "first",
+        product: "first",
+        tb: "first",
+    }
+    agg_map: dict[str, str] = {
+        "days_on_stage": agg_mode,
+        "days_since_deal": agg_mode,
+        **{k: v for k, v in meta_first.items() if k in work.columns},
+    }
 
-    result: pd.DataFrame = pd.DataFrame(records)
+    step1: pd.DataFrame = work.groupby(dedup_cols, dropna=False, as_index=False).agg(agg_map)
+
+    if progress:
+        progress.step(f"Трекинг [{level_name}]: выбор max дней / max дата ({len(step1):,} групп)…")
+
+    # na_position='last' — при выборе max дней строки с NaN не вытесняют строки с данными
+    step1 = step1.sort_values(
+        ["days_on_stage", report_date],
+        ascending=[False, False],
+        na_position="last",
+        kind="mergesort",
+    )
+    best: pd.DataFrame = step1.drop_duplicates(subset=key_cols, keep="first").copy()
+
+    best["analysis_level"] = level_name
+    best["stage_key"] = best[stage_label_col]
+    best["current_status"] = best[current_status]
+    best["deal_stage"] = "" if level_name == "status" else best[deal_stage].astype(str)
+
     keep_cols: list[str] = [
         lead_id,
         product_group,
@@ -138,30 +164,49 @@ def _build_level_records(
         "days_since_deal",
         report_date,
     ]
-    return result[[c for c in keep_cols if c in result.columns]].reset_index(drop=True)
+    return best[[c for c in keep_cols if c in best.columns]].reset_index(drop=True)
 
 
-def build_lead_stage_records(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Формирует таблицу: один лид — одна стадия — сроки нахождения."""
+def build_lead_stage_records(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+    progress: ProgressReporter | None = None,
+) -> pd.DataFrame:
+    """Формирует таблицу: один лид — одна стадия — сроки нахождения. Все лиды сохраняются."""
     stage_mode: str = config.get("stage_analysis_mode", "status")
+
+    if progress:
+        progress.step(f"Расчёт сроков на {len(df):,} строках (все строки входа)…")
+
     prepared: pd.DataFrame = _prepare_duration_columns(df, config)
     frames: list[pd.DataFrame] = []
 
     if stage_mode in {"status", "both"}:
-        status_df: pd.DataFrame = _build_level_records(prepared, config, "status")
+        status_df: pd.DataFrame = _build_level_records_vectorized(
+            prepared, config, "status", progress
+        )
         if not status_df.empty:
             frames.append(status_df)
 
     if stage_mode in {"substages", "both"}:
-        sub_df: pd.DataFrame = _build_level_records(prepared, config, "substage")
+        sub_df: pd.DataFrame = _build_level_records_vectorized(
+            prepared, config, "substage", progress
+        )
         if not sub_df.empty:
             frames.append(sub_df)
 
     if not frames:
         logger.warning("Не сформировано записей lead_stage_records")
+        audit_lead_coverage(df, pd.DataFrame(), config)
         return pd.DataFrame()
 
     result: pd.DataFrame = pd.concat(frames, ignore_index=True)
-    result = result.dropna(subset=["days_on_stage"])
-    logger.info("Записей lead_stage_records: %d", len(result))
+
+    # Не удаляем строки с пустым сроком — все лиды/стадии остаются в анализе
+    log_missing_metrics(result, config)
+    audit_lead_coverage(df, result, config)
+
+    logger.info("Записей lead_stage_records: %d (все группы лид×стадия)", len(result))
+    if progress:
+        progress.step(f"Итого lead_stage_records: {len(result):,} (без отсечения по срокам)")
     return result

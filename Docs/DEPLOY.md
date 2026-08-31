@@ -2,9 +2,11 @@
 
 Инструкция для работы после пересылки по почте или архивом.
 
-## Минимальный набор файлов (код + конфиг)
+## Архив для почты
 
-Передайте **архивом** (zip) следующую структуру:
+Готовый zip: **`POST/KANBAN_HTML_Analiz.zip`** (обновляется при релизах).
+
+## Минимальный набор файлов (код + конфиг)
 
 ```
 KANBAN_HTML_Analiz/
@@ -12,11 +14,13 @@ KANBAN_HTML_Analiz/
 ├── run.py
 ├── README.md
 ├── ROADMAP.md
-├── .env.example          # опционально
+├── .env.example
 ├── src/
 │   ├── __init__.py
 │   ├── main.py
 │   ├── config_loader.py
+│   ├── settings.py
+│   ├── project_paths.py
 │   ├── logger_setup.py
 │   ├── excel_loader.py
 │   ├── dictionaries.py
@@ -25,64 +29,54 @@ KANBAN_HTML_Analiz/
 │   ├── aggregator.py
 │   ├── excel_exporter.py
 │   ├── json_exporter.py
+│   ├── data_audit.py
+│   ├── date_utils.py
+│   ├── performance.py
+│   ├── progress.py
 │   └── Tests/
 │       └── test_excel_loader.py
 └── Docs/
+    ├── CONFIG.md         # справочник config.json
     ├── BT_KANBAN.md
-    ├── ToDo KANBAN.txt
-    └── DEPLOY.md         # этот файл
+    ├── DEPLOY.md
+    └── ToDo KANBAN.txt
 ```
 
-**Не включать в архив** (создаются локально или содержат данные):
-
-| Каталог / файл | Причина |
-|----------------|---------|
-| `.git/` | Репозиторий не нужен |
-| `log/` | Логи генерируются при запуске |
-| `OUT/` | Результаты анализа |
-| `IN/` | Prod Excel-файлы (большой объём) |
-| `Docs/FileIN/` | Test Excel (~16 МБ, лучше отдельным вложением) |
-| `__pycache__/`, `.venv/` | Кэш и окружение |
+**Не включать:** `.git/`, `log/`, `OUT/`, `IN/`, `Docs/FileIN/`, `POST/`, `__pycache__/`
 
 ## Данные Excel (отдельно)
 
-| Режим | Куда положить | Файлы |
-|-------|---------------|-------|
-| **test** | `Docs/FileIN/` | `2ГОСБ1ТБ.xlsx` (+ опционально `2ГОСБ1ТБ SHORT.xlsx`) |
-| **prod** | `IN/` | 22 файла Kanban (имена — в `config.json` → `prod_files`) |
-
-> Test-файлы большие (~10–16 МБ). Если почта не пропускает — облако / USB.
+| Режим | Каталог | Файлы |
+|-------|---------|-------|
+| test | `Docs/FileIN/` | `2ГОСБ1ТБ.xlsx` |
+| prod | `IN/` | 22 файла из `config.json` → `prod_files` |
 
 ## Настройка на новом ПК
 
-1. **Python 3.12** или **Anaconda** с пакетами `pandas`, `openpyxl` (без pip, если недоступен).
-2. Распаковать архив в любую папку, например `C:\Projects\KANBAN_HTML_Analiz`.
-3. Создать пустые каталоги (если их нет):
-   ```
-   IN/
-   OUT/
-   log/
-   Docs/FileIN/
-   ```
-4. Скопировать Excel-файлы в `Docs/FileIN/` или `IN/` (см. выше).
-5. При необходимости отредактировать `config.json` (`mode`, пути, фильтры).
-6. Запуск из корня проекта:
-   ```bash
-   python run.py
-   ```
-7. Результаты появятся в `OUT/kanban_report_YYYYMMDD_HHMMSS.xlsx` и `.json`.
+1. Python 3.12 / Anaconda + `pandas`, `openpyxl`
+2. Распаковать архив
+3. Создать пустые: `IN/`, `OUT/`, `log/`, `Docs/FileIN/`
+4. Положить xlsx
+5. Настроить `config.json` — см. [CONFIG.md](CONFIG.md)
+6. `python run.py`
 
-## Проверка окружения
+## Prod-режим
+
+```json
+"mode": "prod"
+```
+
+22 xlsx в `IN/`, при необходимости снизить нагрузку:
+
+```json
+"parallel_workers": 1,
+"performance": { "max_parallel_workers": 2, "reserve_cpu_cores": 2 }
+```
+
+## Проверка
 
 ```bash
 python -c "import pandas, openpyxl; print('OK')"
 python -m unittest src.Tests.test_excel_loader -v
+python run.py
 ```
-
-## Prod-режим
-
-В `config.json`:
-```json
-"mode": "prod"
-```
-Положить 22 xlsx в `IN/`, запустить `python run.py`.

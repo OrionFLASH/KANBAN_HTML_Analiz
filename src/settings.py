@@ -63,6 +63,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "empty_stage_values": ["", "-", "nan", "None"],
         "dedup_same_date_agg": "max",
         "pick_across_dates": "max_days_then_latest_report_date",
+        "audit_row_counts": True,
+        "duration_fallback_to_columns": True,
+    },
+    "performance": {
+        "max_parallel_workers": 4,
+        "reserve_cpu_cores": 1,
+        "read_only_required_columns": True,
+        "downcast_numeric": True,
+        "free_memory_between_stages": True,
+    },
+    "progress": {
+        "enabled": True,
+        "log_every_seconds": 3,
+    },
+    "dates": {
+        "dayfirst": True,
+        "excel_origin": "1899-12-30",
+        "formats": ["%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"],
+        "empty_values": ["", "-", "nan", "none", "nat", "null", "N/A", "n/a"]
     },
     "aggregation": {
         "group_keys": [

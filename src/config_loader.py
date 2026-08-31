@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
+from src.performance import resolve_parallel_workers
 from src.project_paths import resolve_path
 from src.settings import normalize_config
 
@@ -32,9 +32,7 @@ def load_config(config_path: str | Path = "config.json") -> dict[str, Any]:
 
 def _apply_defaults(config: dict[str, Any]) -> None:
     """Заполняет вычисляемые значения по умолчанию."""
-    workers: int = int(config.get("parallel_workers", 0))
-    if workers <= 0:
-        config["parallel_workers"] = os.cpu_count() or 4
+    config["parallel_workers"] = resolve_parallel_workers(config)
 
 
 def _validate_config(config: dict[str, Any]) -> None:

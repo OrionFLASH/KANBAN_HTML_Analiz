@@ -27,122 +27,54 @@ python run.py
 python -m src.main config.json
 ```
 
+> Пути в config и каталоги `log/`, `OUT/` считаются **от корня проекта** (где `run.py`), не от текущей папки IDE.
+
 ## Структура проекта
 
 ```
-config.json          # параметры
+config.json          # параметры (см. Docs/CONFIG.md)
 run.py               # точка запуска
 src/                 # исходный код
-  main.py            # pipeline
-  excel_loader.py    # параллельная загрузка
-  lead_tracker.py    # трекинг стадий лидов
-  aggregator.py      # min/max/percentiles
-  excel_exporter.py  # Excel с форматированием
-  json_exporter.py   # JSON для HTML
+Docs/CONFIG.md       # полный справочник config.json
 Docs/FileIN/         # test-данные (в .gitignore)
 IN/                  # prod-данные
 OUT/                 # результаты с timestamp
 log/                 # логи INFO/DEBUG
 ```
 
-## config.json — структура настроек
+## config.json
 
-Все параметры задаются в `config.json`. Отсутствующие ключи дополняются значениями по умолчанию из `src/settings.py`.
+**Полный справочник с вариантами и примерами:** [Docs/CONFIG.md](Docs/CONFIG.md)
 
-### Режим и пути (`paths`)
+### Краткая карта разделов
 
-| Ключ | Описание |
-|------|----------|
-| `mode` | `test` или `prod` |
-| `paths.input_test` | Каталог test-файлов |
-| `paths.input_prod` | Каталог prod-файлов |
-| `paths.output` | Каталог результатов |
-| `paths.log` | Каталог логов |
-| `test_files` / `prod_files` | Списки имён xlsx |
+| Раздел | Назначение |
+|--------|------------|
+| `mode`, `paths`, `test_files`, `prod_files` | Режим и каталоги |
+| `columns`, `required_column_keys` | Имена колонок Excel |
+| `excel` | Лист, таблица Base, движок |
+| `processing` | Дедупликация, аудит, fallback сроков |
+| `performance` | Workers, память, оптимизация чтения |
+| `progress` | Вывод статуса в консоль |
+| `dates` | Форматы дат, пустые значения |
+| `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа |
+| `aggregation` | Группировки и метрики |
+| `output` | Имена файлов, листы Excel, оформление |
+| `filters` | Фильтры (AND, только если enabled) |
+| `logging` | Файлы логов |
 
-### Колонки Excel (`columns`)
+### Частые настройки
 
-Имена колонок в исходных файлах — **ключ → имя в Excel**:
-
-| Ключ | По умолчанию |
-|------|--------------|
-| `report_date` | Дата отчета |
-| `lead_id` | ID ПрПр |
-| `product_group` | Группа продукта |
-| `product` | Продукт |
-| `work_start_date` | Дата начала работы |
-| `current_status` | Текущий статус |
-| `days_on_stage` | Количество дней на текущей стадии |
-| `deal_created_date` | Дата создания сделки |
-| `deal_stage` | Стадия сделки |
-| `days_since_deal` | Количество дней с создания сделки |
-| `tb` | ТБ |
-| `label` | Метка |
-| `change_conditions` | _Изменение условий |
-| `data_entry` | _Ввод данных |
-| `efs_flag` | ЕФС флаг |
-
-`required_column_keys` — какие ключи обязательны при загрузке.
-
-### Excel (`excel`)
-
-| Ключ | Описание |
-|------|----------|
-| `sheet_name` | Лист |
-| `table_name` | Именованная таблица (например `Base`) |
-| `table_auto` | Сначала таблица, иначе весь лист |
-| `engine` | Движок pandas (`openpyxl`) |
-| `na_values` | Пустые значения |
-| `category_markers` | Маркеры «К ПРОДАЖЕ» / «В РАБОТЕ» в имени файла |
-
-### Обработка (`processing`)
-
-| Ключ | Описание |
-|------|----------|
-| `empty_stage_values` | Значения пустой подстадии (`-`, `""`, …) |
-| `dedup_same_date_agg` | Агрегация на одну дату (`max`) |
-| `pick_across_dates` | Правило выбора между датами отчёта |
-
-### Анализ
-
-| Ключ | Описание |
-|------|----------|
-| `duration_source` | `columns` или `dates` |
-| `stage_analysis_mode` | `status`, `substages`, `both` |
-| `percentiles` | Список перцентилей, напр. `[20, 50, 80]` |
-| `parallel_workers` | Процессы (`0` = число CPU) |
-| `aggregation.group_keys` | Ключи группировки статистики |
-| `aggregation.metrics` | Метрики: `days_on_stage`, `days_since_deal` |
-
-### Выход (`output`)
-
-| Ключ | Описание |
-|------|----------|
-| `report_prefix` | Префикс файлов (`kanban_report`) |
-| `timestamp_format` | Формат timestamp в имени |
-| `excel_sheets.summary` / `overall` | Имена листов Excel |
-| `column_labels` | Заголовки колонок в Excel |
-| `excel_format` | Freeze, ширина, цвета min/max |
-
-### Фильтры (`filters`)
-
-Каждый фильтр: `enabled`, `column_key` (ссылка на `columns`), `value` или `contains`:
-
-- `change_conditions`, `data_entry`, `efs_flag`, `strategy_label`
-
-### Логирование (`logging`)
-
-| Ключ | Описание |
-|------|----------|
-| `logger_name` | Имя логгера |
-| `info_file_prefix` / `debug_file_prefix` | Префиксы файлов логов |
-| `hour_format` | Формат часа в имени лога |
-
-### Прочее
-
-| Ключ | Описание |
-|------|----------|
-| `excel_theme` | `green_red` или `minimal` |
+```json
+{
+  "mode": "prod",
+  "duration_source": "columns",
+  "stage_analysis_mode": "status",
+  "percentiles": [20, 50, 80],
+  "parallel_workers": 0,
+  "performance": { "max_parallel_workers": 3, "reserve_cpu_cores": 1 }
+}
+```
 
 ## Выходные файлы
 
@@ -154,19 +86,21 @@ log/                 # логи INFO/DEBUG
 
 `OUT/kanban_report_YYYYMMDD_HHMMSS.json` — агрегаты + справочники для HTML.
 
+## Полнота данных
+
+- Оптимизация **не отбрасывает строки** — только ускоряет чтение/обработку
+- Исключение строк — **только включённые фильтры** в `filters`
+- Аудит в логе: `Аудит [лиды]: все N ID ПрПр учтены`
+
 ## Перенос на другой ПК (без Git)
 
-Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md).
-
-**Минимальный архив для почты:** `config.json`, `run.py`, `README.md`, `ROADMAP.md`, каталог `src/`, каталог `Docs/` (без `FileIN/`).
-
-**Отдельно:** Excel-файлы в `Docs/FileIN/` (test) или `IN/` (prod) — не в репозитории.
-
-**На новом ПК:** создать пустые `IN/`, `OUT/`, `log/`, `Docs/FileIN/`, положить xlsx, запустить `python run.py`.
+Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). Архив для почты: каталог `POST/KANBAN_HTML_Analiz.zip`.
 
 ## История версий
 
 | Версия | Дата | Изменения |
 |--------|------|-----------|
-| 0.1.0 | 2026-08-31 | MVP pipeline: загрузка, трекинг, агрегация, Excel/JSON; test пройден |
-| 0.2.0 | 2026-08-31 | Все пути, колонки и форматы вынесены в config.json |
+| 0.1.0 | 2026-08-31 | MVP pipeline |
+| 0.2.0 | 2026-08-31 | Все настройки в config.json |
+| 0.3.0 | 2026-08-31 | Ускорение, прогресс, разбор дат |
+| 0.4.0 | 2026-08-31 | Аудит полноты данных, Docs/CONFIG.md |

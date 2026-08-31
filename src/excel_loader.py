@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,10 @@ from typing import Any
 import pandas as pd
 from openpyxl import load_workbook
 
-from src.settings import required_column_names
+from src.date_utils import parse_date_column
+from src.performance import resolve_parallel_workers
+from src.progress import ProgressReporter
+from src.settings import col, required_column_names
 
 logger: logging.Logger = logging.getLogger("kanban.excel_loader")
 
@@ -45,34 +49,12 @@ def _resolve_table_range(
         wb.close()
 
 
-def _read_table_range(
+def _read_excel_dataframe(
     file_path: Path,
-    sheet_name: str,
-    cell_range: str,
-    engine: str,
-    na_values: list[str],
+    config: dict[str, Any],
+    use_columns: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Читает именованную таблицу Excel по диапазону ref."""
-    match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
-    if not match:
-        raise ValueError(f"Некорректный диапазон таблицы: {cell_range}")
-
-    start_row: int = int(match.group(2))
-    end_row: int = int(match.group(4))
-    return pd.read_excel(
-        file_path,
-        sheet_name=sheet_name,
-        engine=engine,
-        header=start_row - 1,
-        nrows=end_row - start_row,
-        na_values=na_values,
-    )
-
-
-def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
-    """Читает один Excel-файл (для ProcessPoolExecutor)."""
-    file_path_str, config = args
-    file_path: Path = Path(file_path_str)
+    """Читает лист или именованную таблицу Excel."""
     excel_cfg: dict[str, Any] = config["excel"]
     sheet_name: str = excel_cfg["sheet_name"]
     table_name: str = excel_cfg["table_name"]
@@ -80,28 +62,50 @@ def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
     engine: str = excel_cfg.get("engine", "openpyxl")
     na_values: list[str] = list(excel_cfg.get("na_values", [""]))
 
-    df: pd.DataFrame
+    read_kwargs: dict[str, Any] = {
+        "sheet_name": sheet_name,
+        "engine": engine,
+        "na_values": na_values,
+    }
+    if use_columns:
+        read_kwargs["usecols"] = use_columns
+
     if use_auto:
         cell_range: str | None = _resolve_table_range(file_path, sheet_name, table_name)
         if cell_range:
-            df = _read_table_range(file_path, sheet_name, cell_range, engine, na_values)
-        else:
-            df = pd.read_excel(
+            match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
+            if not match:
+                raise ValueError(f"Некорректный диапазон таблицы: {cell_range}")
+            start_row: int = int(match.group(2))
+            end_row: int = int(match.group(4))
+            return pd.read_excel(
                 file_path,
-                sheet_name=sheet_name,
-                engine=engine,
-                na_values=na_values,
+                header=start_row - 1,
+                nrows=end_row - start_row,
+                **read_kwargs,
             )
-    else:
-        df = pd.read_excel(
-            file_path,
-            sheet_name=sheet_name,
-            engine=engine,
-            na_values=na_values,
-        )
 
+    return pd.read_excel(file_path, **read_kwargs)
+
+
+def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
+    """Читает один Excel-файл (для ProcessPoolExecutor)."""
+    file_path_str, config = args
+    file_path: Path = Path(file_path_str)
+    perf: dict[str, Any] = config.get("performance", {})
+
+    use_columns: list[str] | None = None
+    if perf.get("read_only_required_columns", True):
+        # Только отбор колонок для скорости; все строки листа/таблицы загружаются полностью
+        use_columns = required_column_names(config)
+
+    df: pd.DataFrame = _read_excel_dataframe(file_path, config, use_columns)
     _validate_columns(df, file_path, config)
     df = _normalize_types(df, config)
+
+    if perf.get("downcast_numeric", True):
+        df = _downcast_frame(df, config)
+
     df["source_file"] = file_path.name
     df["source_category"] = _detect_category(file_path.name, config)
     return df
@@ -115,38 +119,37 @@ def _validate_columns(df: pd.DataFrame, file_path: Path, config: dict[str, Any])
         raise ValueError(f"{file_path.name}: отсутствуют колонки: {missing}")
 
 
+def _downcast_frame(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """
+    Уменьшает типы флагов для экономии памяти.
+    Колонки сроков (days_*) не downcast — сохраняем точные значения из Excel.
+    """
+    result: pd.DataFrame = df.copy()
+    c = config["columns"]
+    flag_keys: tuple[str, ...] = ("change_conditions", "data_entry", "efs_flag")
+    for key in flag_keys:
+        name: str = c[key]
+        if name in result.columns:
+            result[name] = pd.to_numeric(result[name], errors="coerce", downcast="integer")
+    return result
+
+
 def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """Приводит ключевые колонки к нужным типам."""
     result: pd.DataFrame = df.copy()
     c = config["columns"]
 
-    date_keys: list[str] = ["report_date", "work_start_date", "deal_created_date"]
-    for key in date_keys:
+    for key in ("report_date", "work_start_date", "deal_created_date"):
         name: str = c[key]
         if name in result.columns:
-            result[name] = pd.to_datetime(result[name], errors="coerce")
+            result[name] = parse_date_column(result[name], config, name)
 
-    numeric_keys: list[str] = [
-        "days_on_stage",
-        "days_since_deal",
-        "change_conditions",
-        "data_entry",
-        "efs_flag",
-    ]
-    for key in numeric_keys:
+    for key in ("days_on_stage", "days_since_deal", "change_conditions", "data_entry", "efs_flag"):
         name = c[key]
         if name in result.columns:
             result[name] = pd.to_numeric(result[name], errors="coerce")
 
-    text_keys: list[str] = [
-        "current_status",
-        "deal_stage",
-        "product_group",
-        "product",
-        "tb",
-        "lead_id",
-    ]
-    for key in text_keys:
+    for key in ("current_status", "deal_stage", "product_group", "product", "tb", "lead_id"):
         name = c[key]
         if name in result.columns:
             result[name] = result[name].astype(str).str.strip()
@@ -158,28 +161,67 @@ def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     return result
 
 
-def load_all_files(config: dict[str, Any], input_dir: Path, filenames: list[str]) -> pd.DataFrame:
+def load_all_files(
+    config: dict[str, Any],
+    input_dir: Path,
+    filenames: list[str],
+    progress: ProgressReporter | None = None,
+) -> pd.DataFrame:
     """Параллельно загружает все файлы и объединяет в один DataFrame."""
     paths: list[Path] = [input_dir / name for name in filenames]
     for path in paths:
         if not path.exists():
             raise FileNotFoundError(f"Входной файл не найден: {path}")
 
-    workers: int = int(config.get("parallel_workers", 4))
-    args_list: list[tuple[str, dict[str, Any]]] = [(str(p), config) for p in paths]
+    workers: int = resolve_parallel_workers(config)
+    total: int = len(paths)
+
+    if progress:
+        progress.stage(
+            "Загрузка Excel",
+            f"{total} файл(ов), workers={workers}",
+        )
 
     frames: list[pd.DataFrame] = []
-    if workers == 1 or len(paths) == 1:
-        for args in args_list:
-            frames.append(read_single_file(args))
+
+    if workers == 1 or total == 1:
+        for idx, path in enumerate(paths, start=1):
+            size_mb: float = path.stat().st_size / (1024 * 1024)
+            if progress:
+                progress.step(
+                    f"[{idx}/{total}] Чтение {path.name} ({size_mb:.1f} МБ)…"
+                )
+            t0: float = time.monotonic()
+            frame: pd.DataFrame = read_single_file((str(path), config))
+            frames.append(frame)
+            elapsed: float = time.monotonic() - t0
+            msg: str = f"[{idx}/{total}] {path.name}: {len(frame):,} строк за {elapsed:.1f} сек"
+            logger.info(msg)
+            if progress:
+                progress.step(msg)
     else:
+        args_list: list[tuple[str, dict[str, Any]]] = [(str(p), config) for p in paths]
+        done: int = 0
+        if progress:
+            for path in paths:
+                size_mb = path.stat().st_size / (1024 * 1024)
+                progress.step(f"В очереди: {path.name} ({size_mb:.1f} МБ)")
+
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(read_single_file, args): args[0] for args in args_list}
             for future in as_completed(futures):
                 path_str: str = futures[future]
+                done += 1
                 try:
-                    frames.append(future.result())
-                    logger.info("Загружен файл: %s", Path(path_str).name)
+                    frame = future.result()
+                    frames.append(frame)
+                    msg = (
+                        f"[{done}/{total}] {Path(path_str).name}: "
+                        f"{len(frame):,} строк загружено"
+                    )
+                    logger.info(msg)
+                    if progress:
+                        progress.step(msg)
                 except Exception as exc:
                     logger.error("Ошибка загрузки %s: %s", path_str, exc)
                     raise
@@ -187,6 +229,11 @@ def load_all_files(config: dict[str, Any], input_dir: Path, filenames: list[str]
     if not frames:
         raise ValueError("Не удалось загрузить ни одного файла")
 
+    if progress:
+        progress.step(f"Объединение {len(frames)} таблиц…")
+
     combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
-    logger.info("Объединено строк: %d из %d файлов", len(combined), len(frames))
+    logger.info("Объединено строк: %d из %d файлов (все строки файлов сохранены)", len(combined), len(frames))
+    if progress:
+        progress.done(f"Загрузка: {len(combined):,} строк из {len(frames)} файлов — полный объём")
     return combined

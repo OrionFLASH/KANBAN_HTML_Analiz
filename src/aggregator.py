@@ -25,7 +25,7 @@ def aggregate_statistics(
     percentiles: list[float],
     include_tb: bool = True,
 ) -> pd.DataFrame:
-    """Считает min, max, перцентили и count для метрик из config."""
+    """Считает min, max, перцентили и count через groupby.agg."""
     if records.empty:
         return pd.DataFrame()
 
@@ -39,36 +39,29 @@ def aggregate_statistics(
 
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
 
-    rows: list[dict[str, Any]] = []
-    grouped = records.groupby(base_cols, dropna=False)
+    named: dict[str, tuple[str, str]] = {}
+    for metric in metrics:
+        if metric not in records.columns:
+            continue
+        named[f"{metric}_min"] = (metric, "min")
+        named[f"{metric}_max"] = (metric, "max")
+        named[f"{metric}_count"] = (metric, "count")
 
-    for keys, group in grouped:
-        if not isinstance(keys, tuple):
-            keys = (keys,)
-        row: dict[str, Any] = dict(zip(base_cols, keys))
+    if not named:
+        return pd.DataFrame()
 
-        for metric in metrics:
-            if metric not in group.columns:
-                continue
-            series: pd.Series = pd.to_numeric(group[metric], errors="coerce").dropna()
-            prefix: str = metric
-            if series.empty:
-                row[f"{prefix}_min"] = None
-                row[f"{prefix}_max"] = None
-                row[f"{prefix}_count"] = 0
-                for p in percentiles:
-                    row[f"{prefix}_{_percentile_label(p)}"] = None
-                continue
+    grouped = records.groupby(base_cols, dropna=False, observed=True)
+    result: pd.DataFrame = grouped.agg(**named).reset_index()
 
-            row[f"{prefix}_min"] = float(series.min())
-            row[f"{prefix}_max"] = float(series.max())
-            row[f"{prefix}_count"] = int(len(series))
-            for p in percentiles:
-                row[f"{prefix}_{_percentile_label(p)}"] = float(series.quantile(p / 100.0))
+    for metric in metrics:
+        if metric not in records.columns:
+            continue
+        for p in percentiles:
+            label: str = _percentile_label(p)
+            col_name: str = f"{metric}_{label}"
+            quantile_series: pd.Series = grouped[metric].quantile(p / 100.0)
+            result[col_name] = quantile_series.values
 
-        rows.append(row)
-
-    result: pd.DataFrame = pd.DataFrame(rows)
     logger.info("Агрегировано групп: %d (include_tb=%s)", len(result), include_tb)
     return result
 

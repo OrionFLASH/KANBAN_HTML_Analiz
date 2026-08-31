@@ -26,16 +26,16 @@ def extract_stages(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, list[s
     deal_stage_col: str = col(config, "deal_stage")
     empty: set[str] = empty_stage_values(config)
 
-    stages: dict[str, set[str]] = {}
-    for _, row in df[[status_col, deal_stage_col]].drop_duplicates().iterrows():
-        status: str = str(row[status_col]).strip()
-        deal_stage: str = str(row[deal_stage_col]).strip()
-        if status not in stages:
-            stages[status] = set()
-        if deal_stage not in empty:
-            stages[status].add(deal_stage)
+    pairs: pd.DataFrame = df[[status_col, deal_stage_col]].drop_duplicates()
+    result: dict[str, list[str]] = {}
 
-    result: dict[str, list[str]] = {k: sorted(v) for k, v in sorted(stages.items())}
+    for status in sorted(pairs[status_col].dropna().unique(), key=str):
+        status_str: str = str(status).strip()
+        substages: pd.Series = pairs.loc[pairs[status_col] == status, deal_stage_col]
+        valid: pd.Series = substages.astype(str).str.strip()
+        valid = valid[~valid.isin(empty) & ~valid.str.lower().eq("nan")]
+        result[status_str] = sorted({str(v) for v in valid.unique() if str(v).strip() not in empty})
+
     logger.info("Справочник стадий: %d статусов", len(result))
     return result
 
@@ -47,7 +47,7 @@ def extract_products(df: pd.DataFrame, config: dict[str, Any]) -> list[dict[str,
     pairs: pd.DataFrame = df[[group_col, product_col]].drop_duplicates()
     products: list[dict[str, str]] = [
         {"group": str(r[group_col]), "product": str(r[product_col])}
-        for _, r in pairs.iterrows()
+        for r in pairs.to_dict(orient="records")
     ]
     logger.info("Справочник продуктов: %d пар", len(products))
     return products
