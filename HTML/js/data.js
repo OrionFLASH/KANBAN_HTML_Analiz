@@ -356,23 +356,50 @@ const KanbanData = (() => {
   }
 
   function productGroupMap() {
-    /** Группа → множество продуктов (из серий group_product, для фильтра продуктов). */
+    /** Группа → множество продуктов (для каскадного фильтра). */
     const map = new Map();
     const placeholder = payload?.meta?.group_only_product_label || "—";
-    const productSeries =
-      viz().aggregations?.group_product?.distribution_series || viz().distribution_series || [];
-    productSeries.forEach((row) => {
-      const group = String(row.product_group || "");
-      const product = String(row.product || "");
+
+    const addPair = (groupRaw, productRaw) => {
+      const group = String(groupRaw || "").trim();
+      const product = String(productRaw || "").trim();
       if (!group || !product || product === placeholder) return;
       if (!map.has(group)) map.set(group, new Set());
       map.get(group).add(product);
+    };
+
+    // 1) Справочник dimensions.products — полный набор пар группа×продукт
+    const dimProducts = payload?.dimensions?.products;
+    if (Array.isArray(dimProducts)) {
+      dimProducts.forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        addPair(row.group ?? row.product_group, row.product);
+      });
+    }
+    if (map.size) return map;
+
+    // 2) Активный filter_slice → aggregations.group_product (top-level aggregations часто пуст)
+    const sliceAggs = filterSliceData()?.aggregations || {};
+    const productSeries =
+      sliceAggs.group_product?.distribution_series ||
+      viz().aggregations?.group_product?.distribution_series ||
+      distributionSeries() ||
+      [];
+    productSeries.forEach((row) => {
+      addPair(row.product_group, row.product);
     });
     return map;
   }
 
   function productOptionsForGroups(selectedGroups) {
+    /** null/[] — все продукты; иначе только продукты выбранных групп. */
     if (!selectedGroups || !selectedGroups.length) {
+      const fromMap = productGroupMap();
+      if (fromMap.size) {
+        const all = new Set();
+        fromMap.forEach((set) => set.forEach((p) => all.add(p)));
+        return Array.from(all).sort((a, b) => a.localeCompare(b, "ru"));
+      }
       return uniqueValues("product");
     }
     const map = productGroupMap();

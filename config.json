@@ -218,7 +218,7 @@
     "excel_max_chart_series": 8,
     "max_chart_series": 12,
     "precompute_html_filter_slices": true,
-    "show_managers_tab": true,
+    "show_managers_tab": false,
     "html_json": {
       "bundle_mode": "monolith",
       "compact": true,

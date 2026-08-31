@@ -106,7 +106,7 @@ const KanbanCharts = (() => {
 
     if (!chartGroups.length) {
       container.innerHTML =
-        `<div class="empty-state"><p>Нет данных по КМ для графика. Загрузите JSON менеджеров.</p></div>`;
+        `<div class="empty-state"><p>Нет данных по КМ для графика. Нужен блок <code>managers</code> в основном JSON.</p></div>`;
       return;
     }
 

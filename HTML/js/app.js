@@ -17,7 +17,6 @@
 
   const controls = {
     jsonFile: document.getElementById("jsonFile"),
-    managersJsonFile: document.getElementById("managersJsonFile"),
     aggregationMode: document.getElementById("aggregationMode"),
     chartMode: document.getElementById("chartMode"),
     metricSelect: document.getElementById("metricSelect"),
@@ -145,15 +144,25 @@
 
   function syncProductListFromGroups() {
     if (KanbanData.isGroupOnly()) return;
+    // Сужаем продукты только при частичном выборе групп (не «все» и не «пусто = все»)
     const selectedGroups = groupWidget.getSelected();
+    const totalGroups = groupWidget.allItems?.length || 0;
+    const restrictGroups =
+      selectedGroups.length > 0 && selectedGroups.length < totalGroups ? selectedGroups : null;
+
     const prevSelected = new Set(productWidget.getSelected());
-    const products = KanbanData.productOptionsForGroups(selectedGroups).map((value) => ({
+    const products = KanbanData.productOptionsForGroups(restrictGroups).map((value) => ({
       value,
       label: value,
       icon: "product",
     }));
+
+    // Сохраняем пересечение прежнего выбора; если раньше было «все» — отмечаем весь новый список
+    const prevWasAll =
+      !prevSelected.size || prevSelected.size >= (productWidget.allItems?.length || 0);
     const stillValid = products.filter((p) => prevSelected.has(p.value)).map((p) => p.value);
-    productWidget.setItems(products, stillValid);
+    const nextSelected = prevWasAll ? products.map((p) => p.value) : stillValid;
+    productWidget.setItems(products, nextSelected);
 
     const toggle = document.getElementById("productFilterToggle");
     if (products.length > 14 && toggle?.getAttribute("aria-expanded") !== "true") {
@@ -556,7 +565,7 @@
         chartsGrid.innerHTML =
           `<div class="empty-state panel">` +
           `<p class="empty-state__title">Нет данных по КМ</p>` +
-          `<p>Загрузите <code>kanban_report_managers_*.json</code> — в нём блок <code>charts</code> для bar-графиков.</p>` +
+          `<p>В JSON нет блока <code>managers.charts</code> — пересоберите отчёт с <code>html_json.embed_managers: true</code>.</p>` +
           `</div>`;
         return;
       }
@@ -640,19 +649,17 @@
     const show = Boolean(KanbanData.getPayload()?.meta?.show_managers_tab);
     const btn = document.getElementById("managersTabBtn");
     const panel = document.getElementById("managersTab");
-    const filePick = document.getElementById("managersFilePick");
     if (btn) btn.hidden = !show;
+    if (panel && !show) panel.classList.remove("active");
     if (!show && btn?.classList.contains("active")) {
       btn.classList.remove("active");
       btn.setAttribute("aria-selected", "false");
-      panel?.classList.remove("active");
       const chartsBtn = document.querySelector('.mode-tabs .tab[data-tab="charts"]');
       const chartsPanel = document.getElementById("chartsTab");
       chartsBtn?.classList.add("active");
       chartsBtn?.setAttribute("aria-selected", "true");
       chartsPanel?.classList.add("active");
     }
-    if (filePick) filePick.hidden = true;
   }
 
   const jsonLoadPanel = document.getElementById("jsonLoadPanel");
@@ -679,7 +686,6 @@
     KanbanPivot.resetSort();
     loadedJsonFileName = "";
     if (controls.jsonFile) controls.jsonFile.value = "";
-    if (controls.managersJsonFile) controls.managersJsonFile.value = "";
 
     setJsonLoadUi(false);
     syncManagersTabVisibility();
@@ -714,6 +720,8 @@
 
       if (data?.managers) {
         KanbanManagers.loadPayload(data.managers);
+      } else {
+        KanbanManagers.clearPayload();
       }
 
       if (KanbanData.isSplitBundle()) {
@@ -756,21 +764,6 @@
 
   btnResetJson?.addEventListener("click", () => {
     resetDashboardUi();
-  });
-
-  controls.managersJsonFile?.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        KanbanManagers.loadJson(String(reader.result));
-        refreshKeepPivotSort();
-      } catch (err) {
-        console.error("[KANBAN] managers JSON failed:", err);
-      }
-    };
-    reader.readAsText(file, "UTF-8");
   });
 
   pipelineFilterList?.addEventListener("click", onPipelineToggleClick);

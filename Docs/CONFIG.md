@@ -64,8 +64,8 @@
 |----------|----------------------|-----------------|
 | **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки и **Менеджеры** (листы «Матрица» и «Графики» не создаются) |
 | **JSON (основной)** | `dashboard.precompute_html_filter_slices`; фильтры с `html_slice: true` (не `enabled`) | `visualizations.filter_slices` — комбинации 2^N (N = число HTML-фильтров); база данных — после config-only фильтров |
-| **JSON (менеджеры)** | `manager_analytics.*`, `rank_by_team`, `team_files`, `rank_selection`; колонки `km`, `vks`, `label`, `deal_id`, `inn`, `client` | Блок `managers` в monolith JSON (или отдельный файл): `records` (+`team`), `top_by_tb`, `charts` |
-| **HTML** | Pipeline ВКЛ/ВЫКЛ; зафиксированные фильтры; матрица (дни + ↑/↓ порога); менеджеры — роли и команда | Локальный дашборд `HTML/` (file://) |
+| **JSON (менеджеры)** | `manager_analytics.*`, `rank_by_team`, `team_files`, `rank_selection`; колонки `km`, `vks`, `label`, `deal_id`, `inn`, `client` | Блок `managers` в monolith JSON: `records` (+`team`), `top_by_tb`, `charts` (отдельный файл — только при `write_separate_managers_json: true`, в UI не загружается) |
+| **HTML** | Pipeline ВКЛ/ВЫКЛ; зафиксированные фильтры; матрица (дни + ↑/↓ порога); вкладка «Менеджеры» — опционально (`show_managers_tab`) | Локальный дашборд `HTML/` (file://), один JSON |
 
 > **`enabled` в `filters` влияет на Excel и на config-only срез (`html_slice: false`).** HTML переключает готовые срезы JSON (`html_slice: true`) без пересчёта pipeline. Копии `*_latest*` и запись в `HTML/data/` **не создаются** — JSON загружается вручную.
 
@@ -445,7 +445,7 @@ HTML-дашборд: агрегация **зафиксирована** в config
 | `excel_max_chart_series` | Число графиков на листе Excel |
 | `max_chart_series` | Макс. линий на одном HTML-графике |
 | `precompute_html_filter_slices` | `true` — все комбинации HTML-фильтров в JSON (пустые пропускаются) |
-| `show_managers_tab` | `true` / `false` — показывать вкладку «Менеджеры» в HTML |
+| `show_managers_tab` | `false` — вкладка «Менеджеры» в HTML **скрыта** (по умолчанию). `true` — показать; данные только из блока `managers` в том же monolith JSON (отдельная загрузка файла менеджеров в UI **не поддерживается**) |
 | `html_json` | Экспорт для HTML: monolith/split, compact, прореживание серий |
 
 ### `dashboard.html_json` — оптимизация для prod
@@ -557,8 +557,8 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 |----------|-----|-----------------|
 | `by_product` | line | Основной JSON — `distribution_series` |
 | `by_tb` | line | Основной JSON — `distribution_series` |
-| `km_by_tb` | bar | JSON менеджеров — `charts.by_tb` + `charts.facts` |
-| `km_by_segment` | bar | JSON менеджеров — `charts.facts` (группы/продукты по «Агрегация строк») |
+| `km_by_tb` | bar | Блок `managers.charts.by_tb` + `charts.facts` в основном JSON |
+| `km_by_segment` | bar | Блок `managers.charts.facts` (группы/продукты по «Агрегация строк») |
 
 **Нарушение КМ:** уникальный КМ, у которого есть сделки со сроком **строго больше** P80 для той же группы × продукта × стадии. На bar-chart — **число таких КМ**; в tooltip — число сделок с превышением.
 
