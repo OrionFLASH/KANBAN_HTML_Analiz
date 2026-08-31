@@ -39,7 +39,8 @@
     "change_conditions",
     "data_entry",
     "efs_flag",
-    "label"
+    "label",
+    "km"
   ],
   "excel": {
     "sheet_name": "Sheet1",

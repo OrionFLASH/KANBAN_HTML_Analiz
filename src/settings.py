@@ -47,6 +47,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "data_entry",
         "efs_flag",
         "label",
+        "km",
     ],
     "excel": {
         "sheet_name": "Sheet1",
@@ -174,6 +175,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_indicator": "p80",
         "excel_max_chart_series": 8,
         "max_chart_series": 12,
+        "precompute_html_filter_slices": True,
     },
     "manager_analytics": {
         "enabled": True,

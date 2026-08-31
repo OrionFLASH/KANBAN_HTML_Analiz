@@ -1,8 +1,72 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz.
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.1**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
+
+---
+
+## Оглавление
+
+1. [Режим работы](#1-режим-работы) — `mode`
+2. [Пути](#2-пути-paths) — `paths`
+3. [Списки файлов](#3-списки-файлов) — `test_files`, `prod_files`
+4. [Колонки Excel](#4-колонки-excel-columns) — `columns`, `required_column_keys`
+5. [Excel](#5-excel-excel) — `excel`
+6. [Обработка](#6-обработка-processing) — `processing`
+7. [Анализ](#7-анализ-корневые-параметры) — `duration_source`, `stage_analysis_mode`, `product_analysis_mode`, `percentiles`, `stages_order`, `dashboard`, `parallel_workers`, `excel_theme`
+8. [Производительность](#8-производительность-performance) — `performance`
+9. [Прогресс](#9-прогресс-progress) — `progress`
+10. [Даты](#10-даты-dates) — `dates`
+11. [Агрегация](#11-агрегация-aggregation) — `aggregation`
+12. [Выход](#12-выход-output) — `output`
+13. [Фильтры](#13-фильтры-filters) — `filters` (Excel + JSON + HTML)
+14. [Аналитика менеджеров](#14-аналитика-менеджеров-manager_analytics-колонка-km) — `manager_analytics`
+15. [Логирование](#15-логирование-logging) — `logging`
+16. [Аудит данных](#16-аудит-данных)
+17. [Минимальный config](#17-минимальный-config)
+
+---
+
+## Карта корневых ключей
+
+| Ключ | Тип | Назначение |
+|------|-----|------------|
+| `mode` | `"test"` \| `"prod"` | Откуда брать Excel |
+| `paths` | object | Каталоги input/output/log |
+| `columns` | object | Внутренний ключ → имя колонки Excel |
+| `required_column_keys` | array | Обязательные колонки при загрузке (и список для `read_only_required_columns`) |
+| `excel` | object | Лист, таблица Base, движок |
+| `processing` | object | Дедупликация, аудит, fallback сроков |
+| `performance` | object | Workers, память, compact JSON |
+| `progress` | object | Консольный прогресс и тайминг |
+| `dates` | object | Парсинг дат |
+| `aggregation` | object | Ключи группировки и метрики |
+| `output` | object | Имена файлов, листы Excel, оформление |
+| `logging` | object | Файлы логов |
+| `test_files` | array | Имена xlsx для test |
+| `prod_files` | array | 22 prod-файла |
+| `duration_source` | `"columns"` \| `"dates"` | Источник сроков |
+| `stage_analysis_mode` | `"status"` \| `"substages"` \| `"both"` | Уровень стадий |
+| `product_analysis_mode` | `"group_product"` \| `"group_only"` | **Только Excel** — детализация по продуктам |
+| `percentiles` | array[int] | Список перцентилей (20, 50, 80…) |
+| `stages_order` | array[str] | Порядок стадий в матрице |
+| `dashboard` | object | Дашборд, матрица, предрасчёт filter_slices |
+| `manager_analytics` | object | Топ КМ по превышениям P80 |
+| `parallel_workers` | int | 0 = авто, 1 = последовательно |
+| `excel_theme` | `"green_red"` \| `"minimal"` | Оформление Excel |
+| `filters` | object | Pipeline-фильтры (см. §13) |
+
+### Excel vs JSON vs HTML — три контекста одного `config.json`
+
+| Контекст | Что управляет config | Где применяется |
+|----------|----------------------|-----------------|
+| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode` | Листы сводки, Матрица, Графики, Менеджеры |
+| **JSON (основной)** | `dashboard.precompute_html_filter_slices`; все ключи `filters` (независимо от `enabled`) | `visualizations.filter_slices` — все непустые комбинации 2^N |
+| **JSON (менеджеры)** | `manager_analytics.*`; колонка `km` в `required_column_keys` | Отдельный `kanban_report_managers_*.json` |
+| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations` | Локальный дашборд `HTML/` |
+
+> **`enabled` в `filters` влияет только на Excel.** HTML выбирает готовый срез из JSON без пересчёта pipeline.
 
 ---
 
@@ -144,6 +208,7 @@
 | `change_conditions` | _Изменение условий | Флаг 0/1 |
 | `data_entry` | _Ввод данных | Флаг 0/1 |
 | `efs_flag` | ЕФС флаг | Флаг 0/1 |
+| `km` | КМ | ФИО менеджера (аналитика менеджеров, лист «Менеджеры») |
 
 **Пример переименования колонки в другом источнике:**
 
@@ -158,11 +223,24 @@
 
 Какие ключи из `columns` **обязательны** при загрузке. Отсутствие → ошибка с указанием файла.
 
+При `performance.read_only_required_columns: true` (по умолчанию) из Excel читаются **только** эти колонки — все строки листа сохраняются.
+
 ```json
-"required_column_keys": ["report_date", "lead_id", "product_group", "product", "tb"]
+"required_column_keys": [
+  "report_date", "lead_id", "product_group", "product",
+  "work_start_date", "current_status", "days_on_stage",
+  "deal_created_date", "deal_stage", "days_since_deal",
+  "tb", "change_conditions", "data_entry", "efs_flag", "label", "km"
+]
 ```
 
-> Оптимизация `read_only_required_columns` читает **только эти колонки**, но **все строки** листа сохраняются.
+| Правило | Описание |
+|---------|----------|
+| Базовый набор | Все ключи аналитики + фильтры + `label` |
+| **`km`** | Обязателен, если `manager_analytics.enabled: true` и в Excel есть колонка КМ. Без `km` в списке колонка **не загрузится** при `read_only_required_columns`, и аналитика менеджеров будет пропущена |
+| Отключить менеджеров | `manager_analytics.enabled: false` — `km` можно убрать из списка для экономии памяти |
+
+> Оптимизация **не отбрасывает строки** — только ограничивает набор колонок при чтении.
 
 ---
 
@@ -393,7 +471,9 @@ JSON содержит блок `visualizations`:
 | Режим «По ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
 | Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
 
-Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/multi-filter.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
+Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/icons.js`, `js/multi-filter.js`, `js/managers.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
+
+Автозагрузка после `run.py`: `HTML/data/kanban_report_latest.json`, `HTML/data/kanban_managers_latest.json` (если есть КМ).
 
 ### `parallel_workers`
 
@@ -574,7 +654,16 @@ HEX без `#`: min — зелёный, max — красный.
 
 ## 13. Фильтры (`filters`)
 
-Каждый фильтр — объект. Включённые фильтры объединяются через **AND**.
+Каждый фильтр — объект в `config.filters`. Имена ключей (`change_conditions`, `strategy_label` …) используются как идентификаторы в `filter_catalog` и ключах `filter_slices`.
+
+### Роли поля `enabled`
+
+| `enabled` | Excel | JSON `filter_slices` | HTML |
+|-----------|-------|----------------------|------|
+| `false` | Фильтр **не** применяется | Срез **всё равно предрасчитывается** (если `precompute_html_filter_slices: true`) | Доступен переключателем ВКЛ/ВЫКЛ |
+| `true` | Строки фильтруются (AND с другими `enabled: true`) | То же — срез в JSON | То же — выбор в UI |
+
+В `meta.filters_applied` JSON попадают **только** фильтры с `enabled: true` (отражение Excel-среза).
 
 ### Бинарные фильтры
 
@@ -629,9 +718,9 @@ HEX без `#`: min — зелёный, max — красный.
 }
 ```
 
-> Без включённых фильтров анализируются **все** строки.
+> Без включённых фильтров (`enabled: false` у всех) в Excel анализируются **все** строки. HTML по умолчанию показывает срез `none`.
 
-При экспорте JSON в `meta.filters_applied` попадают только фильтры с `enabled: true` (Excel). HTML переключает срезы из `visualizations.filter_slices` кнопками **ВКЛ/ВЫКЛ** по `filter_catalog`.
+HTML переключает срезы из `visualizations.filter_slices` кнопками **ВКЛ/ВЫКЛ** по `filter_catalog`. Варианты метки с одним `exclusive_group` **взаимоисключающие** в UI.
 
 ---
 
@@ -647,12 +736,41 @@ HEX без `#`: min — зелёный, max — красный.
 | `threshold_scope` | `overall` — порог из общей сводки без ТБ |
 | `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) |
 
-**Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ; в Excel — лист **Менеджеры**, отдельный JSON `kanban_report_managers_*.json`, HTML — блок BOTTOM на вкладке матрицы.
+**Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ.
 
-> Если колонки **КМ** нет во входных файлах, этап пропускается без ошибки.
+**Выход:**
+
+| Артефакт | Путь |
+|----------|------|
+| Excel | Лист `output.excel_sheets.managers` («Менеджеры») |
+| JSON | `OUT/kanban_report_managers_{timestamp}.json` |
+| Копии | `OUT/kanban_report_managers_latest.json`, `HTML/data/kanban_managers_latest.json` |
+| HTML | Блок BOTTOM на вкладке «Сводная матрица» (`js/managers.js`) |
+
+**Структура JSON менеджеров (кратко):**
+
+```json
+{
+  "meta": {
+    "metric": "days_on_stage",
+    "percentile": 80,
+    "top_managers_per_tb": 3,
+    "km_column": "КМ"
+  },
+  "top_by_tb": [
+    { "tb": "…", "rank": 1, "km": "…", "exceedance_count": 12, "total_leads": 340 }
+  ],
+  "detail_by_product": [],
+  "manager_totals": [],
+  "thresholds_count": 156
+}
+```
+
+> Этап пропускается **без ошибки**, если: `enabled: false`; колонки КМ нет в Excel; `km` не в `required_column_keys` (колонка не загружена); не удалось построить пороги P80.
 
 ```json
 "columns": { "km": "КМ" },
+"required_column_keys": [ "...", "km" ],
 "manager_analytics": {
   "enabled": true,
   "metric": "days_on_stage",
@@ -664,7 +782,7 @@ HEX без `#`: min — зелёный, max — красный.
 
 ---
 
-## 14. Логирование (`logging`)
+## 15. Логирование (`logging`)
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
@@ -677,7 +795,7 @@ HEX без `#`: min — зелёный, max — красный.
 
 ---
 
-## 15. Аудит данных
+## 16. Аудит данных
 
 При `processing.audit_row_counts: true` в лог пишется:
 
@@ -692,7 +810,7 @@ HEX без `#`: min — зелёный, max — красный.
 
 ---
 
-## 16. Минимальный config
+## 17. Минимальный config
 
 ```json
 {
@@ -705,7 +823,7 @@ HEX без `#`: min — зелёный, max — красный.
 
 ---
 
-## 17. Связанные документы
+## 18. Связанные документы
 
 - [README.md](../README.md) — обзор и запуск
 - [DEPLOY.md](DEPLOY.md) — перенос на другой ПК

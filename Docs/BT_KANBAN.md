@@ -1,6 +1,6 @@
 # Бизнес-требования и системный анализ: KANBAN HTML Analiz
 
-**Версия:** 1.0  
+**Версия:** 1.0.1  
 **Дата:** 2026-08-31  
 **Источник:** `Docs/ToDo KANBAN.txt`
 
@@ -66,7 +66,8 @@
 | `Группа продукта`, `Продукт` | Классификация продукта |
 | `ТБ` | Территориальный банк |
 | `_Изменение условий`, `_Ввод данных`, `ЕФС флаг` | Бинарные фильтры (0/1) |
-| `Метка` | Текстовый фильтр (подстрока «Стратегия») |
+| `Метка` | Текстовый фильтр: «Стратегия» и/или «Стратегия + 2026» (взаимоисключающие в HTML) |
+| `КМ` | ФИО менеджера — аналитика превышений P80 |
 
 ### 3.5. Справочник стадий «Текущий статус»
 
@@ -127,9 +128,13 @@
 - Перцентили (по умолчанию 20, 50, 80 — настраиваются в `config.json`)
 - `count` — число лидов с данной стадией
 
-### 4.5. Этап 5 — Фильтрация (опционально)
+### 4.5. Этап 5 — Фильтрация
 
-Применяются **до** агрегации (настраиваемые в config):
+| Контекст | Поведение |
+|----------|-----------|
+| **Excel** | Фильтры с `enabled: true` в config; объединение **AND** |
+| **JSON** | Предрасчёт всех комбинаций ключей `config.filters` в `visualizations.filter_slices` (пустые пропускаются) |
+| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; варианты метки в одной `exclusive_group` — не более одного активного |
 
 | Фильтр | Колонка | Логика |
 |--------|---------|--------|
@@ -137,8 +142,17 @@
 | Ввод данных | `_Ввод данных` | = 1 |
 | ЕФС | `ЕФС флаг` | = 1 |
 | Стратегия | `Метка` | содержит «Стратегия» |
+| Стратегия · 2026 | `Метка` | содержит «Стратегия» **и** «2026» |
 
-> **Открытый вопрос:** фильтры комбинируются через AND или применяются независимыми прогонами?
+> **Решение (v1.0):** фильтры комбинируются через **AND**. Для HTML все комбинации предрасчитываются в JSON; `enabled` влияет только на Excel.
+
+### 4.6. Этап 6 — Аналитика менеджеров (КМ)
+
+- Порог P80 по группе × продукт × стадия из общей сводки (без ТБ)
+- Превышение: срок лида **строго больше** P80
+- Топ-3 менеджера на каждый ТБ по числу превышений
+- Выход: лист Excel «Менеджеры», отдельный JSON, блок BOTTOM в HTML-дашборде
+- Колонка `КМ` должна быть в `required_column_keys` для загрузки из Excel
 
 ---
 
@@ -155,51 +169,31 @@
 | `Сводная` | ТБ × Группа × Продукт × Стадия × min/max/перцентили |
 | `Общий` | Без разреза ТБ |
 | `{ТБ}` | Отдельный лист на каждый ТБ |
-| `Справочники` | Уникальные ТБ, стадии, продукты (опционально) |
+| `Матрица` | Продукт/группа × стадия, фильтры |
+| `Графики` | Кривые «лиды × дни» |
+| `Менеджеры` | Топ-3 КМ по ТБ (превышения P80), если есть колонка КМ |
 
 Форматирование: условная раскраска (min — зелёный градиент, max — красный, перцентили — нейтральные оттенки).
 
 ### 5.3. JSON
 
-Структура для HTML-дашборда:
+**Основной** (`kanban_report_*.json`):
 
-```json
-{
-  "meta": { "generated_at": "...", "mode": "test|prod", "filters": {} },
-  "dimensions": {
-    "tb": ["ББ", "..."],
-    "stages": [{ "status": "...", "deal_stages": ["..."] }],
-    "products": [{ "group": "...", "product": "..." }]
-  },
-  "statistics": [
-    {
-      "tb": "ББ|null",
-      "product_group": "...",
-      "product": "...",
-      "current_status": "...",
-      "deal_stage": "...|null",
-      "metrics": {
-        "days_on_stage": {
-          "min": 0,
-          "max": 100,
-          "count": 42,
-          "percentiles": {
-            "p20": { "days": 5, "count": 9, "min": 0, "max": 5 },
-            "p50": { "days": 15, "count": 21, "min": 0, "max": 15 },
-            "p80": { "days": 30, "count": 34, "min": 0, "max": 30 }
-          }
-        },
-        "days_since_deal": { "...": "..." }
-      }
-    }
-  ],
-  "lead_tracks": []
-}
-```
+- `meta` — режим, filters_applied (Excel), aggregation modes
+- `dimensions` — ТБ, стадии, продукты, filter_dimensions
+- `statistics` — агрегаты overall / by_tb (обе агрегации: group_product, group_only)
+- `visualizations.filter_slices` — предрасчитанные срезы pipeline-фильтров
+- `visualizations.filter_catalog` — описание фильтров для HTML
 
-> **Открытый вопрос:** включать ли `lead_tracks` (помаршрутное движение каждого ПрПр) в JSON или только агрегаты?
+**Менеджеры** (`kanban_report_managers_*.json`):
 
----
+- `top_by_tb`, `detail_by_product`, `manager_totals`, `meta`
+
+> **Решение (v1.0):** только агрегаты (без lead_tracks). HTML строит матрицу из `pivot_flat`.
+
+### 5.4. HTML-дашборд
+
+Каталог `HTML/` — локальная страница: графики, матрица, pipeline-фильтры, блок менеджеров. Автозагрузка JSON из `HTML/data/` после `run.py`.
 
 ## 6. Системная архитектура
 
@@ -239,8 +233,12 @@
 | `aggregator.py` | Min/max и эмпирические перцентили (целые дни) |
 | `percentile_stats.py` | Расчёт перцентилей по шкале лидов |
 | `filters.py` | Применение бинарных и текстовых фильтров |
+| `filter_slices.py` | Предрасчёт комбинаций фильтров для JSON/HTML |
+| `manager_analytics.py` | Топ КМ по превышениям P80 |
+| `visualization_data.py` | Блок visualizations для JSON и Excel |
 | `excel_exporter.py` | Форматированный xlsx (openpyxl) |
 | `json_exporter.py` | JSON для HTML |
+| `pivot_excel.py` | Листы Матрица и Графики |
 | `main.py` | Оркестрация pipeline |
 
 ### 6.2. Технологический стек
@@ -269,27 +267,38 @@
 
 ## 7. Конфигурация (`config.json`)
 
+Полный справочник: [Docs/CONFIG.md](CONFIG.md).
+
+Ключевые разделы v1.0:
+
 ```json
 {
   "mode": "test",
-  "paths": {
-    "input_test": "Docs/FileIN",
-    "input_prod": "IN",
-    "output": "OUT"
+  "columns": { "km": "КМ", "label": "Метка" },
+  "required_column_keys": ["...", "label", "km"],
+  "product_analysis_mode": "group_product",
+  "dashboard": { "precompute_html_filter_slices": true },
+  "manager_analytics": {
+    "enabled": true,
+    "metric": "days_on_stage",
+    "percentile": 80,
+    "top_managers_per_tb": 3
   },
-  "test_files": ["2ГОСБ1ТБ.xlsx"],
-  "prod_files": ["..."],
-  "sheet_name": "Sheet1",
-  "percentiles": [20, 50, 80],
-  "parallel_workers": 4,
   "filters": {
-    "change_conditions": { "enabled": false, "column": "_Изменение условий", "value": 1 },
-    "data_entry": { "enabled": false, "column": "_Ввод данных", "value": 1 },
-    "efs_flag": { "enabled": false, "column": "ЕФС флаг", "value": 1 },
-    "strategy_label": { "enabled": false, "column": "Метка", "contains": "Стратегия" }
-  },
-  "duration_source": "report_column",
-  "analyze_deal_substage": true
+    "efs_flag": { "enabled": false, "column_key": "efs_flag", "value": 1 },
+    "strategy_label": {
+      "enabled": false,
+      "column_key": "label",
+      "contains": "Стратегия",
+      "exclusive_group": "strategy_label"
+    },
+    "strategy_label_2026": {
+      "enabled": false,
+      "column_key": "label",
+      "contains_all": ["Стратегия", "2026"],
+      "exclusive_group": "strategy_label"
+    }
+  }
 }
 ```
 
@@ -314,7 +323,9 @@
 |------|---------|
 | Расчёт сроков | Оба метода в коде; переключатель `duration_source`: `columns` / `dates` |
 | Подстадии | `stage_analysis_mode`: `status` / `substages` / `both` |
-| Фильтры | Каждый вкл/выкл в config; AND; только подходящие строки |
+| Фильтры | Каждый вкл/выкл в config (`enabled`); AND для Excel; все комбинации в JSON для HTML |
+| JSON filter_slices | `dashboard.precompute_html_filter_slices`; обе агрегации group_product / group_only |
+| Менеджеры (КМ) | P80 overall; топ-3 на ТБ; `km` в required_column_keys |
 | Excel-таблица | Имя в config (`excel_table_name`: `Base`); авто fallback на Sheet1 |
 | JSON | Только агрегаты (без lead_tracks) |
 | Категория файла | Объединять (не влияет на аналитику) |
@@ -331,8 +342,9 @@
 - [v] Корректные справочники ТБ / стадий / продуктов
 - [v] Для каждого продукта — min/max/перцентили по каждой стадии
 - [v] Отдельные листы Excel по ТБ + сводная
-- [v] JSON пригоден для фильтрации по ТБ/продукту/стадии
-- [v] Фильтры `_Изменение условий`, `_Ввод данных`, `ЕФС флаг`, `Метка` реализованы
+- [v] JSON пригоден для фильтрации по ТБ/продукту/стадии и pipeline-фильтрам (filter_slices)
+- [v] HTML-дашборд: графики, матрица, pipeline ВКЛ/ВЫКЛ, менеджеры
+- [v] Фильтры `_Изменение условий`, `_Ввод данных`, `ЕФС флаг`, `Метка` (2 варианта) реализованы
 - [ ] Prod-режим читает все 22 файла параллельно
 - [v] Выходные файлы в `OUT/` с timestamp
 

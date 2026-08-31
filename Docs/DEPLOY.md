@@ -1,5 +1,7 @@
 # Перенос проекта на другой ПК (без Git)
 
+**Версия архива:** 1.0.1 (2026-08-31)
+
 Инструкция для работы после пересылки по почте или архивом.
 
 ## Архив для почты
@@ -54,7 +56,7 @@ KANBAN_HTML_Analiz/
 
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
-| test | `Docs/FileIN/` | `2ГОСБ1TБ.xlsx` |
+| test | `Docs/FileIN/` | `2ГОСБ1ТБ.xlsx` |
 | prod | `IN/` | 22 файла из `config.json` → `prod_files` |
 
 ## Настройка на новом ПК
@@ -89,9 +91,9 @@ python -m http.server 8080
 | BOTTOM менеджеры | На вкладке матрицы: топ-3 КМ по ТБ (превышения P80); JSON `kanban_managers_*.json` |
 | Pipeline-фильтры | Левая панель «Настройки» — кнопки ВКЛ/ВЫКЛ; баннер среза — на вкладке «Графики» |
 
-После `run.py` в `HTML/data/`: `kanban_report_latest.json`, при наличии колонки **КМ** — `kanban_managers_latest.json`.
+После `run.py` в `HTML/data/`: `kanban_report_latest.json`, при наличии колонки **КМ** в Excel и `"km"` в `required_column_keys` — `kanban_managers_latest.json`.
 
-Режим Excel задаётся `config.product_analysis_mode`. В JSON — обе агрегации; на HTML переключатель «По продуктам» / «По группам».
+Режим Excel задаётся `config.product_analysis_mode`. В JSON — обе агрегации; pipeline-фильтры — все комбинации из `config.filters` (поле `enabled` только для Excel). На HTML переключатель «По продуктам» / «По группам» и кнопки ВКЛ/ВЫКЛ по `filter_catalog`.
 
 ## Prod-режим
 
