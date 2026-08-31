@@ -551,13 +551,14 @@
     const kmMode = isKmChartMode(chartMode);
     controls.metricSelect.closest(".field")?.classList.toggle("field--hidden", kmMode);
     controls.indicatorSelect.closest(".field")?.classList.toggle("field--hidden", kmMode);
-    controls.smoothLines.closest(".field--check")?.classList.toggle("field--hidden", kmMode);
+    document.getElementById("smoothLinesField")?.classList.add("field--hidden");
   }
 
   function renderCharts(filters, maxSeries, chartMode) {
     updateChartModeUi(chartMode);
     chartsGrid.classList.toggle("charts-grid--by-tb", chartMode === "by_tb");
     chartsGrid.classList.toggle("charts-grid--km", isKmChartMode(chartMode));
+    chartsGrid.classList.toggle("charts-grid--dist", !isKmChartMode(chartMode));
 
     if (isKmChartMode(chartMode)) {
       if (!KanbanManagers.hasChartData()) {
@@ -578,10 +579,9 @@
 
     const filtered = KanbanData.filterSeries(filters);
     const chartGroups = KanbanData.groupSeriesForCharts(filtered, chartMode, maxSeries, filters);
-    KanbanCharts.render(chartsGrid, chartGroups, {
+    KanbanCharts.renderDistribution(chartsGrid, chartGroups, {
       chartMode,
       showLegend: controls.showLegend.checked,
-      smooth: controls.smoothLines.checked,
     });
   }
 
@@ -837,6 +837,10 @@
 
   bindSidebarToggle("btn-settings-hide", "btn-settings-show", "is-sidebar-collapsed");
   bindSidebarToggle("btn-filters-hide", "btn-filters-show", "is-filters-collapsed");
+
+  chartsGrid?.addEventListener("click", (event) => {
+    if (typeof KanbanChartExpand !== "undefined") KanbanChartExpand.onGridClick(event);
+  });
 
   initFiltersPanelResize();
 

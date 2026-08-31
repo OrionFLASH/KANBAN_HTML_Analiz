@@ -90,7 +90,7 @@
               </button>
             </label>
             <label class="field">
-              <span class="field-label">Режим линий</span>
+              <span class="field-label">Режим графика</span>
               <select id="chartMode" class="field-control">
                 <option value="by_product">По продуктам / группам: свод + каждый</option>
                 <option value="by_tb">По ТБ: свод + каждый ТБ</option>
@@ -114,15 +114,15 @@
               <input type="checkbox" id="showLegend" checked>
               <span>Показывать легенду</span>
             </label>
-            <label class="field field--check">
+            <label class="field field--check field--hidden" id="smoothLinesField">
               <input type="checkbox" id="smoothLines">
-              <span>Сглаживание линий</span>
+              <span>Сглаживание (устар.)</span>
             </label>
           </div>
 
           <div class="sidebar-about">
-            <div class="sidebar-about__title">Шкала графика</div>
-            <p class="sidebar-about__hint">Ось X — число лидов (накоп.). Ось Y — дней, целые. Перцентили — по нижней доле на отсортированной шкале.</p>
+            <div class="sidebar-about__title">Распределение лидов</div>
+            <p class="sidebar-about__hint">Три вида на карточке: гистограмма, ECDF, ранговая шкала. Клик по графику — увеличить; по заголовку или между графиками — вся карточка. Esc или «Свернуть».</p>
           </div>
         </div>
       </aside>
@@ -135,7 +135,7 @@
               <div class="empty-state panel">
                 <p class="empty-state__title">Нет данных</p>
                 <p>Загрузите файл <code>kanban_report_*.json</code> в панели слева.</p>
-                <p>Будут построены кривые «лиды × дни» по выбранному срезу.</p>
+                <p>Будут построены гистограмма, накопление % и ранговая шкала по выбранному срезу.</p>
               </div>
             </div>
           </section>
@@ -289,6 +289,20 @@
     </div>
   </div>
 
+  <div id="chartExpandLayer" class="chart-expand-layer" hidden aria-hidden="true">
+    <div class="chart-expand-backdrop" data-expand-close aria-hidden="true"></div>
+    <div class="chart-expand-frame" id="chartExpandFrame" role="dialog" aria-modal="true" aria-labelledby="chartExpandTitle">
+      <header class="chart-expand-head">
+        <h2 class="chart-expand-title" id="chartExpandTitle"></h2>
+        <button type="button" class="chart-expand-close" id="chartExpandClose" title="Свернуть (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+          <span>Свернуть</span>
+        </button>
+      </header>
+      <div class="chart-expand-body" id="chartExpandBody"></div>
+    </div>
+  </div>
+
   <div id="managerDetailOverlay" class="manager-overlay" hidden>
     <div class="manager-overlay__backdrop" data-overlay-close="1"></div>
     <div class="manager-overlay__dialog" role="dialog" aria-modal="true" aria-labelledby="managerOverlayTitle">
@@ -298,9 +312,11 @@
   </div>
 
   <script src="js/data.js"></script>
+  <script src="js/distribution.js"></script>
   <script src="js/icons.js"></script>
   <script src="js/multi-filter.js"></script>
   <script src="js/charts.js"></script>
+  <script src="js/chart-expand.js"></script>
   <script src="js/pivot.js"></script>
   <script src="js/managers.js"></script>
   <script src="js/app.js"></script>

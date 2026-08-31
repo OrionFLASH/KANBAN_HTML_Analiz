@@ -648,21 +648,25 @@ body::after {
   gap: 14px;
 }
 
-/* Режим «По ТБ»: карточки друг под другом — больше места для легенды и линий */
+.charts-grid.charts-grid--dist,
 .charts-grid.charts-grid--by-tb {
   grid-template-columns: 1fr;
-  gap: 18px;
+  gap: 20px;
+}
+
+.charts-grid.charts-grid--dist .chart-card--dist {
+  width: 100%;
 }
 
 .charts-grid.charts-grid--by-tb .chart-card {
   width: 100%;
 }
 
-.charts-grid.charts-grid--by-tb .chart-wrap {
+.charts-grid.charts-grid--by-tb .chart-wrap:not(.chart-wrap--dist):not(.chart-wrap--rank) {
   height: min(440px, 58vh);
 }
 
-.charts-grid.charts-grid--by-tb .chart-card--summary .chart-wrap {
+.charts-grid.charts-grid--by-tb .chart-card--summary .chart-wrap:not(.chart-wrap--dist):not(.chart-wrap--rank) {
   height: min(380px, 50vh);
 }
 
@@ -730,6 +734,304 @@ body::after {
 .chart-wrap {
   position: relative;
   height: 280px;
+}
+
+.charts-grid.charts-grid--dist .chart-wrap--dist {
+  height: min(260px, 36vh);
+  min-height: 220px;
+}
+
+.charts-grid.charts-grid--dist .chart-wrap--rank {
+  height: min(300px, 40vh);
+  min-height: 240px;
+}
+
+.dist-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.dist-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 960px) {
+  .dist-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dist-panel {
+  padding: 10px 10px 8px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.75);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.dist-panel--wide {
+  padding-bottom: 10px;
+}
+
+.dist-panel__title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--glass-muted);
+}
+
+.dist-panel__empty {
+  margin: 24px 8px;
+  font-size: 12px;
+  color: var(--glass-muted);
+  text-align: center;
+}
+
+.dist-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dist-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+}
+
+.dist-stats-row__name {
+  flex: 0 0 auto;
+  min-width: 72px;
+  padding: 4px 8px 4px 10px;
+  border-left: 3px solid var(--glass-blue);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--glass-text);
+  background: rgba(0, 122, 255, 0.06);
+  border-radius: 0 8px 8px 0;
+}
+
+.dist-stats-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 200px;
+}
+
+.dist-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.dist-chip--meta {
+  color: var(--glass-muted);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+.chart-card--dist .chart-card__intro {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--glass-muted);
+}
+
+/* —— Разворот графика по клику —— */
+.chart-expand-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  pointer-events: none;
+}
+
+.chart-expand-layer:not([hidden]) {
+  pointer-events: auto;
+}
+
+.chart-expand-layer[data-mode="panel"] {
+  pointer-events: none;
+}
+
+.chart-expand-layer[data-mode="panel"] .chart-expand-frame {
+  pointer-events: auto;
+}
+
+.chart-expand-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+.chart-expand-layer[data-mode="group"] .chart-expand-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chart-expand-frame {
+  position: fixed;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 14px 14px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), var(--glass-shadow);
+  overflow: hidden;
+}
+
+.chart-expand-layer[data-mode="group"] .chart-expand-frame {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0;
+  padding: 14px 18px 18px;
+}
+
+.chart-expand-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.chart-expand-title {
+  margin: 0;
+  font-size: clamp(13px, 1.6vw, 16px);
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--glass-text);
+  min-width: 0;
+}
+
+.chart-expand-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 122, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--glass-blue);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chart-expand-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chart-expand-close:hover {
+  background: rgba(0, 122, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.15);
+}
+
+.chart-expand-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-expand-layer[data-mode="panel"] .chart-expand-body {
+  overflow: hidden;
+}
+
+.chart-expand-body .is-chart-expanded-node.dist-panel,
+.chart-expand-body .is-chart-expanded-node.chart-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  cursor: default;
+}
+
+.chart-expand-body .is-chart-expanded-node.dist-panel .chart-wrap,
+.chart-expand-body .is-chart-expanded-node.chart-wrap {
+  flex: 1 1 auto;
+  height: auto !important;
+  min-height: 260px;
+}
+
+.chart-expand-layer[data-mode="panel"] .chart-expand-body .chart-wrap--dist,
+.chart-expand-layer[data-mode="panel"] .chart-expand-body .chart-wrap--rank,
+.chart-expand-layer[data-mode="panel"] .chart-expand-body .chart-wrap--bar {
+  min-height: min(520px, calc(100vh - 160px));
+}
+
+.chart-expand-body .is-chart-expanded-node.chart-card {
+  cursor: default;
+  box-shadow: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.chart-expand-layer[data-mode="group"] .chart-expand-body .chart-wrap--dist {
+  height: min(34vh, 380px) !important;
+  min-height: 220px;
+}
+
+.chart-expand-layer[data-mode="group"] .chart-expand-body .chart-wrap--rank {
+  height: min(38vh, 440px) !important;
+  min-height: 260px;
+}
+
+.chart-expand-layer[data-mode="group"] .chart-expand-body .chart-wrap--bar {
+  height: min(62vh, 640px) !important;
+  min-height: 320px;
+}
+
+.dist-panel[data-expand-hint="panel"],
+.chart-card--bar .chart-wrap[data-expand-hint="panel"] {
+  cursor: zoom-in;
+}
+
+.chart-card[data-expand-hint="group"] > h3,
+.chart-card[data-expand-hint="group"] > .dist-stats,
+.chart-card[data-expand-hint="group"] > .chart-card__intro,
+.chart-card[data-expand-hint="group"] > .chart-card__intro + .chart-wrap,
+.chart-card[data-expand-hint="group"] .dist-stack,
+.chart-card[data-expand-hint="group"]:not(.chart-card--bar) {
+  cursor: zoom-in;
+}
+
+.dist-panel[data-expand-hint="panel"]:hover,
+.chart-card--bar .chart-wrap[data-expand-hint="panel"]:hover {
+  outline: 1px solid rgba(0, 122, 255, 0.25);
+  outline-offset: 2px;
+}
+
+body.is-chart-expanded {
+  overflow: hidden;
 }
 
 .empty-state {

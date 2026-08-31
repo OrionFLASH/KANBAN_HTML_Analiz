@@ -161,7 +161,7 @@
 | # | Задача | Модули | Статус |
 |---|--------|--------|--------|
 | 10.1 | HTML-страница с загрузкой JSON | `HTML/` | `[v]` |
-| 10.2 | Графики лидов × дней (Chart.js) | `HTML/js/charts.js` | `[v]` |
+| 10.2 | Графики распределения (гистограмма, ECDF, ранговая шкала, разворот) | `HTML/js/charts.js`, `distribution.js`, `chart-expand.js` | `[v]` |
 | 10.3 | Сводная матрица продукт × стадия | `HTML/js/pivot.js` | `[v]` |
 | 10.4 | Блок `visualizations` в JSON | `src/visualization_data.py` | `[v]` |
 | 10.5 | Excel: лист «Графики» (без «Матрицы») | `src/pivot_excel.py` | `[v]` |
