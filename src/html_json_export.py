@@ -177,12 +177,14 @@ def export_split_html_bundle(
 
 
 def build_manager_html_payload(payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    """JSON менеджеров для HTML: полные records и агрегаты; top_by_tb — предрасчёт по rank_selection."""
+    """JSON менеджеров для HTML: records, exceedances, агрегаты."""
     return {
         "meta": payload.get("meta", {}),
         "dimensions": payload.get("dimensions") or {"product_groups": [], "products": []},
         "records": payload.get("records") or [],
+        "exceedances": payload.get("exceedances") or [],
         "top_by_tb": payload.get("top_by_tb") or [],
+        "top_by_tb_grouped": payload.get("top_by_tb_grouped") or [],
         "detail_by_product": payload.get("detail_by_product") or [],
         "manager_totals": payload.get("manager_totals") or [],
         "charts": payload.get("charts") or {"by_tb": [], "facts": []},

@@ -130,6 +130,12 @@ def _build_level_records_vectorized(
     }
     km_col: str | None = None
     label_col: str | None = None
+    extra_meta_keys: list[str] = ["deal_id", "inn", "change_conditions", "efs_flag"]
+    for key in extra_meta_keys:
+        if config.get("columns", {}).get(key):
+            col_name: str = col(config, key)
+            if col_name in work.columns:
+                meta_first[col_name] = "first"
     if config.get("columns", {}).get("km"):
         km_col = col(config, "km")
         if km_col in work.columns:
@@ -182,6 +188,11 @@ def _build_level_records_vectorized(
         keep_cols.insert(4, km_col)
     if label_col and label_col in best.columns:
         keep_cols.insert(5 if km_col else 4, label_col)
+    for key in extra_meta_keys:
+        if config.get("columns", {}).get(key):
+            name = col(config, key)
+            if name in best.columns and name not in keep_cols:
+                keep_cols.append(name)
     return best[[c for c in keep_cols if c in best.columns]].reset_index(drop=True)
 
 

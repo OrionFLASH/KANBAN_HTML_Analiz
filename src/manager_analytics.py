@@ -10,8 +10,10 @@ from typing import Any
 
 import pandas as pd
 
+from src.lead_tracker import build_lead_stage_records
 from src.percentile_stats import percentile_label, to_integer_days
-from src.settings import col, group_only_product_label, is_group_only_analysis
+from src.progress import ProgressReporter
+from src.settings import DEFAULT_RANK_PRODUCTS, col, group_only_product_label, is_group_only_analysis
 
 logger: logging.Logger = logging.getLogger("kanban.manager_analytics")
 
@@ -27,17 +29,87 @@ VALID_STRATEGY_FILTERS: frozenset[str] = frozenset(
 
 def rank_selection_config(config: dict[str, Any]) -> dict[str, Any]:
     """Параметры отбора TOP КМ из manager_analytics.rank_selection."""
-    raw: dict[str, Any] = dict(config.get("manager_analytics", {}).get("rank_selection") or {})
-    strategy: str = str(raw.get("strategy_filter", STRATEGY_FILTER_ALL))
+    mgr_defaults: dict[str, Any] = config.get("manager_analytics", {})
+    raw: dict[str, Any] = dict(mgr_defaults.get("rank_selection") or {})
+    strategy: str = str(raw.get("strategy_filter", STRATEGY_FILTER_STRATEGY_2026))
     if strategy not in VALID_STRATEGY_FILTERS:
-        strategy = STRATEGY_FILTER_ALL
+        strategy = STRATEGY_FILTER_STRATEGY_2026
     groups: list[str] = [str(g) for g in raw.get("product_groups") or [] if str(g).strip()]
-    products: list[str] = [str(p) for p in raw.get("products") or [] if str(p).strip()]
+    products_raw: list[str] = raw.get("products") if "products" in raw else list(DEFAULT_RANK_PRODUCTS)
+    products: list[str] = [str(p) for p in products_raw or [] if str(p).strip()]
+
+    efs_flag: int | None = None
+    if "efs_flag" in raw and raw["efs_flag"] is not None:
+        efs_flag = int(raw["efs_flag"])
+
+    change_conditions: int | None = None
+    if "change_conditions" in raw and raw["change_conditions"] is not None:
+        change_conditions = int(raw["change_conditions"])
+
     return {
         "product_groups": groups,
         "products": products,
         "strategy_filter": strategy,
+        "efs_flag": efs_flag,
+        "change_conditions": change_conditions,
     }
+
+
+def _optional_column(config: dict[str, Any], key: str) -> str | None:
+    """Имя колонки Excel по ключу или None."""
+    if key not in config.get("columns", {}):
+        return None
+    return col(config, key)
+
+
+def manager_tb_km_key(tb: str, km: str) -> str:
+    """Уникальный ключ менеджера: ТБ + КМ (исключает однофамильцев)."""
+    return f"{str(tb)}|{str(km)}"
+
+
+def filter_latest_report_snapshot(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+) -> tuple[pd.DataFrame, pd.Timestamp | None]:
+    """Оставляет только строки с максимальной «Дата отчета» (актуальная выгрузка)."""
+    report_col: str = col(config, "report_date")
+    if report_col not in df.columns or df.empty:
+        return df, None
+    dates: pd.Series = pd.to_datetime(df[report_col], errors="coerce")
+    max_date: pd.Timestamp | None = dates.max()
+    if max_date is None or pd.isna(max_date):
+        return df, None
+    mask: pd.Series = dates == max_date
+    sliced: pd.DataFrame = df.loc[mask].copy()
+    logger.info(
+        "Менеджеры: актуальная выгрузка %s — %s → %s строк",
+        max_date.date(),
+        f"{len(df):,}",
+        f"{len(sliced):,}",
+    )
+    return sliced, max_date
+
+
+def build_manager_records(
+    filtered_df: pd.DataFrame,
+    config: dict[str, Any],
+    progress: ProgressReporter | None = None,
+) -> tuple[pd.DataFrame, pd.Timestamp | None]:
+    """
+    Записи лид×стадия для аналитики менеджеров.
+    По умолчанию — только срез с max(Дата отчета).
+    """
+    mgr_cfg: dict[str, Any] = config.get("manager_analytics", {})
+    use_latest: bool = bool(mgr_cfg.get("use_latest_report_date", True))
+    snapshot: pd.Timestamp | None = None
+    work_df: pd.DataFrame = filtered_df
+    if use_latest:
+        work_df, snapshot = filter_latest_report_snapshot(filtered_df, config)
+    if work_df.empty:
+        logger.warning("Менеджеры: нет строк после среза актуальной даты отчета")
+        return pd.DataFrame(), snapshot
+    records: pd.DataFrame = build_lead_stage_records(work_df, config, progress)
+    return records, snapshot
 
 
 def _label_column(config: dict[str, Any]) -> str | None:
@@ -107,6 +179,16 @@ def apply_rank_selection(
     if label_name and label_name in result.columns and strategy_mode != STRATEGY_FILTER_ALL:
         mask: pd.Series = strategy_filter_mask(result[label_name], strategy_mode, config)
         result = result[mask]
+
+    efs_val: int | None = sel.get("efs_flag")
+    efs_col: str | None = _optional_column(config, "efs_flag")
+    if efs_val is not None and efs_col and efs_col in result.columns:
+        result = result[pd.to_numeric(result[efs_col], errors="coerce") == efs_val]
+
+    cc_val: int | None = sel.get("change_conditions")
+    cc_col: str | None = _optional_column(config, "change_conditions")
+    if cc_val is not None and cc_col and cc_col in result.columns:
+        result = result[pd.to_numeric(result[cc_col], errors="coerce") == cc_val]
 
     return result.reset_index(drop=True)
 
@@ -206,6 +288,10 @@ def build_manager_exceedance_detail(
     label_name: str | None = _label_column(config)
     if label_name and label_name in merged.columns:
         keep.append(label_name)
+    for opt_key in ("deal_id", "inn", "change_conditions", "efs_flag"):
+        opt_col: str | None = _optional_column(config, opt_key)
+        if opt_col and opt_col in merged.columns:
+            keep.append(opt_col)
     keep = [c for c in keep if c and c in merged.columns]
     return merged[keep].reset_index(drop=True)
 
@@ -299,21 +385,38 @@ def _hotspot_records(by_product: pd.DataFrame, config: dict[str, Any]) -> list[d
 def attach_hotspots_to_top(
     top_tb: pd.DataFrame,
     by_product: pd.DataFrame,
+    exceeded_detail: pd.DataFrame,
     config: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Топ менеджеров с вложенным списком ключевых зон превышения."""
+    """Топ менеджеров (ключ ТБ+КМ) с hotspots и списком зависших лидов/сделок."""
     if top_tb.empty:
         return []
 
     top_n_hotspots: int = int(config.get("manager_analytics", {}).get("top_hotspots_per_manager", 5))
+    stuck_limit: int = int(config.get("manager_analytics", {}).get("top_stuck_items_per_hotspot", 15))
     km_name: str = km_column(config) or "km"
     tb_col: str = col(config, "tb")
     hotspots: list[dict[str, Any]] = _hotspot_records(by_product, config)
+    stuck_by_hotspot: dict[tuple[str, ...], list[dict[str, Any]]] = _stuck_items_by_hotspot(
+        exceeded_detail, config, stuck_limit
+    )
     by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    group_only: bool = is_group_only_analysis(config)
+
     for item in hotspots:
-        key: tuple[str, str] = (str(item.get("tb", "")), str(item.get("km", "")))
-        by_key.setdefault(key, []).append(item)
+        tb_km: tuple[str, str] = (str(item.get("tb", "")), str(item.get("km", "")))
+        by_key.setdefault(tb_km, []).append(item)
+        hs_key: tuple[str, ...] = (
+            str(item.get("tb", "")),
+            str(item.get("km", "")),
+            str(item.get("product_group", "")),
+            str(item.get("product", "")) if not group_only else "—",
+            str(item.get("stage_key", "")),
+        )
+        item["stuck_items"] = stuck_by_hotspot.get(hs_key, [])
 
     for items in by_key.values():
         items.sort(
@@ -327,8 +430,57 @@ def attach_hotspots_to_top(
     top_records: list[dict[str, Any]] = _frame_to_records(top_tb, config)
     for row in top_records:
         key = (str(row.get("tb", "")), str(row.get("km", "")))
+        row["km_tb_key"] = manager_tb_km_key(row.get("tb", ""), row.get("km", ""))
         row["hotspots"] = by_key.get(key, [])[:top_n_hotspots]
     return top_records
+
+
+def _stuck_items_by_hotspot(
+    exceeded: pd.DataFrame,
+    config: dict[str, Any],
+    limit_per_hotspot: int,
+) -> dict[tuple[str, ...], list[dict[str, Any]]]:
+    """Группирует превышения по зоне (ТБ×КМ×продукт×стадия) с ID лидов/сделок и ИНН."""
+    if exceeded.empty:
+        return {}
+
+    km_name: str = km_column(config) or "km"
+    tb_col: str = col(config, "tb")
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    lead_col: str = col(config, "lead_id")
+    deal_col: str | None = _optional_column(config, "deal_id")
+    inn_col: str | None = _optional_column(config, "inn")
+    group_only: bool = is_group_only_analysis(config)
+
+    result: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for _, row in exceeded.iterrows():
+        product_val: str = str(row[prod_col]) if prod_col in exceeded.columns and not group_only else "—"
+        hs_key: tuple[str, ...] = (
+            str(row[tb_col]),
+            str(row[km_name]),
+            str(row[pg_col]),
+            product_val,
+            str(row["stage_key"]),
+        )
+        days: float = float(row.get("days_int") or 0)
+        thresh: float = float(row.get("threshold_days") or 0)
+        item: dict[str, Any] = {
+            "lead_id": str(row[lead_col]),
+            "deal_id": str(row[deal_col]) if deal_col and deal_col in exceeded.columns and pd.notna(row.get(deal_col)) else None,
+            "inn": str(row[inn_col]) if inn_col and inn_col in exceeded.columns and pd.notna(row.get(inn_col)) else None,
+            "stage_key": str(row["stage_key"]),
+            "days_int": round(days, 1),
+            "threshold_days": round(thresh, 1),
+            "overshoot": round(max(0.0, days - thresh), 1),
+        }
+        bucket: list[dict[str, Any]] = result.setdefault(hs_key, [])
+        if len(bucket) < limit_per_hotspot:
+            bucket.append(item)
+
+    for items in result.values():
+        items.sort(key=lambda x: (-float(x.get("overshoot") or 0), str(x.get("lead_id", ""))))
+    return result
 
 
 def format_hotspots_excel_summary(hotspots: list[dict[str, Any]], config: dict[str, Any]) -> str:
@@ -425,6 +577,9 @@ def top_managers_per_tb(manager_totals: pd.DataFrame, config: dict[str, Any]) ->
     rows: list[pd.DataFrame] = []
     for tb_value in sorted(manager_totals[tb_col].dropna().unique(), key=str):
         bucket: pd.DataFrame = manager_totals.loc[manager_totals[tb_col] == tb_value].copy()
+        bucket = bucket.loc[bucket["exceedance_count"] > 0]
+        if bucket.empty:
+            continue
         bucket = bucket.sort_values(
             ["exceedance_count", "total_leads", km_name],
             ascending=[False, False, True],
@@ -476,14 +631,50 @@ def lead_records_to_json(detail: pd.DataFrame, config: dict[str, Any]) -> list[d
         rename[km_name] = "km"
     if label_name and label_name in detail.columns:
         rename[label_name] = "label"
+    report_col: str | None = _optional_column(config, "report_date")
+    if report_col and report_col in detail.columns:
+        rename[report_col] = "report_date"
+    for opt_key, json_key in (
+        ("deal_id", "deal_id"),
+        ("inn", "inn"),
+        ("change_conditions", "change_conditions"),
+        ("efs_flag", "efs_flag"),
+    ):
+        opt_col: str | None = _optional_column(config, opt_key)
+        if opt_col and opt_col in detail.columns:
+            rename[opt_col] = json_key
     out: pd.DataFrame = detail.rename(columns=rename)
     records: list[dict[str, Any]] = out.to_dict(orient="records")
     for row in records:
         row["exceeded"] = bool(row.get("exceeded"))
+        row["km_tb_key"] = manager_tb_km_key(row.get("tb", ""), row.get("km", ""))
         if row.get("days_int") is not None:
             row["days_int"] = round(float(row["days_int"]), 1)
         if row.get("threshold_days") is not None:
             row["threshold_days"] = round(float(row["threshold_days"]), 1)
+        for flag_key in ("change_conditions", "efs_flag"):
+            if row.get(flag_key) is not None and row.get(flag_key) == row.get(flag_key):
+                try:
+                    row[flag_key] = int(float(row[flag_key]))
+                except (TypeError, ValueError):
+                    pass
+        if row.get("report_date") is not None:
+            row["report_date"] = str(row["report_date"])[:10]
+    return records
+
+
+def exceedances_to_json(detail: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Только строки с превышением P80 — для JSON и детализации зависших лидов/сделок."""
+    if detail.empty or "exceeded" not in detail.columns:
+        return []
+    exceeded: pd.DataFrame = detail.loc[detail["exceeded"]].copy()
+    if exceeded.empty:
+        return []
+    records: list[dict[str, Any]] = lead_records_to_json(exceeded, config)
+    for row in records:
+        thresh: float = float(row.get("threshold_days") or 0)
+        days: float = float(row.get("days_int") or 0)
+        row["overshoot"] = round(max(0.0, days - thresh), 1)
     return records
 
 
@@ -500,10 +691,24 @@ def build_manager_dimensions(detail: pd.DataFrame, config: dict[str, Any]) -> di
     return {"product_groups": groups, "products": products}
 
 
+def build_top_by_tb_grouped(top_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Топ-N нарушителей по каждому ТБ — для UI."""
+    by_tb: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for row in top_records:
+        tb: str = str(row.get("tb", ""))
+        if tb not in by_tb:
+            by_tb[tb] = []
+            order.append(tb)
+        by_tb[tb].append(row)
+    return [{"tb": tb, "managers": by_tb[tb]} for tb in order]
+
+
 def build_manager_analytics(
     records: pd.DataFrame,
     stats: dict[str, pd.DataFrame],
     config: dict[str, Any],
+    snapshot_date: pd.Timestamp | None = None,
 ) -> dict[str, Any] | None:
     """Полный payload аналитики менеджеров или None, если КМ недоступна."""
     if not is_manager_analytics_enabled(config):
@@ -530,20 +735,25 @@ def build_manager_analytics(
 
     rank_sel: dict[str, Any] = rank_selection_config(config)
     ranked_detail: pd.DataFrame = apply_rank_selection(detail, config, rank_sel)
+    ranked_exceeded: pd.DataFrame = ranked_detail.loc[ranked_detail["exceeded"]].copy()
     ranked_by_product, ranked_totals = aggregate_manager_counts(ranked_detail, config)
     top_tb: pd.DataFrame = top_managers_per_tb(ranked_totals, config)
-    top_records: list[dict[str, Any]] = attach_hotspots_to_top(top_tb, ranked_by_product, config)
+    top_records: list[dict[str, Any]] = attach_hotspots_to_top(
+        top_tb, ranked_by_product, ranked_exceeded, config
+    )
     charts: dict[str, Any] = build_km_violation_charts(detail, manager_totals, config)
     dimensions: dict[str, Any] = build_manager_dimensions(detail, config)
     lead_records: list[dict[str, Any]] = lead_records_to_json(detail, config)
+    exceedances: list[dict[str, Any]] = exceedances_to_json(detail, config)
 
     logger.info(
-        "Менеджеры: превышений %d, топ-записей %d (отбор: %s), порогов P80 %d, lead records %d",
+        "Менеджеры: превышений %d, топ-записей %d (отбор: %s), порогов P80 %d, records %d, exceedances %d",
         int(detail["exceeded"].sum()) if not detail.empty else 0,
         len(top_tb),
         rank_sel.get("strategy_filter"),
         len(thresholds),
         len(lead_records),
+        len(exceedances),
     )
 
     return {
@@ -554,17 +764,25 @@ def build_manager_analytics(
             "percentile_label": percentile_label(percentile),
             "threshold_scope": str(mgr_cfg.get("threshold_scope", "overall")),
             "top_managers_per_tb": int(mgr_cfg.get("top_managers_per_tb", 3)),
+            "top_stuck_items_per_hotspot": int(mgr_cfg.get("top_stuck_items_per_hotspot", 15)),
             "km_column": km_name,
             "rank_selection": rank_sel,
+            "manager_key": "km_tb_key",
+            "use_latest_report_date": bool(mgr_cfg.get("use_latest_report_date", True)),
+            "report_date_snapshot": (
+                snapshot_date.date().isoformat() if snapshot_date is not None and not pd.isna(snapshot_date) else None
+            ),
             "description": (
                 "Превышение P80: срок лида на стадии строго больше порога P80 "
                 "для той же группы, продукта и стадии (порог из общей сводки без ТБ). "
-                "TOP КМ — по rank_selection; полные данные в records для UI-фильтров."
+                "TOP КМ — по rank_selection (ТБ+КМ); records — все лиды; exceedances — только отклонения."
             ),
         },
         "dimensions": dimensions,
         "records": lead_records,
+        "exceedances": exceedances,
         "top_by_tb": top_records,
+        "top_by_tb_grouped": build_top_by_tb_grouped(top_records),
         "detail_by_product": _frame_to_records(by_product, config),
         "manager_totals": _frame_to_records(manager_totals, config),
         "charts": charts,

@@ -56,7 +56,8 @@ const KanbanManagers = (() => {
     if (!payload?.meta) return "";
     const m = payload.meta;
     const strat = STRATEGY_LABELS[strategyFilter] || strategyFilter;
-    return `P${m.percentile} · ${m.metric} · топ-${m.top_managers_per_tb} на ТБ · ${strat}`;
+    const snap = m.report_date_snapshot ? ` · срез ${m.report_date_snapshot}` : "";
+    return `P${m.percentile} · ${m.metric} · топ-${m.top_managers_per_tb} нарушителей на ТБ · ${strat}${snap}`;
   }
 
   function percentileLabel() {
@@ -83,6 +84,39 @@ const KanbanManagers = (() => {
     if (mode === "strategy_2026") return /стратегия/i.test(text) && /2026/.test(text);
     if (mode === "non_strategy") return !/стратегия/i.test(text);
     return true;
+  }
+
+  function matchesRankFlags(row) {
+    const cfg = payload?.meta?.rank_selection || {};
+    if (cfg.efs_flag != null && row.efs_flag != null && Number(row.efs_flag) !== Number(cfg.efs_flag)) {
+      return false;
+    }
+    if (
+      cfg.change_conditions != null &&
+      row.change_conditions != null &&
+      Number(row.change_conditions) !== Number(cfg.change_conditions)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function stuckLimit() {
+    return Math.max(1, Number(payload?.meta?.top_stuck_items_per_hotspot) || 15);
+  }
+
+  function buildStuckItem(row) {
+    const days = Number(row.days_int) || 0;
+    const thresh = Number(row.threshold_days) || 0;
+    return {
+      lead_id: String(row.lead_id ?? ""),
+      deal_id: row.deal_id != null && row.deal_id !== "" ? String(row.deal_id) : null,
+      inn: row.inn != null && row.inn !== "" ? String(row.inn) : null,
+      stage_key: String(row.stage_key ?? ""),
+      days_int: Math.round(days * 10) / 10,
+      threshold_days: Math.round(thresh * 10) / 10,
+      overshoot: Math.round(Math.max(0, days - thresh) * 10) / 10,
+    };
   }
 
   /** Пул групп/продуктов из config.rank_selection + сужение UI-фильтрами. */
@@ -129,6 +163,7 @@ const KanbanManagers = (() => {
       if (products && !products.has(String(row.product))) return false;
       if (filters?.stage && String(row.stage_key) !== filters.stage) return false;
       if (!matchesStrategy(row.label, strategyFilter)) return false;
+      if (!matchesRankFlags(row)) return false;
       return true;
     });
   }
@@ -156,6 +191,7 @@ const KanbanManagers = (() => {
           max_overshoot: 0,
           avg_overshoot: 0,
           _days: [],
+          _stuck: [],
         });
       }
       const spot = map.get(key);
@@ -165,13 +201,25 @@ const KanbanManagers = (() => {
       if (days > spot.max_days) spot.max_days = days;
       const thresh = Number(row.threshold_days) || 0;
       if (thresh > spot.threshold_days) spot.threshold_days = thresh;
+      if (spot._stuck.length < stuckLimit()) {
+        spot._stuck.push(buildStuckItem(row));
+      }
     });
 
+    const stuckCap = stuckLimit();
     const hotspots = [...map.values()].map((spot) => {
       const overs = Math.max(0, spot.max_days - spot.threshold_days);
       const avgDays = spot._days.length
         ? spot._days.reduce((a, b) => a + b, 0) / spot._days.length
         : 0;
+      const stuckSorted = spot._stuck
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.overshoot || 0) - (a.overshoot || 0) ||
+            String(a.lead_id).localeCompare(String(b.lead_id), "ru")
+        )
+        .slice(0, stuckCap);
       return {
         tb: spot.tb,
         km: spot.km,
@@ -183,6 +231,7 @@ const KanbanManagers = (() => {
         max_days: Math.round(spot.max_days * 10) / 10,
         max_overshoot: Math.round(overs * 10) / 10,
         avg_overshoot: Math.round(Math.max(0, avgDays - spot.threshold_days) * 10) / 10,
+        stuck_items: stuckSorted,
       };
     });
 
@@ -228,7 +277,7 @@ const KanbanManagers = (() => {
 
       tbOrder.forEach((tb) => {
         const bucketRows = [...byManager.values()]
-          .filter((b) => b.tb === tb)
+          .filter((b) => b.tb === tb && b.exceedance_count > 0)
           .sort(
             (a, b) =>
               b.exceedance_count - a.exceedance_count ||
@@ -241,6 +290,7 @@ const KanbanManagers = (() => {
           result.push({
             tb: row.tb,
             km: row.km,
+            km_tb_key: managerKey(row.tb, row.km),
             rank: idx + 1,
             exceedance_count: row.exceedance_count,
             total_leads: row.total_leads.size,
@@ -431,6 +481,43 @@ const KanbanManagers = (() => {
     return `${spot.product_group || "—"} · ${spot.product || "—"}`;
   }
 
+  function groupTopByTb(rows) {
+    const map = new Map();
+    const order = [];
+    (rows || []).forEach((row) => {
+      const tb = String(row.tb);
+      if (!map.has(tb)) {
+        map.set(tb, []);
+        order.push(tb);
+      }
+      map.get(tb).push(row);
+    });
+    return order.map((tb) => ({ tb, managers: map.get(tb) }));
+  }
+
+  function renderStuckItems(items) {
+    if (!items?.length) {
+      return `<p class="manager-stuck-empty">Нет зависших лидов/сделок в этой зоне.</p>`;
+    }
+    const head =
+      `<thead><tr>` +
+      `<th>ИНН</th><th>ID ПрПр</th><th>ID сделки</th><th>Дней</th><th>+P80</th>` +
+      `</tr></thead>`;
+    const body = items
+      .map(
+        (item) =>
+          `<tr>` +
+          `<td>${escapeHtml(item.inn || "—")}</td>` +
+          `<td>${escapeHtml(item.lead_id || "—")}</td>` +
+          `<td>${escapeHtml(item.deal_id || "—")}</td>` +
+          `<td>${escapeHtml(item.days_int ?? "—")}</td>` +
+          `<td class="manager-stuck-overshoot">+${escapeHtml(item.overshoot ?? "—")}</td>` +
+          `</tr>`
+      )
+      .join("");
+    return `<div class="manager-stuck-table-wrap"><table class="manager-stuck-table">${head}<tbody>${body}</tbody></table></div>`;
+  }
+
   function renderHotspotRow(spot, maxCount) {
     const severity = hotspotSeverity(spot);
     const count = Number(spot.exceedance_count) || 0;
@@ -453,6 +540,10 @@ const KanbanManagers = (() => {
       `</div>` +
       `<div class="manager-hotspot__bar" aria-hidden="true">` +
       `<span class="manager-hotspot__bar-fill" style="width:${barPct}%"></span>` +
+      `</div>` +
+      `<div class="manager-hotspot__stuck">` +
+      `<div class="manager-hotspot__stuck-title">Зависшие лиды / сделки</div>` +
+      renderStuckItems(spot.stuck_items) +
       `</div>` +
       `</li>`
     );
@@ -493,7 +584,7 @@ const KanbanManagers = (() => {
       `</div>` +
       `</div>` +
       `<p class="manager-detail__intro">` +
-      `Почему в топе: наибольшие отклонения по выбранным продуктам и меткам (срок &gt; порога ${pLabel}).` +
+      `Топ нарушитель P80 в ${escapeHtml(row.tb)}: отклонения по клиентам (ИНН), лидам (ID ПрПр) и сделкам.` +
       `</p>` +
       `<div class="manager-detail__legend">` +
       `<span class="manager-detail__legend-item manager-detail__legend-item--critical">сильное</span>` +
@@ -510,8 +601,10 @@ const KanbanManagers = (() => {
     const parts = [];
     if (cfg.product_groups?.length) parts.push(`группы: ${cfg.product_groups.length}`);
     if (cfg.products?.length) parts.push(`продукты: ${cfg.products.length}`);
-    if (parts.length) return `Пул config: ${parts.join(", ")}.`;
-    return "Пул config: все группы и продукты.";
+    if (cfg.efs_flag != null) parts.push(`ЕФС=${cfg.efs_flag}`);
+    if (cfg.change_conditions != null) parts.push(`изм.усл.=${cfg.change_conditions}`);
+    if (parts.length) return `Пул config: ${parts.join(", ")}. Ключ КМ: ТБ+ФИО.`;
+    return "Пул config: все группы и продукты. Ключ КМ: ТБ+ФИО.";
   }
 
   function renderStrategyControl(container, filters, onChange) {
@@ -555,8 +648,8 @@ const KanbanManagers = (() => {
     const head = document.createElement("div");
     head.className = "managers-panel__head";
     head.innerHTML =
-      `<h3 class="managers-panel__title">Менеджеры: превышения P80</h3>` +
-      `<p class="managers-panel__intro">${metaLine()} · выберите КМ для детализации</p>`;
+      `<h3 class="managers-panel__title">Топ-3 нарушителя P80 по ТБ</h3>` +
+      `<p class="managers-panel__intro">${metaLine()} · клик по КМ — детализация по клиентам и сделкам</p>`;
     container.appendChild(head);
 
     renderStrategyControl(container, filters, () => render(container, filters));
@@ -565,7 +658,7 @@ const KanbanManagers = (() => {
     if (!top.length) {
       const empty = document.createElement("p");
       empty.className = "managers-panel__empty";
-      empty.textContent = "Нет менеджеров для выбранных фильтров отбора.";
+      empty.textContent = "Нет нарушителей P80 для выбранных фильтров отбора.";
       container.appendChild(empty);
       return;
     }
@@ -576,31 +669,49 @@ const KanbanManagers = (() => {
       selectedKey = managerKey(first.tb, first.km);
     }
 
-    const topWrap = document.createElement("div");
-    topWrap.className = "managers-top-grid";
-    top.forEach((row) => {
-      const key = managerKey(row.tb, row.km);
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "manager-card" + (key === selectedKey ? " manager-card--active" : "");
-      btn.dataset.managerKey = key;
-      btn.innerHTML =
-        `<div class="manager-card__rank">${row.rank}</div>` +
-        `<div class="manager-card__body">` +
-        `<div class="manager-card__name">${escapeHtml(row.km)}</div>` +
-        `<div class="manager-card__meta">${escapeHtml(row.tb)}</div>` +
-        `<div class="manager-card__stat"><span>${row.exceedance_count}</span> превыш. · ${row.total_leads} лид.</div>` +
-        (row.hotspots?.length
-          ? `<div class="manager-card__hint">${escapeHtml(segmentLabel(row.hotspots[0]))} · ${escapeHtml(row.hotspots[0].stage_key)}</div>`
-          : "") +
-        `</div>`;
-      btn.addEventListener("click", () => {
-        selectedKey = key;
-        render(container, filters);
+    const grouped = groupTopByTb(top);
+    const tbSet = resolveTbFilter(filters);
+    const sectionsWrap = document.createElement("div");
+    sectionsWrap.className = "managers-tb-sections";
+
+    grouped.forEach(({ tb, managers }) => {
+      if (tbSet && !tbSet.has(String(tb))) return;
+      const section = document.createElement("section");
+      section.className = "managers-tb-section";
+      section.innerHTML =
+        `<header class="managers-tb-section__head">` +
+        `<h4 class="managers-tb-section__title">${escapeHtml(KanbanData.tbDisplay ? KanbanData.tbDisplay(tb) : tb)}</h4>` +
+        `<span class="managers-tb-section__badge">${managers.length} из ${topLimit()}</span>` +
+        `</header>`;
+
+      const cards = document.createElement("div");
+      cards.className = "managers-top-grid managers-top-grid--tb";
+      managers.forEach((row) => {
+        const key = managerKey(row.tb, row.km);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "manager-card" + (key === selectedKey ? " manager-card--active" : "");
+        btn.dataset.managerKey = key;
+        btn.innerHTML =
+          `<div class="manager-card__rank">${row.rank}</div>` +
+          `<div class="manager-card__body">` +
+          `<div class="manager-card__name">${escapeHtml(row.km)}</div>` +
+          `<div class="manager-card__stat"><span>${row.exceedance_count}</span> превыш. · ${row.total_leads} лид.</div>` +
+          (row.hotspots?.length
+            ? `<div class="manager-card__hint">${escapeHtml(segmentLabel(row.hotspots[0]))} · ${escapeHtml(row.hotspots[0].stage_key)}</div>`
+            : "") +
+          `</div>`;
+        btn.addEventListener("click", () => {
+          selectedKey = key;
+          render(container, filters);
+        });
+        cards.appendChild(btn);
       });
-      topWrap.appendChild(btn);
+      section.appendChild(cards);
+      sectionsWrap.appendChild(section);
     });
-    container.appendChild(topWrap);
+
+    container.appendChild(sectionsWrap);
 
     const selected = top.find((row) => managerKey(row.tb, row.km) === selectedKey);
     if (selected) {

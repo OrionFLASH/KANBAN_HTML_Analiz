@@ -19,20 +19,37 @@ def _empty_date_mask(series: pd.Series, empty_values: set[str]) -> pd.Series:
 def parse_date_column(series: pd.Series, config: dict[str, Any], column_label: str) -> pd.Series:
     """
     Преобразует колонку в datetime.
-    Поддерживает: Excel-числа, ISO, dd.mm.yyyy, пустые и некорректные значения → NaT.
+    Поддерживает: уже datetime64, Excel-числа, ISO, dd.mm.yyyy, пустые → NaT.
     """
     dates_cfg: dict[str, Any] = config.get("dates", {})
     empty_values: set[str] = {str(v).lower() for v in dates_cfg.get("empty_values", ["", "-", "nan", "none", "nat"])}
+
+    # Колонка уже datetime (openpyxl) — не интерпретировать как Excel serial days.
+    if pd.api.types.is_datetime64_any_dtype(series):
+        as_series: pd.Series = pd.Series(series, copy=False)
+        result = pd.to_datetime(as_series, errors="coerce")
+        empty_mask = _empty_date_mask(as_series, empty_values)
+        result = result.mask(empty_mask, pd.NaT)
+        nat_count: int = int(result.isna().sum())
+        if nat_count > 0:
+            logger.debug(
+                "Колонка '%s': %d/%d значений без даты (NaT)",
+                column_label,
+                nat_count,
+                len(result),
+            )
+        return result
+
     dayfirst: bool = bool(dates_cfg.get("dayfirst", True))
     extra_formats: list[str] = list(dates_cfg.get("formats", []))
 
     work: pd.Series = series.copy()
-    empty_mask: pd.Series = _empty_date_mask(work, empty_values)
+    empty_mask = _empty_date_mask(work, empty_values)
     work = work.mask(empty_mask, pd.NA)
 
     numeric: pd.Series = pd.to_numeric(work, errors="coerce")
     numeric_mask: pd.Series = numeric.notna() & work.notna()
-    result: pd.Series = pd.Series(pd.NaT, index=work.index, dtype="datetime64[ns]")
+    result = pd.Series(pd.NaT, index=work.index, dtype="datetime64[ns]")
 
     if numeric_mask.any():
         excel_origin: str = dates_cfg.get("excel_origin", "1899-12-30")

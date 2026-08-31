@@ -5,6 +5,24 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+# Продукты по умолчанию для отбора TOP КМ (Excel / rank_selection)
+DEFAULT_RANK_PRODUCTS: list[str] = [
+    "Зарплатные проекты (объем ФОТ)",
+    "Краткосрочное финансирование",
+    "Расчетные операции",
+    "Срочное привлечение",
+    "Бизнес карта",
+    "Готовые образовательные решения",
+    "Комплексная поддержка по повышению эффективности бизнеса",
+    "Факторинг",
+    "Process Mining от Сбера",
+    "Непокрытые аккредитивы",
+    "Корпоративное обучение",
+    "Лизинг СБЛ",
+    "Cash-management",
+    "Sbergile-консалтинг",
+]
+
 # Значения по умолчанию — подставляются, если ключ отсутствует в config.json
 DEFAULT_CONFIG: dict[str, Any] = {
     "paths": {
@@ -30,6 +48,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "change_conditions": "_Изменение условий",
         "data_entry": "_Ввод данных",
         "efs_flag": "ЕФС флаг",
+        "deal_id": "ID сделки",
+        "inn": "ИНН",
     },
     "required_column_keys": [
         "report_date",
@@ -48,6 +68,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "efs_flag",
         "label",
         "km",
+        "deal_id",
+        "inn",
     ],
     "excel": {
         "sheet_name": "Sheet1",
@@ -196,9 +218,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "html_include_detail": False,
         "rank_selection": {
             "product_groups": [],
-            "products": [],
-            "strategy_filter": "all",
+            "products": list(DEFAULT_RANK_PRODUCTS),
+            "strategy_filter": "strategy_2026",
+            "efs_flag": 1,
+            "change_conditions": 0,
         },
+        "top_stuck_items_per_hotspot": 15,
+        "use_latest_report_date": True,
     },
     "parallel_workers": 0,
     "excel_theme": "green_red",

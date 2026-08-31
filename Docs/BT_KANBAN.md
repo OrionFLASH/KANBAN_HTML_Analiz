@@ -1,6 +1,6 @@
 # Бизнес-требования и системный анализ: KANBAN HTML Analiz
 
-**Версия:** 1.0.4  
+**Версия:** 1.0.5  
 **Дата:** 2026-08-31  
 **Источник:** `Docs/ToDo KANBAN.txt`
 
@@ -150,12 +150,14 @@
 
 - Порог P80 по группе × продукт × стадия из общей сводки (без ТБ)
 - Превышение: срок лида **строго больше** P80
-- Топ-N менеджеров на каждый ТБ по числу превышений
+- Топ-N менеджеров на каждый ТБ по числу превышений (только КМ с нарушениями)
+- **Актуальная выгрузка:** при нескольких «Дата отчета» в исходнике — для КМ берётся только `max(Дата отчета)` (`use_latest_report_date`)
 - Bar-графики в HTML: число КМ с нарушениями по ТБ и по группам/продуктам
 - **Hotspots** — топ зон превышения на каждого КМ (продукт×стадия, +N дн. к P80)
-- **`rank_selection`** — пул групп/продуктов и фильтр метки для TOP-N; полные `records` в JSON
-- Выход: лист Excel «Менеджеры», JSON с `records` + `top_by_tb`, детальная карточка и пересчёт TOP в HTML
-- Колонки `КМ` и `Метка` должны быть в `required_column_keys` для загрузки из Excel (`label` — для `rank_selection.strategy_filter`)
+- **`stuck_items`** в hotspot — зависшие лиды/сделки: ИНН, ID ПрПр, ID сделки, дней, +P80
+- **`rank_selection`** — пул групп/продуктов, метка, ЕФС, изменение условий для TOP-N; полные `records` в JSON
+- Выход: лист Excel «Менеджеры», JSON с `records` + `exceedances` + `top_by_tb` / `top_by_tb_grouped`, UI — секции по ТБ и детальная карточка
+- Колонки `КМ`, `Метка`, `ID сделки`, `ИНН` — в `required_column_keys` для загрузки из Excel
 
 ---
 
@@ -191,8 +193,10 @@
 
 **Менеджеры** (`kanban_report_managers_{timestamp}.json`):
 
-- `records[]` — все лиды×стадии (метка, exceeded, порог)
-- `top_by_tb[]` с **`hotspots`** — предрасчёт по `rank_selection`
+- `meta.report_date_snapshot` — дата актуального среза (max «Дата отчета»)
+- `records[]` — лиды×стадии **только актуальной выгрузки**
+- `exceedances[]` — только отклонения P80 (lead_id, deal_id, inn, overshoot)
+- `top_by_tb[]` / `top_by_tb_grouped[]` с **`hotspots`** и **`stuck_items`** — предрасчёт по `rank_selection`
 - `meta.rank_selection`, `dimensions`, `charts` (`by_tb`, `facts`)
 - `detail_by_product`, `manager_totals` — всегда в файле
 
@@ -207,8 +211,8 @@
 | Графики линий | Кривые «лиды × дни» по срезам `filter_slices` |
 | Графики КМ | Bar-chart по JSON менеджеров (`charts`) |
 | Матрица | `pivot_flat` из активного среза |
-| Менеджеры (BOTTOM) | Загрузка `kanban_report_managers_*.json`; TOP-N пересчитывается из `records` по фильтрам |
-| Отбор TOP КМ | Config: `rank_selection` — пул групп/продуктов и метка; UI: мультивыбор справа + выпадающий список «Метка (отбор TOP)» |
+| Менеджеры (BOTTOM) | Секции по ТБ, топ-3 нарушителя P80; детализация — hotspots + таблица ИНН / ID ПрПр / ID сделки |
+| Отбор TOP КМ | Config: `rank_selection` — пул, метка, ЕФС, изменение условий; UI: мультивыбор + «Метка (отбор TOP)» |
 
 > Pipeline-фильтры основного JSON **не** пересчитывают менеджеров — для КМ используется отдельный JSON и собственные фильтры отбора.
 
@@ -344,7 +348,7 @@
 
 ---
 
-## 9. Согласованные решения (v1.0.4, 2026-08-31)
+## 9. Согласованные решения (v1.0.5, 2026-08-31)
 
 | Тема | Решение |
 |------|---------|
@@ -354,7 +358,7 @@
 | Фильтр ЕФС | `html_slice: false` — только config; `enabled: false` = строки с 0 и 1 |
 | JSON export | Split-bundle: manifest + `slices/`; без `*_latest*` и `HTML/data/` |
 | JSON filter_slices | 2^N для HTML-фильтров; `dashboard.precompute_html_filter_slices` |
-| Менеджеры (КМ) | P80 overall; TOP-N по `rank_selection`; полные `records`; UI пересчитывает TOP по фильтрам |
+| Менеджеры (КМ) | P80 overall; актуальный срез max(Дата отчета); TOP-3 по ТБ; `exceedances` + `stuck_items` (ИНН, ID ПрПр, ID сделки); UI по секциям ТБ |
 | Отбор TOP КМ | Config: пул `product_groups` / `products` + `strategy_filter`; Excel и старт UI — по config; JSON — все лиды |
 | Excel визуализация | Только лист «Графики»; «Матрица» — только HTML |
 | Excel-таблица | Имя в config (`excel.table_name`: `Base`); авто fallback на Sheet1 |

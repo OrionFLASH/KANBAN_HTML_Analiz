@@ -62,7 +62,7 @@ log/                 # логи INFO/DEBUG
 | `output` | Имена файлов, листы Excel, оформление |
 | `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`) |
 | `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
-| `manager_analytics` | Превышения P80 по КМ; `rank_selection`; JSON `records` + TOP-N |
+| `manager_analytics` | Превышения P80 по КМ; `rank_selection`, `use_latest_report_date`; JSON `records` + `exceedances` + TOP-N |
 | `logging` | Файлы логов |
 
 ### Частые настройки
@@ -93,10 +93,13 @@ log/                 # логи INFO/DEBUG
   "manager_analytics": {
     "enabled": true,
     "top_managers_per_tb": 3,
+    "use_latest_report_date": true,
     "rank_selection": {
       "product_groups": [],
       "products": [],
-      "strategy_filter": "all"
+      "strategy_filter": "strategy_2026",
+      "efs_flag": 1,
+      "change_conditions": 0
     }
   }
 }
@@ -129,8 +132,11 @@ OUT/kanban_report_YYYYMMDD_HHMMSS_html/
 
 | Блок | Содержание |
 |------|------------|
-| `records[]` | Все лиды×стадии: метка, exceeded, порог P80 |
-| `top_by_tb[]` | TOP-N по `rank_selection` + `hotspots` |
+| `meta.report_date_snapshot` | Дата актуальной выгрузки (max «Дата отчета») при `use_latest_report_date: true` |
+| `records[]` | Лиды×стадии актуального среза: метка, exceeded, порог P80, deal_id, inn |
+| `exceedances[]` | Только отклонения P80: lead_id, deal_id, inn, overshoot |
+| `top_by_tb[]` | TOP-N по `rank_selection` + `hotspots` + `stuck_items` |
+| `top_by_tb_grouped[]` | Те же данные, сгруппированные по ТБ для UI |
 | `dimensions` | Справочник групп и продуктов |
 | `charts` | Bar-графики КМ (`by_tb`, `facts`) |
 | `detail_by_product`, `manager_totals` | Агрегаты (полный набор) |
@@ -151,7 +157,7 @@ cd HTML && python -m http.server 8080
 - **Графики КМ:** «КМ с нарушениями P80: по ТБ» / «… по группам/продуктам» — bar-chart (нужен JSON менеджеров)
 - **Агрегация в HTML:** «По продуктам» / «По группам» + pipeline-фильтры — срез из `visualizations.filter_slices`
 - **Pipeline-фильтры:** изменение условий, ввод данных, метки «Стратегия» / «Стратегия·2026». **ЕФС** — только `config.filters.efs_flag` (`enabled`, `value`, `html_slice: false`)
-- **Менеджеры:** полные `records` в JSON; TOP-N по `rank_selection` в config; в UI — фильтры групп/продуктов (справа) + «Метка (отбор TOP)»; пересчёт карточек на лету
+- **Менеджеры:** секции **по ТБ**, топ-3 нарушителя P80; детализация — hotspots с **ИНН / ID ПрПр / ID сделки**; данные только по max(«Дата отчета»); TOP пересчитывается по фильтрам групп/продуктов и метки
 - `config.product_analysis_mode` — только для **Excel**; в JSON — обе агрегации и все срезы фильтров
 - Режим «По ТБ»: графики **друг под другом** (одна колонка)
 
@@ -186,3 +192,4 @@ cd HTML && python -m http.server 8080
 | 1.0.2 | 2026-08-31 | Split-bundle JSON; ЕФС config-only; bar-графики КМ; без `*_latest*` |
 | 1.0.3 | 2026-08-31 | Excel без «Матрицы»; hotspots по КМ (Excel + JSON + UI); `top_hotspots_per_manager` |
 | 1.0.4 | 2026-08-31 | `rank_selection` для отбора TOP КМ; полные `records` в JSON; пересчёт TOP в UI |
+| 1.0.5 | 2026-08-31 | Топ-3 нарушителя по ТБ в UI; `exceedances`, `stuck_items`, `deal_id`/`inn`; срез `use_latest_report_date`; fix parse datetime64 |

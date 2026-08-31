@@ -22,7 +22,9 @@
     "km": "КМ",
     "change_conditions": "_Изменение условий",
     "data_entry": "_Ввод данных",
-    "efs_flag": "ЕФС флаг"
+    "efs_flag": "ЕФС флаг",
+    "deal_id": "ID сделки",
+    "inn": "ИНН"
   },
   "required_column_keys": [
     "report_date",
@@ -40,7 +42,9 @@
     "data_entry",
     "efs_flag",
     "label",
-    "km"
+    "km",
+    "deal_id",
+    "inn"
   ],
   "excel": {
     "sheet_name": "Sheet1",
@@ -206,18 +210,37 @@
       "write_monolith_archive": true
     }
   },
-    "manager_analytics": {
+  "manager_analytics": {
     "enabled": true,
     "metric": "days_on_stage",
     "percentile": 80,
     "threshold_scope": "overall",
     "top_managers_per_tb": 3,
     "top_hotspots_per_manager": 5,
+    "top_stuck_items_per_hotspot": 15,
+    "use_latest_report_date": true,
     "html_include_detail": false,
     "rank_selection": {
       "product_groups": [],
-      "products": [],
-      "strategy_filter": "all"
+      "products": [
+        "Зарплатные проекты (объем ФОТ)",
+        "Краткосрочное финансирование",
+        "Расчетные операции",
+        "Срочное привлечение",
+        "Бизнес карта",
+        "Готовые образовательные решения",
+        "Комплексная поддержка по повышению эффективности бизнеса",
+        "Факторинг",
+        "Process Mining от Сбера",
+        "Непокрытые аккредитивы",
+        "Корпоративное обучение",
+        "Лизинг СБЛ",
+        "Cash-management",
+        "Sbergile-консалтинг"
+      ],
+      "strategy_filter": "strategy_2026",
+      "efs_flag": 1,
+      "change_conditions": 0
     }
   },
   "parallel_workers": 0,

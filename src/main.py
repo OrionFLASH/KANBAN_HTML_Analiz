@@ -21,6 +21,7 @@ from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
 from src.manager_analytics import (
     build_manager_analytics,
+    build_manager_records,
     export_manager_json,
 )
 from src.visualization_data import (
@@ -152,7 +153,10 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     progress.done(f"JSON-срезов: {len(filter_slices)}")
 
     progress.stage("Аналитика менеджеров (КМ)")
-    manager_payload: dict[str, Any] | None = build_manager_analytics(records, stats, config)
+    manager_records, snapshot_date = build_manager_records(filtered_df, config, progress)
+    manager_payload: dict[str, Any] | None = build_manager_analytics(
+        manager_records, stats, config, snapshot_date=snapshot_date
+    )
     managers_json_path: Path = output_dir / f"{prefix}_managers_{timestamp}.json"
     if manager_payload:
         export_manager_json(manager_payload, managers_json_path, config)
