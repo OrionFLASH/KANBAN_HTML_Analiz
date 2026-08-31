@@ -15,7 +15,7 @@ from openpyxl import load_workbook
 from src.date_utils import parse_date_column
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
-from src.settings import col, required_column_names
+from src.settings import col, load_column_names, required_column_names
 
 logger: logging.Logger = logging.getLogger("kanban.excel_loader")
 
@@ -97,8 +97,19 @@ def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
 
     use_columns: list[str] | None = None
     if perf.get("read_only_required_columns", True):
-        # Только отбор колонок для скорости; все строки листа/таблицы загружаются полностью
-        use_columns = required_column_names(config)
+        # Обязательные + опциональные (ВКС и др.); отсутствующие optional отфильтруем по шапке
+        wanted: list[str] = load_column_names(config)
+        try:
+            header_df: pd.DataFrame = pd.read_excel(
+                file_path,
+                sheet_name=config["excel"]["sheet_name"],
+                engine=config["excel"].get("engine", "openpyxl"),
+                nrows=0,
+            )
+            available: set[str] = set(header_df.columns.astype(str))
+            use_columns = [c for c in wanted if c in available]
+        except Exception:
+            use_columns = wanted
 
     df: pd.DataFrame = _read_excel_dataframe(file_path, config, use_columns)
     _validate_columns(df, file_path, config)

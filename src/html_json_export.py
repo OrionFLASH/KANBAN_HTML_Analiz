@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 from pathlib import Path
 from typing import Any
+
+from src.json_sanitize import dump_json_file
 
 logger: logging.Logger = logging.getLogger("kanban.html_json_export")
 
@@ -18,23 +19,18 @@ def html_json_settings(config: dict[str, Any]) -> dict[str, Any]:
     """Настройки HTML JSON из dashboard.html_json с умолчаниями."""
     dash: dict[str, Any] = config.get("dashboard", {})
     defaults: dict[str, Any] = {
-        "bundle_mode": "split",
+        "bundle_mode": "monolith",
         "compact": True,
         "include_statistics": False,
         "include_dimensions": True,
         "max_distribution_points": 800,
         "slices_subdir": DEFAULT_SLICES_SUBDIR,
-        "write_monolith_archive": True,
+        "write_monolith_archive": False,
+        "embed_managers": True,
+        "write_separate_managers_json": False,
     }
     raw: dict[str, Any] = dash.get("html_json") or {}
     return {**defaults, **raw}
-
-
-def _json_dump_kwargs(compact: bool) -> dict[str, Any]:
-    """Параметры json.dump: compact без indent экономит 30–40 %."""
-    if compact:
-        return {"ensure_ascii": False, "separators": (",", ":"), "default": str}
-    return {"ensure_ascii": False, "indent": 2, "default": str}
 
 
 def downsample_days_sorted(days: list[int], max_points: int) -> list[int]:
@@ -83,11 +79,8 @@ def public_slice_payload(slice_data: dict[str, Any], config: dict[str, Any]) -> 
 
 
 def write_json_file(path: Path, payload: dict[str, Any], compact: bool) -> int:
-    """Записывает JSON; возвращает размер файла в байтах."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, **_json_dump_kwargs(compact))
-    return path.stat().st_size
+    """Записывает JSON без NaN; возвращает размер файла в байтах."""
+    return dump_json_file(path, payload, compact=compact)
 
 
 def build_manifest_payload(

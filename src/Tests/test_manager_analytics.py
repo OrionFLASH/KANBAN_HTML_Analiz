@@ -201,15 +201,17 @@ def test_rank_selection_efs_and_change_conditions() -> None:
 
 
 def test_exceedances_include_lead_deal_inn() -> None:
-    """exceedances содержит ID ПрПр, ID сделки и ИНН только для превышений."""
-    from src.manager_analytics import exceedances_to_json, build_manager_exceedance_detail
+    """exceedances содержит ID ПрПр, ID сделки, ИНН и Клиент только для превышений."""
+    from src.manager_analytics import exceedances_to_json, build_manager_exceedance_detail, lead_records_to_json
 
     config = _config()
     config["columns"]["deal_id"] = "ID сделки"
     config["columns"]["inn"] = "ИНН"
+    config["columns"]["client"] = "Клиент"
     df = _raw_df()
     df["ID сделки"] = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]
     df["ИНН"] = ["7701", "7702", "7703", "7704", "7705", "7706", "7707", "7708"]
+    df["Клиент"] = [f"Клиент {i}" for i in range(1, 9)]
     records = build_lead_stage_records(df, config)
     stats = build_all_statistics(records, config)
     thresholds = build_p80_thresholds(stats["overall"], config)
@@ -219,7 +221,19 @@ def test_exceedances_include_lead_deal_inn() -> None:
         assert "lead_id" in exc[0]
         assert "deal_id" in exc[0]
         assert "inn" in exc[0]
+        assert "client" in exc[0]
         assert exc[0]["exceeded"] is True
+
+    all_recs = lead_records_to_json(detail, config)
+    ok_rows = [r for r in all_recs if not r.get("exceeded")]
+    bad_rows = [r for r in all_recs if r.get("exceeded")]
+    if ok_rows:
+        assert "client" not in ok_rows[0]
+        assert "inn" not in ok_rows[0]
+        assert "deal_id" not in ok_rows[0]
+    if bad_rows:
+        assert bad_rows[0].get("client")
+        assert bad_rows[0].get("inn")
 
 
 def test_latest_report_snapshot() -> None:

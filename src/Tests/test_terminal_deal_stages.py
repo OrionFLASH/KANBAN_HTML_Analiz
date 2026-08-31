@@ -46,6 +46,7 @@ def _config() -> dict:
             "exclude_deal_otkaz": {
                 "enabled": True,
                 "column_key": "deal_stage",
+                "also_column_keys": ["current_status"],
                 "filter_mode": "exclude",
                 "exclude_contains": "отказ",
                 "case_sensitive": False,
@@ -118,10 +119,25 @@ def test_filter_terminal_rows_only_matching_lines() -> None:
     df = pd.DataFrame(
         {
             "Стадия сделки": ["В работе", "ОТКАЗ клиента", "Сделка закрыта", "-", "Заключен договор"],
+            "Текущий статус": ["В РАБОТЕ"] * 5,
         }
     )
     result = filter_terminal_deal_stage_rows(df, config)
     assert list(result["Стадия сделки"]) == ["В работе", "-"]
+
+
+def test_exclude_otkaz_in_current_status() -> None:
+    """«ОТКАЗ» в «Текущий статус» отсекается вместе со стадией сделки."""
+    config = _config()
+    df = pd.DataFrame(
+        {
+            "Стадия сделки": ["В работе", "-", "Подстадия"],
+            "Текущий статус": ["В РАБОТЕ", "ОТКАЗ", "К ПРОДАЖЕ"],
+        }
+    )
+    result = filter_terminal_deal_stage_rows(df, config)
+    assert list(result["Текущий статус"]) == ["В РАБОТЕ", "К ПРОДАЖЕ"]
+    assert len(result) == 2
 
 
 def test_lead_kept_on_other_report_dates() -> None:
@@ -162,6 +178,7 @@ def test_empty_deal_stage_always_kept() -> None:
     df = pd.DataFrame(
         {
             "Стадия сделки": ["-", "", "nan", "None", None, "   ", "ОТКАЗ", "В работе"],
+            "Текущий статус": ["В РАБОТЕ"] * 8,
         }
     )
     result = filter_terminal_deal_stage_rows(df, config)
@@ -174,3 +191,5 @@ def test_filter_catalog_exclude_entry() -> None:
     otkaz = next(item for item in catalog if item["name"] == "exclude_deal_otkaz")
     assert otkaz["filter_mode"] == "exclude"
     assert otkaz["default_active"] is True
+    assert otkaz["also_column_keys"] == ["current_status"]
+    assert "Текущий статус" in otkaz["html_label"]

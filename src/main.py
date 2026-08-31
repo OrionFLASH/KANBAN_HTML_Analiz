@@ -25,9 +25,8 @@ from src.manager_analytics import (
     export_manager_json,
 )
 from src.visualization_data import (
-    JSON_AGGREGATION_MODES,
     build_json_visualization_payload,
-    build_visualization_payload,
+    json_aggregation_modes,
 )
 from src.settings import with_product_analysis_mode
 from src.logger_setup import setup_logger
@@ -100,10 +99,6 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     stats: dict = build_all_statistics(records, config)
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
-    progress.stage("Визуализация (Excel)")
-    visualizations: dict = build_visualization_payload(records, stats, config)
-    progress.done("Данные для Excel подготовлены")
-
     progress.stage("JSON: срезы фильтров и агрегаций")
     precompute_slices: bool = bool(
         config.get("dashboard", {}).get("precompute_html_filter_slices", True)
@@ -116,7 +111,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         stats_by_mode_json: dict[str, dict] = {
             config.get("product_analysis_mode", "group_product"): stats
         }
-        for mode in JSON_AGGREGATION_MODES:
+        for mode in json_aggregation_modes(config):
             if mode not in stats_by_mode_json:
                 stats_by_mode_json[mode] = build_all_statistics(
                     records, with_product_analysis_mode(config, mode)
@@ -139,20 +134,20 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         elif filter_slices:
             default_slice_key = next(iter(filter_slices))
 
+    html_json_cfg: dict[str, Any] = config.get("dashboard", {}).get("html_json") or {}
+    bundle_mode: str = str(html_json_cfg.get("bundle_mode", "monolith"))
     json_visualizations: dict = build_json_visualization_payload(
         config,
         filter_slices,
         filter_catalog,
         default_slice_key=default_slice_key,
-        embed_filter_slices=not bool(
-            config.get("dashboard", {}).get("html_json", {}).get("bundle_mode", "split") == "split"
-        ),
+        embed_filter_slices=bundle_mode != "split",
     )
     primary_slice: dict[str, Any] = filter_slices.get(default_slice_key, filter_slices.get("none", {}))
     stats_by_mode: dict[str, dict] = primary_slice.get("_stats_by_mode", {})
     if not stats_by_mode:
         stats_by_mode = {config.get("product_analysis_mode", "group_product"): stats}
-        for mode in JSON_AGGREGATION_MODES:
+        for mode in json_aggregation_modes(config):
             if mode not in stats_by_mode:
                 stats_by_mode[mode] = build_all_statistics(
                     records, with_product_analysis_mode(config, mode)
@@ -165,9 +160,19 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         manager_records, stats, config, snapshot_date=snapshot_date
     )
     managers_json_path: Path = output_dir / f"{prefix}_managers_{timestamp}.json"
+    write_managers_file: bool = bool(html_json_cfg.get("write_separate_managers_json", False))
     if manager_payload:
-        export_manager_json(manager_payload, managers_json_path, config)
-        progress.done(f"Менеджеры: топ записей {len(manager_payload.get('top_by_tb', []))}")
+        if write_managers_file:
+            export_manager_json(manager_payload, managers_json_path, config)
+            progress.done(
+                f"Менеджеры: топ {len(manager_payload.get('top_by_tb', []))} "
+                f"(отдельный JSON + вложение в отчёт)"
+            )
+        else:
+            progress.done(
+                f"Менеджеры: топ {len(manager_payload.get('top_by_tb', []))} "
+                f"(вложены в monolith JSON)"
+            )
     else:
         progress.done("Аналитика менеджеров пропущена (нет КМ или порогов)")
 
@@ -176,7 +181,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     _maybe_free_memory(config)
 
     progress.stage("Экспорт Excel")
-    export_excel(stats, excel_path, config, visualizations=visualizations, manager_payload=manager_payload)
+    export_excel(stats, excel_path, config, manager_payload=manager_payload)
     progress.done(f"Excel: {excel_path.name}")
 
     progress.stage("Экспорт JSON")
@@ -188,12 +193,18 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         visualizations=json_visualizations,
         filter_catalog=filter_catalog,
         filter_slices=filter_slices,
+        manager_payload=manager_payload,
     )
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline
     progress.timing_summary(total_wall=elapsed)
-    logger.info("Готово за %.1f сек. Excel: %s, JSON: %s", elapsed, excel_path, json_path)
+    logger.info(
+        "Готово за %.1f сек. Excel: %s, JSON (UI — этот файл): %s",
+        elapsed,
+        excel_path,
+        json_path,
+    )
     return excel_path, json_path
 
 

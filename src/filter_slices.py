@@ -12,6 +12,7 @@ from src.aggregator import build_all_statistics
 from src.filters import (
     apply_config_only_filters,
     default_html_active_filters,
+    enabled_terminal_exclusion_names,
     is_exclude_filter,
     is_html_slice_filter,
     row_keep_mask,
@@ -19,8 +20,8 @@ from src.filters import (
 )
 from src.settings import col, filter_column_name, with_product_analysis_mode
 from src.visualization_data import (
-    JSON_AGGREGATION_MODES,
     build_aggregation_visualization,
+    json_aggregation_modes,
 )
 
 logger: logging.Logger = logging.getLogger("kanban.filter_slices")
@@ -40,7 +41,7 @@ TOGGLE_LABELS: dict[str, str] = {
     "data_entry": "Ввод данных = 1",
     "strategy_label": "Метка содержит «Стратегия»",
     "strategy_label_2026": "Метка: «Стратегия» и «2026»",
-    "exclude_deal_otkaz": "Исключить «отказ» в стадии сделки",
+    "exclude_deal_otkaz": "Исключить «отказ» (стадия сделки / текущий статус)",
     "exclude_deal_zakryta": "Исключить «закрыта» в стадии сделки",
     "exclude_deal_zaklyuchen": "Исключить «заключен» в стадии сделки",
 }
@@ -70,11 +71,36 @@ def default_filter_slice_key(config: dict[str, Any]) -> str:
 
 
 def iter_filter_combinations(config: dict[str, Any]) -> Iterator[list[str]]:
-    """Все комбинации включённых HTML-фильтров (2^N, включая пустую)."""
+    """
+    Комбинации HTML-фильтров (включая пустую).
+    Два фильтра одной exclusive_group вместе не комбинируются.
+    """
     names: list[str] = html_filter_names(config)
+    filters_cfg: dict[str, Any] = config.get("filters", {})
     for size in range(len(names) + 1):
         for combo in itertools.combinations(names, size):
-            yield list(combo)
+            if _combo_respects_exclusive_groups(list(combo), filters_cfg):
+                yield list(combo)
+
+
+def _combo_respects_exclusive_groups(
+    active_names: list[str],
+    filters_cfg: dict[str, Any],
+) -> bool:
+    """False — в комбинации два фильтра одной exclusive_group."""
+    seen: set[str] = set()
+    for name in active_names:
+        flt: dict[str, Any] | None = filters_cfg.get(name)
+        if not isinstance(flt, dict):
+            continue
+        group = flt.get("exclusive_group")
+        if not group:
+            continue
+        key: str = str(group)
+        if key in seen:
+            return False
+        seen.add(key)
+    return True
 
 
 def _filter_mask(df: pd.DataFrame, flt: dict[str, Any], column: str, config: dict[str, Any]) -> pd.Series:
@@ -136,6 +162,14 @@ def build_filter_catalog(config: dict[str, Any]) -> list[dict[str, Any]]:
             entry["case_sensitive"] = flt.get("case_sensitive", False)
             entry["html_label"] = f"Исключить стадии с «{token}»"
             entry["ui_group"] = flt.get("ui_group", "terminal_deal_stages")
+            also_keys = [str(k) for k in (flt.get("also_column_keys") or [])]
+            if also_keys:
+                entry["also_column_keys"] = also_keys
+                also_labels = [columns.get(k, k) for k in also_keys]
+                entry["html_label"] = (
+                    f"Исключить «{token}» "
+                    f"({entry['column_label']} / {' / '.join(also_labels)})"
+                )
         elif "contains_all" in flt:
             entry["type"] = "contains_all"
             entry["contains_all"] = list(flt.get("contains_all") or [])
@@ -167,15 +201,17 @@ def build_slice_aggregations(
     records: pd.DataFrame,
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Агрегации group_product и group_only для одного среза записей."""
+    """Агрегация для одного среза — только режим из config.product_analysis_mode."""
     aggregations: dict[str, Any] = {}
     stats_by_mode: dict[str, dict[str, pd.DataFrame]] = {}
-    for mode in JSON_AGGREGATION_MODES:
+    modes: list[str] = json_aggregation_modes(config)
+    for mode in modes:
         mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
         mode_stats: dict[str, pd.DataFrame] = build_all_statistics(records, mode_config)
         stats_by_mode[mode] = mode_stats
         aggregations[mode] = build_aggregation_visualization(records, mode_stats, mode_config)
-    series_count: int = len(aggregations.get("group_product", {}).get("distribution_series", []))
+    primary: str = modes[0] if modes else "group_product"
+    series_count: int = len(aggregations.get(primary, {}).get("distribution_series", []))
     return {
         "aggregations": aggregations,
         "record_count": int(len(records)),
@@ -211,6 +247,14 @@ def build_all_filter_slices(
             progress.step(f"JSON-срез {index + 1}/{len(combinations)}: {label}")
 
         inclusion_active, exclusion_active = split_active_filter_names(config, active)
+        # Config-only exclude (html_slice: false) всегда из config.enabled
+        config_excludes: list[str] = [
+            name
+            for name in enabled_terminal_exclusion_names(config)
+            if not is_html_slice_filter(config.get("filters", {}).get(name) or {})
+        ]
+        exclusion_merged: list[str] = sorted(set(exclusion_active) | set(config_excludes))
+
         slice_df: pd.DataFrame = apply_filter_subset(base_df, config, inclusion_active)
         if slice_df.empty:
             logger.info("Срез '%s': нет строк после фильтров", key)
@@ -220,7 +264,7 @@ def build_all_filter_slices(
             slice_df,
             config,
             progress=None,
-            exclusion_filter_names=exclusion_active,
+            exclusion_filter_names=exclusion_merged,
         )
         if slice_records.empty:
             logger.info("Срез '%s': нет lead_stage_records", key)

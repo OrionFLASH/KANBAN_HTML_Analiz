@@ -20,11 +20,13 @@
     "tb": "ТБ",
     "label": "Метка",
     "km": "КМ",
+    "vks": "ВКС",
     "change_conditions": "_Изменение условий",
     "data_entry": "_Ввод данных",
     "efs_flag": "ЕФС флаг",
     "deal_id": "ID сделки",
-    "inn": "ИНН"
+    "inn": "ИНН",
+    "client": "Клиент"
   },
   "required_column_keys": [
     "report_date",
@@ -44,7 +46,11 @@
     "label",
     "km",
     "deal_id",
-    "inn"
+    "inn",
+    "client"
+  ],
+  "optional_column_keys": [
+    "vks"
   ],
   "excel": {
     "sheet_name": "Sheet1",
@@ -104,7 +110,6 @@
       "summary": "Сводная",
       "overall": "Общий",
       "matrix": "Матрица",
-      "charts": "Графики",
       "managers": "Менеджеры"
     },
     "excel_max_sheet_name_length": 31,
@@ -132,14 +137,18 @@
         "count": "П{p} лидов",
         "min": "П{p} мин",
         "max": "П{p} макс",
-        "km_count": "П{p} КМ ≥"
+        "km_count": "П{p} КМ ≥",
+        "le_count": "П{p} лидов ≤",
+        "gt_count": "П{p} лидов >"
       },
       "days_since_deal": {
         "days": "П{p} дн.сделки",
         "count": "П{p} лид.сделки",
         "min": "П{p} мин сд.",
         "max": "П{p} макс сд.",
-        "km_count": "П{p} КМ ≥ сд."
+        "km_count": "П{p} КМ ≥ сд.",
+        "le_count": "П{p} лид. ≤ сд.",
+        "gt_count": "П{p} лид. > сд."
       }
     },
     "excel_format": {
@@ -162,7 +171,7 @@
     "hour_format": "%Y%m%d_%H"
   },
   "test_files": [
-    "2ГОСБ1ТБ.xlsx"
+    "тест Канбан 2Т2Г (ALL) на 31-08-2026.xlsx"
   ],
   "prod_files": [
     "Канбан ЮЗБ (В РАБОТЕ) все на 27-08-2026.xlsx",
@@ -192,7 +201,14 @@
   "stage_analysis_mode": "status",
   "product_analysis_mode": "group_product",
   "percentiles": [20, 50, 80],
-  "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
+  "stages_order": [
+    "К ПРОДАЖЕ",
+    "ВЫЯВЛЕНИЕ ПОТРЕБНОСТИ",
+    "ОБСУЖДЕНИЕ УСЛОВИЙ",
+    "РЕАЛИЗАЦИЯ СДЕЛКИ",
+    "АКТИВАЦИЯ ПРОДУКТА",
+    "ПРОДАЖА ЗАВЕРШЕНА"
+  ],
   "dashboard": {
     "all_tb_label": "__ALL__",
     "all_tb_display": "ВСЕ ТБ",
@@ -202,15 +218,45 @@
     "excel_max_chart_series": 8,
     "max_chart_series": 12,
     "precompute_html_filter_slices": true,
+    "show_managers_tab": true,
     "html_json": {
-      "bundle_mode": "split",
+      "bundle_mode": "monolith",
       "compact": true,
       "include_statistics": false,
       "include_dimensions": true,
       "max_distribution_points": 800,
       "slices_subdir": "slices",
-      "write_monolith_archive": true
+      "write_monolith_archive": false,
+      "embed_managers": true,
+      "write_separate_managers_json": false
     }
+  },
+  "client_display": {
+    "enabled": true,
+    "abbreviations": [
+      {"match": "публичное акционерное общество", "replace": "ПАО"},
+      {"match": "непубличное акционерное общество", "replace": "НАО"},
+      {"match": "закрытое акционерное общество", "replace": "ЗАО"},
+      {"match": "открытое акционерное общество", "replace": "ОАО"},
+      {"match": "общество с ограниченной ответственностью", "replace": "ООО"},
+      {"match": "акционерное общество", "replace": "АО"},
+      {"match": "индивидуальный предприниматель", "replace": "ИП"},
+      {"match": "федеральное государственное бюджетное учреждение", "replace": "ФГБУ"},
+      {"match": "федеральное государственное унитарное предприятие", "replace": "ФГУП"},
+      {"match": "государственное унитарное предприятие", "replace": "ГУП"},
+      {"match": "муниципальное унитарное предприятие", "replace": "МУП"},
+      {"match": "автономная некоммерческая организация", "replace": "АНО"},
+      {"match": "некоммерческая организация", "replace": "НКО"},
+      {"match": "товарищество собственников жилья", "replace": "ТСЖ"},
+      {"match": "товарищество собственников недвижимости", "replace": "ТСН"},
+      {"match": "крестьянское (фермерское) хозяйство", "replace": "КФХ"},
+      {"match": "крестьянское фермерское хозяйство", "replace": "КФХ"},
+      {"match": "производственный кооператив", "replace": "ПК"},
+      {"match": "сельскохозяйственный производственный кооператив", "replace": "СПК"},
+      {"match": "полное товарищество", "replace": "ПТ"},
+      {"match": "товарищество на вере", "replace": "ТНВ"},
+      {"match": "коммандитное товарищество", "replace": "КТ"}
+    ]
   },
   "manager_analytics": {
     "enabled": true,
@@ -222,6 +268,28 @@
     "top_stuck_items_per_hotspot": 15,
     "use_latest_report_date": true,
     "html_include_detail": false,
+    "rank_by_team": true,
+    "team_files": {
+      "enabled": true,
+      "lead_team": {
+        "test": ["тест Команда л 2Т2Г на 31-08-2026.xlsx"],
+        "prod": []
+      },
+      "deal_team": {
+        "test": ["тест Команда с 2Т2Г на 31-08-2026.xlsx"],
+        "prod": []
+      },
+      "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+      "columns": {
+        "report_date": "Дата отчета",
+        "lead_id": "ID ПрПр",
+        "deal_id": "ID сделки",
+        "member": "Участник команды",
+        "role": "Роль участника команды",
+        "is_leader": "Лидер",
+        "tb": "ТБ"
+      }
+    },
     "rank_selection": {
       "product_groups": [],
       "products": [
@@ -249,17 +317,19 @@
   "excel_theme": "green_red",
   "filters": {
     "change_conditions": {
-      "enabled": false,
+      "enabled": true,
       "column_key": "change_conditions",
-      "value": 1
+      "value": 0,
+      "html_slice": false
     },
     "data_entry": {
-      "enabled": false,
+      "enabled": true,
       "column_key": "data_entry",
-      "value": 1
+      "value": 0,
+      "html_slice": false
     },
     "efs_flag": {
-      "enabled": false,
+      "enabled": true,
       "column_key": "efs_flag",
       "value": 1,
       "html_slice": false
@@ -269,24 +339,25 @@
       "column_key": "label",
       "contains": "Стратегия",
       "case_sensitive": false,
-      "exclusive_group": "strategy_label"
+      "exclusive_group": "strategy_label",
+      "html_slice": true
     },
     "strategy_label_2026": {
       "enabled": false,
       "column_key": "label",
       "contains_all": ["Стратегия", "2026"],
       "case_sensitive": false,
-      "exclusive_group": "strategy_label"
+      "exclusive_group": "strategy_label",
+      "html_slice": true
     },
     "exclude_deal_otkaz": {
       "enabled": true,
       "column_key": "deal_stage",
+      "also_column_keys": ["current_status"],
       "filter_mode": "exclude",
       "exclude_contains": "отказ",
       "case_sensitive": false,
-      "html_slice": true,
-      "default_active": true,
-      "ui_group": "terminal_deal_stages"
+      "html_slice": false
     },
     "exclude_deal_zakryta": {
       "enabled": true,
@@ -294,9 +365,7 @@
       "filter_mode": "exclude",
       "exclude_contains": "закрыта",
       "case_sensitive": false,
-      "html_slice": true,
-      "default_active": true,
-      "ui_group": "terminal_deal_stages"
+      "html_slice": false
     },
     "exclude_deal_zaklyuchen": {
       "enabled": true,
@@ -304,9 +373,15 @@
       "filter_mode": "exclude",
       "exclude_contains": "заключен",
       "case_sensitive": false,
-      "html_slice": true,
-      "default_active": true,
-      "ui_group": "terminal_deal_stages"
+      "html_slice": false
+    },
+    "exclude_current_for_sale": {
+      "enabled": true,
+      "column_key": "current_status",
+      "filter_mode": "exclude",
+      "exclude_equals": "К ПРОДАЖЕ",
+      "case_sensitive": false,
+      "html_slice": false
     }
   }
 }

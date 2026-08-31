@@ -79,3 +79,73 @@ def test_public_slice_strips_stats() -> None:
     public = public_slice_payload(raw, config)
     assert "_stats_by_mode" not in public
     assert public["record_count"] == 10
+
+
+def test_export_monolith_embeds_managers_no_html_dir(tmp_path: Path) -> None:
+    """Monolith: один JSON со срезами и managers, без каталога *_html."""
+    import json
+
+    from src.json_exporter import export_json
+
+    config: dict = {
+        "mode": "test",
+        "duration_source": "columns",
+        "stage_analysis_mode": "status",
+        "product_analysis_mode": "group_product",
+        "percentiles": [80],
+        "filters": {},
+        "columns": {},
+        "stages_order": [],
+        "aggregation": {"metrics": ["days_on_stage"]},
+        "output": {"report_prefix": "kanban_report"},
+        "dashboard": {
+            "html_json": {
+                "bundle_mode": "monolith",
+                "compact": True,
+                "include_statistics": False,
+                "embed_managers": True,
+                "max_distribution_points": 0,
+            }
+        },
+    }
+    filter_slices: dict = {
+        "none": {
+            "active_filters": [],
+            "label": "Без фильтров",
+            "aggregations": {
+                "group_product": {"distribution_series": [], "pivot_flat": []},
+                "group_only": {"distribution_series": [], "pivot_flat": []},
+            },
+            "_stats_by_mode": {"skip": True},
+        }
+    }
+    visualizations: dict = {
+        "default_view": {"filter_slice": "none", "aggregation": "group_product"},
+        "filter_catalog": [],
+        "filter_slices": {},
+    }
+    out = tmp_path / "kanban_report_20260831_999999.json"
+    export_json(
+        stats_by_mode={},
+        dimensions={"tb": ["TB1"]},
+        config=config,
+        output_path=out,
+        visualizations=visualizations,
+        filter_catalog=[],
+        filter_slices=filter_slices,
+        manager_payload={
+            "meta": {"percentile": 80},
+            "records": [],
+            "exceedances": [],
+            "top_by_tb": [],
+            "charts": {"by_tb": [], "facts": []},
+        },
+    )
+    assert out.exists()
+    assert not list(tmp_path.glob("*_html"))
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["meta"]["json_bundle_mode"] == "monolith"
+    assert "none" in data["visualizations"]["filter_slices"]
+    assert "_stats_by_mode" not in data["visualizations"]["filter_slices"]["none"]
+    assert "managers" in data
+    assert "statistics" not in data

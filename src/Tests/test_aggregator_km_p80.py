@@ -85,3 +85,38 @@ def test_excel_mapping_includes_p80_km_only() -> None:
     mapping = build_percentile_column_mapping(_config())
     assert mapping["days_on_stage_p80_km_count"] == "П80 КМ ≥"
     assert "days_on_stage_p20_km_count" not in mapping
+
+
+def test_excel_mapping_p80_le_gt_counts() -> None:
+    """В Excel только для P80 — колонки лидов ≤ / > порога."""
+    config = _config()
+    config["percentiles"] = [20, 50, 80]
+    config["output"]["percentile_column_labels"]["days_on_stage"]["le_count"] = "П{p} лидов ≤"
+    config["output"]["percentile_column_labels"]["days_on_stage"]["gt_count"] = "П{p} лидов >"
+    mapping = build_percentile_column_mapping(config)
+    assert mapping["days_on_stage_p80_le_count"] == "П80 лидов ≤"
+    assert mapping["days_on_stage_p80_gt_count"] == "П80 лидов >"
+    assert "days_on_stage_p20_le_count" not in mapping
+    assert "days_on_stage_p50_gt_count" not in mapping
+
+
+def test_aggregate_has_p80_le_gt() -> None:
+    records = pd.DataFrame(
+        {
+            "Группа продукта": ["G"] * 10,
+            "Продукт": ["P"] * 10,
+            "ТБ": ["TB"] * 10,
+            "analysis_level": ["status"] * 10,
+            "current_status": ["В РАБОТЕ"] * 10,
+            "deal_stage": [""] * 10,
+            "stage_key": ["В РАБОТЕ"] * 10,
+            "days_on_stage": list(range(10, 110, 10)),
+            "КМ": [f"KM{i % 4}" for i in range(10)],
+        }
+    )
+    stats = aggregate_statistics(records, _config(), [80.0], include_tb=False)
+    row = stats.iloc[0]
+    assert row["days_on_stage_p80_days"] == 80
+    assert int(row["days_on_stage_p80_le_count"]) == 8
+    assert int(row["days_on_stage_p80_gt_count"]) == 2
+    assert int(row["days_on_stage_p80_le_count"]) + int(row["days_on_stage_p80_gt_count"]) == 10

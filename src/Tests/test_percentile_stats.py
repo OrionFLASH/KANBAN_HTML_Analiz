@@ -11,14 +11,31 @@ def test_empirical_p20_ten_leads() -> None:
     """10 лидов: нижние 20% = 2 лида с минимальными сроками."""
     values: np.ndarray = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], dtype=np.int64)
     stats = empirical_percentile_stats(values, 20.0)
-    assert stats == {"days": 20, "count": 2, "min": 10, "max": 20}
+    assert stats["days"] == 20
+    assert stats["count"] == 2
+    assert stats["min"] == 10
+    assert stats["max"] == 20
+    assert stats["le_count"] == 2
+    assert stats["gt_count"] == 8
 
 
 def test_empirical_p50_ten_leads() -> None:
     """Медиана по шкале лидов — 5-й по счёту срок."""
     values: np.ndarray = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], dtype=np.int64)
     stats = empirical_percentile_stats(values, 50.0)
-    assert stats == {"days": 50, "count": 5, "min": 10, "max": 50}
+    assert stats["days"] == 50
+    assert stats["count"] == 5
+    assert stats["le_count"] == 5
+    assert stats["gt_count"] == 5
+
+
+def test_le_gt_with_ties_at_threshold() -> None:
+    """При равенстве порогу лиды входят в le_count."""
+    values: np.ndarray = np.array([1, 2, 5, 5, 5, 9], dtype=np.int64)
+    stats = empirical_percentile_stats(values, 50.0)
+    assert stats["days"] == 5
+    assert stats["le_count"] == 5
+    assert stats["gt_count"] == 1
 
 
 def test_integer_days_only() -> None:

@@ -10,6 +10,7 @@ from src.visualization_data import (
     build_pivot_flat,
     build_pivot_matrix,
     build_visualization_payload,
+    json_aggregation_modes,
     series_chart_points,
 )
 from src.filter_slices import (
@@ -154,8 +155,8 @@ def test_distribution_series_group_only_merges_products() -> None:
     assert tb_series[0]["total_leads"] == 2
 
 
-def test_json_payload_contains_both_aggregations() -> None:
-    """JSON visualizations содержит group_product и group_only."""
+def test_json_payload_contains_config_aggregation() -> None:
+    """JSON-срез содержит только агрегацию из product_analysis_mode (group_product)."""
     records = pd.DataFrame(
         {
             "ТБ": ["T1", "T1"],
@@ -181,16 +182,22 @@ def test_json_payload_contains_both_aggregations() -> None:
         "stages_order": ["S"],
         "performance": {"compact_distribution_series": True},
     }
+    assert json_aggregation_modes(config) == ["group_product"]
+    slice_payload = build_slice_aggregations(records, config)
+    assert set(slice_payload["aggregations"].keys()) == {"group_product"}
+    assert "group_only" not in slice_payload["aggregations"]
+
     payload = build_json_visualization_payload(
         config,
         {
             "none": {
                 "active_filters": [],
                 "label": "Без pipeline-фильтров",
-                **build_slice_aggregations(records, config),
+                **slice_payload,
             }
         },
         build_filter_catalog(config),
     )
-    assert "aggregations" in payload
     assert payload["filter_slices"]["none"]
+    assert "group_product" in payload["filter_slices"]["none"]["aggregations"]
+    assert "group_only" not in payload["filter_slices"]["none"]["aggregations"]

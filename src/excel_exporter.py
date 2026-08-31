@@ -12,7 +12,6 @@ from openpyxl.utils import get_column_letter
 
 from src.excel_sanitize import sanitize_dataframe, sanitize_sheet_name
 from src.manager_analytics import manager_analytics_to_excel_frame
-from src.pivot_excel import add_visualization_sheets
 from src.settings import build_percentile_column_mapping, col
 
 logger: logging.Logger = logging.getLogger("kanban.excel_exporter")
@@ -43,6 +42,16 @@ def _build_export_mapping(config: dict[str, Any]) -> dict[str, str]:
 def _rename_columns_for_export(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """Переименовывает колонки для читаемого Excel."""
     return df.rename(columns=_build_export_mapping(config))
+
+
+def _cell_text_width(value: Any) -> int:
+    """Ширина для автоподбора: для многострочных — длина самой длинной строки."""
+    if value is None:
+        return 0
+    text: str = str(value)
+    if "\n" in text:
+        return max((len(line) for line in text.splitlines()), default=0)
+    return len(text)
 
 
 def _format_sheet(ws, config: dict[str, Any]) -> None:
@@ -96,8 +105,7 @@ def _format_sheet(ws, config: dict[str, Any]) -> None:
         width: int = min_width
         for row_idx in range(1, min(ws.max_row, sample_rows) + 1):
             value = ws.cell(row=row_idx, column=col_idx).value
-            if value is not None:
-                width = max(width, min(len(str(value)) + 2, max_width))
+            width = max(width, min(_cell_text_width(value) + 2, max_width))
         ws.column_dimensions[letter].width = width
 
     header_font: Font = Font(bold=True)
@@ -115,14 +123,40 @@ def _format_sheet(ws, config: dict[str, Any]) -> None:
                 cell.number_format = int_fmt
 
 
+def _format_managers_hotspots_column(ws, config: dict[str, Any]) -> None:
+    """Перенос по словам и высота строк для колонки «Топ зон превышения»."""
+    if ws.max_row < 1:
+        return
+    headers: list[Any] = [cell.value for cell in ws[1]]
+    col_idx: int | None = None
+    for idx, header in enumerate(headers, start=1):
+        if header and "Топ зон" in str(header):
+            col_idx = idx
+            break
+    if col_idx is None:
+        return
+
+    fmt_cfg: dict[str, Any] = config.get("output", {}).get("excel_format", {})
+    max_width: int = int(fmt_cfg.get("hotspots_column_width", 55))
+    letter: str = get_column_letter(col_idx)
+    ws.column_dimensions[letter].width = max_width
+
+    wrap_align: Alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    for row_idx in range(2, ws.max_row + 1):
+        cell = ws.cell(row=row_idx, column=col_idx)
+        cell.alignment = wrap_align
+        text: str = str(cell.value or "")
+        lines: int = max(1, text.count("\n") + 1) if text and text != "—" else 1
+        ws.row_dimensions[row_idx].height = max(15.0, min(15.0 * lines, 120.0))
+
+
 def export_excel(
     stats: dict[str, Any],
     output_path: Path,
     config: dict[str, Any],
-    visualizations: dict[str, Any] | None = None,
     manager_payload: dict[str, Any] | None = None,
 ) -> None:
-    """Записывает Excel с листами из config.output.excel_sheets."""
+    """Записывает Excel с листами статистики и менеджеров (без «Графики»)."""
     out_cfg: dict[str, Any] = config["output"]
     sheet_names: dict[str, str] = out_cfg["excel_sheets"]
     max_len: int = int(out_cfg.get("excel_max_sheet_name_length", 31))
@@ -142,13 +176,16 @@ def export_excel(
         safe_name: str = sanitize_sheet_name(str(tb_name), used_sheet_names, max_len)
         sheets[safe_name] = sanitize_dataframe(_rename_columns_for_export(tb_df, config))
 
+    managers_sheet: str | None = None
     if manager_payload:
-        managers_sheet: str = sanitize_sheet_name(
+        managers_sheet = sanitize_sheet_name(
             sheet_names.get("managers", "Менеджеры"), used_sheet_names, max_len
         )
         mgr_frame: pd.DataFrame = manager_analytics_to_excel_frame(manager_payload, config)
         if not mgr_frame.empty:
             sheets[managers_sheet] = sanitize_dataframe(mgr_frame)
+        else:
+            managers_sheet = None
 
     with pd.ExcelWriter(output_path, engine=config["excel"].get("engine", "openpyxl")) as writer:
         for sheet_name, frame in sheets.items():
@@ -163,13 +200,8 @@ def export_excel(
                 continue
             _format_sheet(wb[sheet_name], config)
 
-        if visualizations:
-            add_visualization_sheets(
-                wb,
-                visualizations.get("distribution_series", []),
-                config,
-                used_sheet_names=used_sheet_names,
-            )
+        if managers_sheet and managers_sheet in wb.sheetnames:
+            _format_managers_hotspots_column(wb[managers_sheet], config)
 
         wb.save(output_path)
 

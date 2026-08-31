@@ -39,10 +39,40 @@ def _config() -> dict:
 
 
 def test_filter_combinations_count() -> None:
-    """Четыре HTML-фильтра → 16 комбинаций."""
+    """HTML-фильтры с exclusive_group: недопустимые пары меток не считаются."""
     combos = list(iter_filter_combinations(_config()))
-    assert len(combos) == 16
+    assert len(combos) == 12
     assert filter_slice_key([]) == "none"
+    # Оба варианта метки вместе не комбинируются
+    assert not any(
+        "strategy_label" in c and "strategy_label_2026" in c for c in combos
+    )
+
+
+def test_config_only_excludes_not_in_html_catalog() -> None:
+    """Терминальные exclude с html_slice:false не в каталоге и комбинациях."""
+    config = {
+        "columns": {"deal_stage": "Стадия сделки", "label": "Метка"},
+        "filters": {
+            "strategy_label": {
+                "column_key": "label",
+                "contains": "Стратегия",
+                "html_slice": True,
+            },
+            "exclude_deal_otkaz": {
+                "enabled": True,
+                "column_key": "deal_stage",
+                "filter_mode": "exclude",
+                "exclude_contains": "отказ",
+                "html_slice": False,
+            },
+        },
+    }
+    names = [c["name"] for c in build_filter_catalog(config)]
+    assert names == ["strategy_label"]
+    combos = list(iter_filter_combinations(config))
+    assert len(combos) == 2
+    assert all("exclude_deal_otkaz" not in c for c in combos)
 
 
 def test_efs_excluded_from_html_filters() -> None:

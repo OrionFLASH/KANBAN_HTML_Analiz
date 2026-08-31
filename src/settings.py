@@ -45,11 +45,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tb": "ТБ",
         "label": "Метка",
         "km": "КМ",
+        "vks": "ВКС",
         "change_conditions": "_Изменение условий",
         "data_entry": "_Ввод данных",
         "efs_flag": "ЕФС флаг",
         "deal_id": "ID сделки",
         "inn": "ИНН",
+        "client": "Клиент",
     },
     "required_column_keys": [
         "report_date",
@@ -70,6 +72,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "km",
         "deal_id",
         "inn",
+        "client",
+    ],
+    "optional_column_keys": [
+        "vks",
     ],
     "excel": {
         "sheet_name": "Sheet1",
@@ -129,7 +135,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "summary": "Сводная",
             "overall": "Общий",
             "matrix": "Матрица",
-            "charts": "Графики",
             "managers": "Менеджеры",
         },
         "excel_max_sheet_name_length": 31,
@@ -157,15 +162,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "count": "П{p} лидов",
                 "min": "П{p} мин",
                 "max": "П{p} макс",
-                "km_count": "П{p} КМ ≥"
+                "km_count": "П{p} КМ ≥",
+                "le_count": "П{p} лидов ≤",
+                "gt_count": "П{p} лидов >",
             },
             "days_since_deal": {
                 "days": "П{p} дн.сделки",
                 "count": "П{p} лид.сделки",
                 "min": "П{p} мин сд.",
                 "max": "П{p} макс сд.",
-                "km_count": "П{p} КМ ≥ сд."
-            }
+                "km_count": "П{p} КМ ≥ сд.",
+                "le_count": "П{p} лид. ≤ сд.",
+                "gt_count": "П{p} лид. > сд.",
+            },
         },
         "excel_format": {
             "freeze_panes": "A2",
@@ -190,7 +199,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "stage_analysis_mode": "status",
     "product_analysis_mode": "group_product",
     "percentiles": [20, 50, 80],
-    "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
+    "stages_order": [
+        "К ПРОДАЖЕ",
+        "ВЫЯВЛЕНИЕ ПОТРЕБНОСТИ",
+        "ОБСУЖДЕНИЕ УСЛОВИЙ",
+        "РЕАЛИЗАЦИЯ СДЕЛКИ",
+        "АКТИВАЦИЯ ПРОДУКТА",
+        "ПРОДАЖА ЗАВЕРШЕНА",
+    ],
     "dashboard": {
         "all_tb_label": "__ALL__",
         "all_tb_display": "ВСЕ ТБ",
@@ -200,15 +216,45 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "excel_max_chart_series": 8,
         "max_chart_series": 12,
         "precompute_html_filter_slices": True,
+        "show_managers_tab": False,
         "html_json": {
-            "bundle_mode": "split",
+            "bundle_mode": "monolith",
             "compact": True,
             "include_statistics": False,
             "include_dimensions": True,
             "max_distribution_points": 800,
             "slices_subdir": "slices",
-            "write_monolith_archive": True,
+            "write_monolith_archive": False,
+            "embed_managers": True,
+            "write_separate_managers_json": False,
         },
+    },
+    "client_display": {
+        "enabled": True,
+        "abbreviations": [
+            {"match": "публичное акционерное общество", "replace": "ПАО"},
+            {"match": "непубличное акционерное общество", "replace": "НАО"},
+            {"match": "закрытое акционерное общество", "replace": "ЗАО"},
+            {"match": "открытое акционерное общество", "replace": "ОАО"},
+            {"match": "общество с ограниченной ответственностью", "replace": "ООО"},
+            {"match": "акционерное общество", "replace": "АО"},
+            {"match": "индивидуальный предприниматель", "replace": "ИП"},
+            {"match": "федеральное государственное бюджетное учреждение", "replace": "ФГБУ"},
+            {"match": "федеральное государственное унитарное предприятие", "replace": "ФГУП"},
+            {"match": "государственное унитарное предприятие", "replace": "ГУП"},
+            {"match": "муниципальное унитарное предприятие", "replace": "МУП"},
+            {"match": "автономная некоммерческая организация", "replace": "АНО"},
+            {"match": "некоммерческая организация", "replace": "НКО"},
+            {"match": "товарищество собственников жилья", "replace": "ТСЖ"},
+            {"match": "товарищество собственников недвижимости", "replace": "ТСН"},
+            {"match": "крестьянское (фермерское) хозяйство", "replace": "КФХ"},
+            {"match": "крестьянское фермерское хозяйство", "replace": "КФХ"},
+            {"match": "производственный кооператив", "replace": "ПК"},
+            {"match": "сельскохозяйственный производственный кооператив", "replace": "СПК"},
+            {"match": "полное товарищество", "replace": "ПТ"},
+            {"match": "товарищество на вере", "replace": "ТНВ"},
+            {"match": "коммандитное товарищество", "replace": "КТ"},
+        ],
     },
     "manager_analytics": {
         "enabled": True,
@@ -218,6 +264,22 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "top_managers_per_tb": 3,
         "top_hotspots_per_manager": 5,
         "html_include_detail": False,
+        "rank_by_team": True,
+        "team_files": {
+            "enabled": False,
+            "lead_team": {"test": [], "prod": []},
+            "deal_team": {"test": [], "prod": []},
+            "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+            "columns": {
+                "report_date": "Дата отчета",
+                "lead_id": "ID ПрПр",
+                "deal_id": "ID сделки",
+                "member": "Участник команды",
+                "role": "Роль участника команды",
+                "is_leader": "Лидер",
+                "tb": "ТБ",
+            },
+        },
         "rank_selection": {
             "product_groups": [],
             "products": list(DEFAULT_RANK_PRODUCTS),
@@ -232,17 +294,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "excel_theme": "green_red",
     "filters": {
         "change_conditions": {
-            "enabled": False,
+            "enabled": True,
             "column_key": "change_conditions",
-            "value": 1,
+            "value": 0,
+            "html_slice": False,
         },
         "data_entry": {
-            "enabled": False,
+            "enabled": True,
             "column_key": "data_entry",
-            "value": 1,
+            "value": 0,
+            "html_slice": False,
         },
         "efs_flag": {
-            "enabled": False,
+            "enabled": True,
             "column_key": "efs_flag",
             "value": 1,
             "html_slice": False,
@@ -264,12 +328,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "exclude_deal_otkaz": {
             "enabled": True,
             "column_key": "deal_stage",
+            "also_column_keys": ["current_status"],
             "filter_mode": "exclude",
             "exclude_contains": "отказ",
             "case_sensitive": False,
-            "html_slice": True,
-            "default_active": True,
-            "ui_group": "terminal_deal_stages",
+            "html_slice": False,
         },
         "exclude_deal_zakryta": {
             "enabled": True,
@@ -277,9 +340,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "filter_mode": "exclude",
             "exclude_contains": "закрыта",
             "case_sensitive": False,
-            "html_slice": True,
-            "default_active": True,
-            "ui_group": "terminal_deal_stages",
+            "html_slice": False,
         },
         "exclude_deal_zaklyuchen": {
             "enabled": True,
@@ -287,9 +348,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "filter_mode": "exclude",
             "exclude_contains": "заключен",
             "case_sensitive": False,
-            "html_slice": True,
-            "default_active": True,
-            "ui_group": "terminal_deal_stages",
+            "html_slice": False,
+        },
+        "exclude_current_for_sale": {
+            "enabled": False,
+            "column_key": "current_status",
+            "filter_mode": "exclude",
+            "exclude_equals": "К ПРОДАЖЕ",
+            "case_sensitive": False,
+            "html_slice": False,
         },
     },
 }
@@ -346,6 +413,28 @@ def required_column_names(config: dict[str, Any]) -> list[str]:
     return [col(config, k) for k in keys]
 
 
+def optional_column_names(config: dict[str, Any]) -> list[str]:
+    """Доп. колонки (ВКС и т.п.): читаем если есть, не валидируем как обязательные."""
+    keys: list[str] = list(config.get("optional_column_keys") or [])
+    names: list[str] = []
+    for key in keys:
+        if key not in config.get("columns", {}):
+            continue
+        name: str = col(config, key)
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def load_column_names(config: dict[str, Any]) -> list[str]:
+    """Колонки для usecols: обязательные + опциональные (без дублей)."""
+    names: list[str] = required_column_names(config)
+    for name in optional_column_names(config):
+        if name not in names:
+            names.append(name)
+    return names
+
+
 def filter_column_name(config: dict[str, Any], flt: dict[str, Any]) -> str | None:
     """Имя колонки для фильтра: column_key или явный column."""
     if "column_key" in flt:
@@ -353,6 +442,22 @@ def filter_column_name(config: dict[str, Any], flt: dict[str, Any]) -> str | Non
     if "column" in flt:
         return str(flt["column"])
     return None
+
+
+def filter_column_names(config: dict[str, Any], flt: dict[str, Any]) -> list[str]:
+    """
+    Все колонки exclude-фильтра: основная + also_column_keys.
+    Дубликаты и пустые имена отбрасываются.
+    """
+    names: list[str] = []
+    primary: str | None = filter_column_name(config, flt)
+    if primary:
+        names.append(primary)
+    for key in flt.get("also_column_keys") or []:
+        resolved: str = col(config, str(key))
+        if resolved and resolved not in names:
+            names.append(resolved)
+    return names
 
 
 def with_product_analysis_mode(config: dict[str, Any], mode: str) -> dict[str, Any]:
@@ -429,6 +534,8 @@ def build_percentile_column_mapping(config: dict[str, Any]) -> dict[str, str]:
     )
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
     percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
+    # Только для P80: КМ ≥ и счётчики лидов ≤ / > порога
+    p80_only_suffixes: frozenset[str] = frozenset({"km_count", "le_count", "gt_count"})
 
     mapping: dict[str, str] = {}
     for metric in metrics:
@@ -436,12 +543,16 @@ def build_percentile_column_mapping(config: dict[str, Any]) -> dict[str, str]:
         for p in percentiles:
             p_text: str = percentile_display_value(p)
             label: str = percentile_label(p)
+            is_p80: bool = abs(float(p) - 80.0) < 1e-9
             for suffix, template in metric_templates.items():
-                if suffix == "km_count":
+                if suffix in p80_only_suffixes:
                     continue
                 col_name: str = f"{metric}_{label}_{suffix}"
                 mapping[col_name] = template.format(p=p_text)
-            if abs(float(p) - 80.0) < 1e-9 and "km_count" in metric_templates:
-                col_name = f"{metric}_{label}_km_count"
-                mapping[col_name] = metric_templates["km_count"].format(p=p_text)
+            if is_p80:
+                for suffix in ("le_count", "gt_count", "km_count"):
+                    if suffix not in metric_templates:
+                        continue
+                    col_name = f"{metric}_{label}_{suffix}"
+                    mapping[col_name] = metric_templates[suffix].format(p=p_text)
     return mapping

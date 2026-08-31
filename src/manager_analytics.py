@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -10,10 +9,19 @@ from typing import Any
 
 import pandas as pd
 
+from src.client_names import abbreviate_client_name, abbreviations_for_meta
+from src.json_sanitize import dump_json_file
 from src.lead_tracker import build_lead_stage_records
 from src.percentile_stats import percentile_label, to_integer_days
 from src.progress import ProgressReporter
 from src.settings import DEFAULT_RANK_PRODUCTS, col, group_only_product_label, is_group_only_analysis
+from src.team_loader import (
+    build_team_lookups,
+    compose_lead_team,
+    is_team_files_enabled,
+    normalize_person_name,
+    vks_column,
+)
 
 logger: logging.Logger = logging.getLogger("kanban.manager_analytics")
 
@@ -200,6 +208,99 @@ def km_column(config: dict[str, Any]) -> str | None:
     return col(config, "km")
 
 
+def rank_by_team_enabled(config: dict[str, Any]) -> bool:
+    """True — TOP считается по уникальным участникам команды зависшего лида."""
+    mgr_cfg: dict[str, Any] = config.get("manager_analytics", {})
+    if not bool(mgr_cfg.get("rank_by_team", True)):
+        return False
+    return is_team_files_enabled(config)
+
+
+def _person_has_name(value: Any) -> bool:
+    """Есть ли непустое ФИО."""
+    return bool(normalize_person_name(value))
+
+
+def attach_teams_to_detail(
+    detail: pd.DataFrame,
+    config: dict[str, Any],
+    lead_leaders: dict[str, list[dict[str, str]]] | None = None,
+    deal_leaders: dict[str, list[dict[str, str]]] | None = None,
+) -> pd.DataFrame:
+    """Добавляет колонку team (list[dict]) к строкам detail."""
+    if detail.empty:
+        return detail
+
+    lead_map: dict[str, list[dict[str, str]]]
+    deal_map: dict[str, list[dict[str, str]]]
+    if lead_leaders is None or deal_leaders is None:
+        lead_map, deal_map = build_team_lookups(config)
+    else:
+        lead_map, deal_map = lead_leaders, deal_leaders
+
+    lead_col: str = col(config, "lead_id")
+    deal_col: str | None = _optional_column(config, "deal_id")
+    km_name: str | None = km_column(config)
+    vks_name: str | None = vks_column(config)
+
+    teams: list[list[dict[str, Any]]] = []
+    for _, row in detail.iterrows():
+        lead_id = str(row[lead_col]) if lead_col in detail.columns and pd.notna(row.get(lead_col)) else None
+        deal_id = None
+        if deal_col and deal_col in detail.columns and pd.notna(row.get(deal_col)):
+            deal_raw: str = str(row[deal_col]).strip()
+            if deal_raw and deal_raw not in {"-", "—", "nan"}:
+                deal_id = deal_raw
+        km_val = row[km_name] if km_name and km_name in detail.columns else None
+        vks_val = row[vks_name] if vks_name and vks_name in detail.columns else None
+        teams.append(
+            compose_lead_team(
+                lead_id=lead_id,
+                deal_id=deal_id,
+                km=str(km_val) if km_val is not None and pd.notna(km_val) else None,
+                vks=str(vks_val) if vks_val is not None and pd.notna(vks_val) else None,
+                lead_leaders=lead_map,
+                deal_leaders=deal_map,
+            )
+        )
+    out: pd.DataFrame = detail.copy()
+    out["team"] = teams
+    return out
+
+
+def explode_detail_by_team_member(detail: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """
+    Разворачивает строки лида в строки участник×лид.
+    Колонка отображаемого ФИО — как КМ (для совместимости JSON/UI): km.
+    Исходный КМ сохраняется в km_source.
+    """
+    if detail.empty or "team" not in detail.columns:
+        return detail
+
+    km_name: str = km_column(config) or "КМ"
+    rows: list[dict[str, Any]] = []
+    for _, row in detail.iterrows():
+        team: list[dict[str, Any]] = list(row.get("team") or [])
+        base: dict[str, Any] = row.to_dict()
+        source_km: Any = base.get(km_name)
+        members: list[dict[str, Any]] = team
+        if not members and _person_has_name(source_km):
+            members = [{"name": normalize_person_name(source_km), "roles": ["КМ"]}]
+        for member in members:
+            name: str = normalize_person_name(member.get("name"))
+            if not name:
+                continue
+            item = dict(base)
+            item["km_source"] = source_km
+            item[km_name] = name
+            item["member_roles"] = list(member.get("roles") or [])
+            rows.append(item)
+
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).reset_index(drop=True)
+
+
 def is_manager_analytics_enabled(config: dict[str, Any]) -> bool:
     """Проверяет, включена ли аналитика менеджеров."""
     cfg: dict[str, Any] = config.get("manager_analytics", {})
@@ -246,7 +347,8 @@ def build_manager_exceedance_detail(
 ) -> pd.DataFrame:
     """Строки лид×стадия с флагом превышения P80 и порогом."""
     km_name: str | None = km_column(config)
-    if not km_name or km_name not in records.columns:
+    team_mode: bool = rank_by_team_enabled(config)
+    if not team_mode and (not km_name or km_name not in records.columns):
         return pd.DataFrame()
 
     mgr_cfg: dict[str, Any] = config.get("manager_analytics", {})
@@ -269,13 +371,16 @@ def build_manager_exceedance_detail(
     merged["days_int"] = days
     merged["exceeded"] = days.notna() & thresh.notna() & (days > thresh)
 
-    merged = merged[merged[km_name].notna() & (merged[km_name].astype(str).str.strip() != "")]
+    if not team_mode:
+        if not km_name or km_name not in merged.columns:
+            return pd.DataFrame()
+        merged = merged[merged[km_name].notna() & (merged[km_name].astype(str).str.strip() != "")]
     if merged.empty:
         return pd.DataFrame()
 
     keep: list[str] = [
         tb_col,
-        km_name,
+        km_name if km_name and km_name in merged.columns else None,
         pg_col,
         prod_col if prod_col in merged.columns else None,
         "stage_key",
@@ -288,7 +393,7 @@ def build_manager_exceedance_detail(
     label_name: str | None = _label_column(config)
     if label_name and label_name in merged.columns:
         keep.append(label_name)
-    for opt_key in ("deal_id", "inn", "change_conditions", "efs_flag"):
+    for opt_key in ("deal_id", "inn", "client", "change_conditions", "efs_flag", "vks"):
         opt_col: str | None = _optional_column(config, opt_key)
         if opt_col and opt_col in merged.columns:
             keep.append(opt_col)
@@ -303,17 +408,24 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
     if detail.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    km_name: str = km_column(config) or "km"
+    km_name: str = km_column(config) or "КМ"
+    if km_name not in detail.columns:
+        # После explode колонка уже «КМ»; иначе — пустой placeholder
+        work: pd.DataFrame = detail.copy()
+        work[km_name] = ""
+    else:
+        work = detail
+
     pg_col: str = col(config, "product_group")
     prod_col: str = col(config, "product")
     tb_col: str = col(config, "tb")
     lead_col: str = col(config, "lead_id")
 
     product_cols: list[str] = [tb_col, km_name, pg_col, "stage_key", "analysis_level"]
-    if prod_col in detail.columns and not is_group_only_analysis(config):
+    if prod_col in work.columns and not is_group_only_analysis(config):
         product_cols.insert(3, prod_col)
 
-    exceeded: pd.DataFrame = detail.loc[detail["exceeded"]].copy()
+    exceeded: pd.DataFrame = work.loc[work["exceeded"]].copy()
     if exceeded.empty:
         by_product = pd.DataFrame(
             columns=product_cols
@@ -347,7 +459,7 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
         by_product = by_product.drop(columns=["avg_days"])
 
     manager_totals: pd.DataFrame = (
-        detail.groupby([tb_col, km_name], dropna=False)
+        work.groupby([tb_col, km_name], dropna=False)
         .agg(
             total_leads=(lead_col, "nunique"),
             exceedance_count=("exceeded", "sum"),
@@ -355,6 +467,10 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
         .reset_index()
     )
     manager_totals["exceedance_count"] = manager_totals["exceedance_count"].astype(int)
+    # Пустые ФИО не участвуют в TOP
+    manager_totals = manager_totals[
+        manager_totals[km_name].map(lambda v: bool(normalize_person_name(v)))
+    ].reset_index(drop=True)
     return by_product, manager_totals
 
 
@@ -431,7 +547,20 @@ def attach_hotspots_to_top(
     for row in top_records:
         key = (str(row.get("tb", "")), str(row.get("km", "")))
         row["km_tb_key"] = manager_tb_km_key(row.get("tb", ""), row.get("km", ""))
-        row["hotspots"] = by_key.get(key, [])[:top_n_hotspots]
+        spots: list[dict[str, Any]] = by_key.get(key, [])[:top_n_hotspots]
+        row["hotspots"] = spots
+        # Сводка ролей участника по зависшим лидам
+        role_order: list[str] = []
+        role_seen: set[str] = set()
+        for spot in spots:
+            for stuck in spot.get("stuck_items") or []:
+                for role in stuck.get("member_roles") or []:
+                    role_s: str = str(role).strip()
+                    if role_s and role_s.casefold() not in role_seen:
+                        role_seen.add(role_s.casefold())
+                        role_order.append(role_s)
+        row["member_roles"] = role_order
+        row["roles_summary"] = ", ".join(role_order) if role_order else "—"
     return top_records
 
 
@@ -451,6 +580,7 @@ def _stuck_items_by_hotspot(
     lead_col: str = col(config, "lead_id")
     deal_col: str | None = _optional_column(config, "deal_id")
     inn_col: str | None = _optional_column(config, "inn")
+    client_col: str | None = _optional_column(config, "client")
     group_only: bool = is_group_only_analysis(config)
 
     result: dict[tuple[str, ...], list[dict[str, Any]]] = {}
@@ -465,14 +595,45 @@ def _stuck_items_by_hotspot(
         )
         days: float = float(row.get("days_int") or 0)
         thresh: float = float(row.get("threshold_days") or 0)
+        member_roles: list[str] = []
+        if "member_roles" in exceeded.columns:
+            raw_roles = row.get("member_roles")
+            if isinstance(raw_roles, list):
+                member_roles = [str(r) for r in raw_roles if str(r).strip()]
+        team_payload: list[dict[str, Any]] = []
+        if "team" in exceeded.columns:
+            raw_team = row.get("team")
+            if isinstance(raw_team, list):
+                for member in raw_team:
+                    if not isinstance(member, dict):
+                        continue
+                    team_payload.append(
+                        {
+                            "name": str(member.get("name") or ""),
+                            "roles": list(member.get("roles") or []),
+                        }
+                    )
         item: dict[str, Any] = {
             "lead_id": str(row[lead_col]),
             "deal_id": str(row[deal_col]) if deal_col and deal_col in exceeded.columns and pd.notna(row.get(deal_col)) else None,
             "inn": str(row[inn_col]) if inn_col and inn_col in exceeded.columns and pd.notna(row.get(inn_col)) else None,
+            "client": abbreviate_client_name(
+                (
+                    str(row[client_col]).strip()
+                    if client_col
+                    and client_col in exceeded.columns
+                    and pd.notna(row.get(client_col))
+                    and str(row[client_col]).strip()
+                    else None
+                ),
+                config,
+            ),
             "stage_key": str(row["stage_key"]),
             "days_int": round(days, 1),
             "threshold_days": round(thresh, 1),
             "overshoot": round(max(0.0, days - thresh), 1),
+            "member_roles": member_roles,
+            "team": team_payload,
         }
         bucket: list[dict[str, Any]] = result.setdefault(hs_key, [])
         if len(bucket) < limit_per_hotspot:
@@ -484,7 +645,7 @@ def _stuck_items_by_hotspot(
 
 
 def format_hotspots_excel_summary(hotspots: list[dict[str, Any]], config: dict[str, Any]) -> str:
-    """Текстовое резюме топ-зон для колонки Excel."""
+    """Текстовое резюме топ-зон для Excel: каждое отклонение с новой строки."""
     if not hotspots:
         return "—"
     group_only: bool = is_group_only_analysis(config)
@@ -503,7 +664,7 @@ def format_hotspots_excel_summary(hotspots: list[dict[str, Any]], config: dict[s
             f"{idx}) {segment} / {stage}: {count} сд., "
             f"макс {max_days:.0f} дн. (P80={threshold:.0f}, +{overshoot:.0f})"
         )
-    return " | ".join(parts)
+    return "\n".join(parts)
 
 
 def build_km_violation_charts(
@@ -637,15 +798,24 @@ def lead_records_to_json(detail: pd.DataFrame, config: dict[str, Any]) -> list[d
     for opt_key, json_key in (
         ("deal_id", "deal_id"),
         ("inn", "inn"),
+        ("client", "client"),
         ("change_conditions", "change_conditions"),
         ("efs_flag", "efs_flag"),
+        ("vks", "vks"),
     ):
         opt_col: str | None = _optional_column(config, opt_key)
         if opt_col and opt_col in detail.columns:
             rename[opt_col] = json_key
     out: pd.DataFrame = detail.rename(columns=rename)
+    drop_list_cols: list[str] = [c for c in ("team", "member_roles") if c in out.columns]
+    if drop_list_cols:
+        out = out.drop(columns=drop_list_cols)
+    has_team: bool = "team" in detail.columns
+    has_member_roles: bool = "member_roles" in detail.columns
+    team_values: list[Any] = list(detail["team"]) if has_team else []
+    member_role_values: list[Any] = list(detail["member_roles"]) if has_member_roles else []
     records: list[dict[str, Any]] = out.to_dict(orient="records")
-    for row in records:
+    for idx, row in enumerate(records):
         row["exceeded"] = bool(row.get("exceeded"))
         row["km_tb_key"] = manager_tb_km_key(row.get("tb", ""), row.get("km", ""))
         if row.get("days_int") is not None:
@@ -660,6 +830,38 @@ def lead_records_to_json(detail: pd.DataFrame, config: dict[str, Any]) -> list[d
                     pass
         if row.get("report_date") is not None:
             row["report_date"] = str(row["report_date"])[:10]
+        if has_team and idx < len(team_values):
+            raw_team = team_values[idx]
+            if isinstance(raw_team, list):
+                row["team"] = [
+                    {"name": str(m.get("name") or ""), "roles": list(m.get("roles") or [])}
+                    for m in raw_team
+                    if isinstance(m, dict) and normalize_person_name(m.get("name"))
+                ]
+            else:
+                row["team"] = []
+        if has_member_roles and idx < len(member_role_values):
+            raw_roles = member_role_values[idx]
+            row["member_roles"] = (
+                [str(r) for r in raw_roles if str(r).strip()] if isinstance(raw_roles, list) else []
+            )
+        # Клиент / ИНН / ID сделки / команда — только при превышении P80
+        if not row["exceeded"]:
+            row.pop("client", None)
+            row.pop("inn", None)
+            row.pop("deal_id", None)
+            row.pop("team", None)
+            row.pop("vks", None)
+        else:
+            if row.get("client") is not None:
+                client_val: str | None = abbreviate_client_name(str(row["client"]).strip(), config)
+                row["client"] = client_val
+            if row.get("inn") is not None:
+                inn_val: str = str(row["inn"]).strip()
+                row["inn"] = inn_val if inn_val else None
+            if row.get("vks") is not None:
+                vks_val: str = normalize_person_name(row["vks"])
+                row["vks"] = vks_val or None
     return records
 
 
@@ -710,14 +912,18 @@ def build_manager_analytics(
     config: dict[str, Any],
     snapshot_date: pd.Timestamp | None = None,
 ) -> dict[str, Any] | None:
-    """Полный payload аналитики менеджеров или None, если КМ недоступна."""
+    """Полный payload аналитики менеджеров или None, если данные недоступны."""
     if not is_manager_analytics_enabled(config):
         logger.info("Аналитика менеджеров отключена в config")
         return None
 
     km_name: str | None = km_column(config)
-    if not km_name or km_name not in records.columns:
-        logger.warning("Колонка КМ (%s) не найдена в lead_stage_records — аналитика менеджеров пропущена", km_name)
+    team_mode: bool = rank_by_team_enabled(config)
+    if not team_mode and (not km_name or km_name not in records.columns):
+        logger.warning(
+            "Колонка КМ (%s) не найдена в lead_stage_records — аналитика менеджеров пропущена",
+            km_name,
+        )
         return None
 
     mgr_cfg: dict[str, Any] = config.get("manager_analytics", {})
@@ -731,12 +937,30 @@ def build_manager_analytics(
         return None
 
     detail: pd.DataFrame = build_manager_exceedance_detail(records, thresholds, config)
+    if detail.empty:
+        logger.warning("Нет строк для аналитики менеджеров после порогов P80")
+        return None
+
+    lead_leaders: dict[str, list[dict[str, str]]] = {}
+    deal_leaders: dict[str, list[dict[str, str]]] = {}
+    if team_mode or is_team_files_enabled(config):
+        lead_leaders, deal_leaders = build_team_lookups(config)
+        detail = attach_teams_to_detail(detail, config, lead_leaders, deal_leaders)
+
+    # Агрегаты/графики по исходному КМ (лид-уровень)
     by_product, manager_totals = aggregate_manager_counts(detail, config)
 
     rank_sel: dict[str, Any] = rank_selection_config(config)
     ranked_detail: pd.DataFrame = apply_rank_selection(detail, config, rank_sel)
-    ranked_exceeded: pd.DataFrame = ranked_detail.loc[ranked_detail["exceeded"]].copy()
-    ranked_by_product, ranked_totals = aggregate_manager_counts(ranked_detail, config)
+
+    if team_mode:
+        person_detail: pd.DataFrame = explode_detail_by_team_member(ranked_detail, config)
+        ranked_exceeded: pd.DataFrame = person_detail.loc[person_detail["exceeded"]].copy()
+        ranked_by_product, ranked_totals = aggregate_manager_counts(person_detail, config)
+    else:
+        ranked_exceeded = ranked_detail.loc[ranked_detail["exceeded"]].copy()
+        ranked_by_product, ranked_totals = aggregate_manager_counts(ranked_detail, config)
+
     top_tb: pd.DataFrame = top_managers_per_tb(ranked_totals, config)
     top_records: list[dict[str, Any]] = attach_hotspots_to_top(
         top_tb, ranked_by_product, ranked_exceeded, config
@@ -747,13 +971,13 @@ def build_manager_analytics(
     exceedances: list[dict[str, Any]] = exceedances_to_json(detail, config)
 
     logger.info(
-        "Менеджеры: превышений %d, топ-записей %d (отбор: %s), порогов P80 %d, records %d, exceedances %d",
+        "Менеджеры: превышений %d, топ-записей %d (отбор: %s, team=%s), порогов P80 %d, records %d",
         int(detail["exceeded"].sum()) if not detail.empty else 0,
         len(top_tb),
         rank_sel.get("strategy_filter"),
+        team_mode,
         len(thresholds),
         len(lead_records),
-        len(exceedances),
     )
 
     return {
@@ -764,18 +988,29 @@ def build_manager_analytics(
             "percentile_label": percentile_label(percentile),
             "threshold_scope": str(mgr_cfg.get("threshold_scope", "overall")),
             "top_managers_per_tb": int(mgr_cfg.get("top_managers_per_tb", 3)),
+            "top_hotspots_per_manager": int(mgr_cfg.get("top_hotspots_per_manager", 5)),
             "top_stuck_items_per_hotspot": int(mgr_cfg.get("top_stuck_items_per_hotspot", 15)),
             "km_column": km_name,
+            "vks_column": vks_column(config),
+            "rank_by_team": team_mode,
             "rank_selection": rank_sel,
+            "client_display": abbreviations_for_meta(config),
             "manager_key": "km_tb_key",
             "use_latest_report_date": bool(mgr_cfg.get("use_latest_report_date", True)),
             "report_date_snapshot": (
-                snapshot_date.date().isoformat() if snapshot_date is not None and not pd.isna(snapshot_date) else None
+                snapshot_date.date().isoformat()
+                if snapshot_date is not None and not pd.isna(snapshot_date)
+                else None
             ),
             "description": (
                 "Превышение P80: срок лида на стадии строго больше порога P80 "
-                "для той же группы, продукта и стадии (порог из общей сводки без ТБ). "
-                "TOP КМ — по rank_selection (ТБ+КМ); records — все лиды; exceedances — только отклонения."
+                "для той же группы, продукта и стадии. "
+                + (
+                    "TOP — по уникальным участникам команды зависшего лида "
+                    "(лидер лида, лидеры сделки, КМ, ВКС); на карточке — роли и команда."
+                    if team_mode
+                    else "TOP КМ — по rank_selection (ТБ+КМ)."
+                )
             ),
         },
         "dimensions": dimensions,
@@ -791,18 +1026,25 @@ def build_manager_analytics(
 
 
 def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, Any]) -> pd.DataFrame:
-    """Таблица для листа Excel: топ менеджеров по ТБ с резюме зон превышения."""
+    """Таблица для листа Excel: топ менеджеров/участников по ТБ с зонами и ролями."""
     rows: list[dict[str, Any]] = payload.get("top_by_tb") or []
     if not rows:
         return pd.DataFrame()
 
-    km_label: str = config.get("output", {}).get("column_labels", {}).get("km", "КМ")
+    km_label: str = config.get("output", {}).get("column_labels", {}).get("km", "КМ / участник")
     tb_label: str = config.get("output", {}).get("column_labels", {}).get("tb", "ТБ")
+    team_mode: bool = bool((payload.get("meta") or {}).get("rank_by_team"))
+    if team_mode:
+        km_label = "Участник команды"
 
     enriched: list[dict[str, Any]] = []
     for row in rows:
         copy_row: dict[str, Any] = dict(row)
-        copy_row["hotspots_summary"] = format_hotspots_excel_summary(row.get("hotspots") or [], config)
+        copy_row["hotspots_summary"] = format_hotspots_excel_summary(
+            row.get("hotspots") or [], config
+        )
+        copy_row["roles_summary"] = row.get("roles_summary") or "—"
+        copy_row["team_summary"] = _format_team_excel_summary(row.get("hotspots") or [])
         enriched.append(copy_row)
 
     frame: pd.DataFrame = pd.DataFrame(enriched)
@@ -812,6 +1054,8 @@ def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, 
         "km": km_label,
         "exceedance_count": "Превышений P80",
         "total_leads": "Лидов (уник.)",
+        "roles_summary": "Роли в лидах",
+        "team_summary": "Команда по зависшим лидам",
         "hotspots_summary": "Топ зон превышения (продукт · стадия)",
     }
     cols: list[str] = [
@@ -820,25 +1064,47 @@ def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, 
         "km",
         "exceedance_count",
         "total_leads",
+        "roles_summary",
+        "team_summary",
         "hotspots_summary",
     ]
     cols = [c for c in cols if c in frame.columns]
     return frame[cols].rename(columns=rename)
 
 
+def _format_team_excel_summary(hotspots: list[dict[str, Any]]) -> str:
+    """Краткая сводка команд по зависшим лидам для Excel."""
+    lines: list[str] = []
+    seen_leads: set[str] = set()
+    for spot in hotspots:
+        for stuck in spot.get("stuck_items") or []:
+            lead_id: str = str(stuck.get("lead_id") or "")
+            if not lead_id or lead_id in seen_leads:
+                continue
+            seen_leads.add(lead_id)
+            team = stuck.get("team") or []
+            if not team:
+                continue
+            members: list[str] = []
+            for member in team:
+                name: str = str(member.get("name") or "").strip()
+                roles: list[str] = [str(r) for r in (member.get("roles") or []) if str(r).strip()]
+                if not name:
+                    continue
+                members.append(f"{name} ({', '.join(roles)})" if roles else name)
+            if members:
+                client: str = str(stuck.get("client") or "").strip()
+                head: str = f"{client} / {lead_id}" if client else lead_id
+                lines.append(f"{head}: " + "; ".join(members))
+            if len(lines) >= 8:
+                return "\n".join(lines)
+    return "\n".join(lines) if lines else "—"
+
+
 def export_manager_json(payload: dict[str, Any], output_path: Path, config: dict[str, Any]) -> None:
     """Сохраняет JSON менеджеров только в output_path (с timestamp)."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     compact: bool = bool(
         config.get("dashboard", {}).get("html_json", {}).get("compact", True)
     )
-    dump_kw: dict[str, Any] = (
-        {"ensure_ascii": False, "separators": (",", ":"), "default": str}
-        if compact
-        else {"ensure_ascii": False, "indent": 2, "default": str}
-    )
-    export_payload: dict[str, Any] = payload
-    with output_path.open("w", encoding="utf-8") as fh:
-        json.dump(export_payload, fh, **dump_kw)
-
+    dump_json_file(output_path, payload, compact=compact)
     logger.info("JSON менеджеров: %s (%d KB)", output_path.name, output_path.stat().st_size // 1024)

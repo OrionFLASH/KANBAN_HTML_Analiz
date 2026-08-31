@@ -11,18 +11,43 @@ from src.percentile_stats import percentile_label, to_integer_days
 from src.settings import analysis_row_key, col, group_only_product_label, is_group_only_analysis
 
 
-def stage_order(config: dict[str, Any]) -> list[str]:
-    """Порядок статусов для сводной матрицы."""
+def stage_order(config: dict[str, Any], available: list[str] | None = None) -> list[str]:
+    """
+    Порядок статусов для сводной матрицы.
+    Сначала stages_order из config, затем стадии из данных, которых нет в списке.
+    Config-only exclude_equals (напр. «К ПРОДАЖЕ») из порядка убираются.
+    """
+    from src.filters import excluded_analysis_stages
+
     configured: list[str] = list(config.get("stages_order", []))
-    if configured:
+    if not configured:
+        markers: dict[str, str] = config.get("excel", {}).get("category_markers", {})
+        for key in ("for_sale", "in_work", "unknown"):
+            value: str | None = markers.get(key)
+            if value and value not in configured:
+                configured.append(value)
+        if not configured:
+            configured = [
+                "К ПРОДАЖЕ",
+                "ВЫЯВЛЕНИЕ ПОТРЕБНОСТИ",
+                "ОБСУЖДЕНИЕ УСЛОВИЙ",
+                "РЕАЛИЗАЦИЯ СДЕЛКИ",
+                "АКТИВАЦИЯ ПРОДУКТА",
+                "ПРОДАЖА ЗАВЕРШЕНА",
+            ]
+    excluded: set[str] = {s.casefold() for s in excluded_analysis_stages(config)}
+    if excluded:
+        configured = [s for s in configured if str(s).casefold() not in excluded]
+    if not available:
         return configured
-    markers: dict[str, str] = config.get("excel", {}).get("category_markers", {})
-    ordered: list[str] = []
-    for key in ("for_sale", "in_work", "unknown"):
-        value: str | None = markers.get(key)
-        if value and value not in ordered:
-            ordered.append(value)
-    return ordered or ["К ПРОДАЖЕ", "В РАБОТЕ"]
+    # Все стадии из config (даже без данных — пустые колонки), затем прочие из данных
+    ordered: list[str] = list(configured)
+    for stage in available:
+        if str(stage).casefold() in excluded:
+            continue
+        if stage not in ordered:
+            ordered.append(stage)
+    return ordered
 
 
 def indicator_keys(config: dict[str, Any]) -> list[str]:
@@ -50,12 +75,19 @@ def _pivot_row_value(record: dict[str, Any], config: dict[str, Any]) -> str | No
 
 
 def _indicator_column(metric: str, indicator: str) -> str:
-    """Имя колонки агрегации для показателя."""
+    """Имя колонки агрегации для показателя (дни)."""
     if indicator == "min":
         return f"{metric}_min"
     if indicator == "max":
         return f"{metric}_max"
     return f"{metric}_{indicator}_days"
+
+
+def _le_gt_columns(metric: str, indicator: str) -> tuple[str, str]:
+    """Колонки числа лидов ≤ / > порога показателя."""
+    if indicator in ("min", "max"):
+        return f"{metric}_{indicator}_le_count", f"{metric}_{indicator}_gt_count"
+    return f"{metric}_{indicator}_le_count", f"{metric}_{indicator}_gt_count"
 
 
 def series_chart_points(series: dict[str, Any]) -> list[dict[str, int]]:
@@ -89,7 +121,9 @@ def stats_frame_to_pivot_flat(
             value_col: str = _indicator_column(metric, indicator)
             if value_col not in frame.columns:
                 continue
-            chunk: pd.DataFrame = frame[id_cols + [value_col]].dropna(subset=[value_col])
+            le_col, gt_col = _le_gt_columns(metric, indicator)
+            extra_cols: list[str] = [c for c in (le_col, gt_col) if c in frame.columns]
+            chunk: pd.DataFrame = frame[id_cols + [value_col] + extra_cols].dropna(subset=[value_col])
             if chunk.empty:
                 continue
 
@@ -99,11 +133,19 @@ def stats_frame_to_pivot_flat(
             s_idx: int = col_index.get("stage_key", -1)
             a_idx: int = col_index.get("analysis_level", -1)
             v_idx: int = col_index[value_col]
+            le_idx: int | None = col_index.get(le_col)
+            gt_idx: int | None = col_index.get(gt_col)
 
             for row in chunk.itertuples(index=False, name=None):
                 group_value = row[g_idx]
                 product_value = placeholder if group_only else row[p_idx]  # type: ignore[index]
                 row_key = group_value if group_only else product_value
+                leads_le: int | None = None
+                leads_gt: int | None = None
+                if le_idx is not None and row[le_idx] == row[le_idx]:
+                    leads_le = int(row[le_idx])
+                if gt_idx is not None and row[gt_idx] == row[gt_idx]:
+                    leads_gt = int(row[gt_idx])
                 flat.append(
                     {
                         "tb": tb_value,
@@ -115,6 +157,8 @@ def stats_frame_to_pivot_flat(
                         "metric": metric,
                         "indicator": indicator,
                         "value": int(row[v_idx]),
+                        "leads_le": leads_le,
+                        "leads_gt": leads_gt,
                     }
                 )
     return flat
@@ -141,13 +185,17 @@ def build_pivot_matrix(
     config: dict[str, Any],
 ) -> dict[str, Any]:
     """Матрица строка × стадия (строка — продукт или группа)."""
-    stages: list[str] = stage_order(config)
     row_dimension: str = analysis_row_key(config)
     filtered: list[dict[str, Any]] = [
         row
         for row in pivot_flat
         if row["tb"] == tb and row["metric"] == metric and row["indicator"] == indicator
     ]
+    available: list[str] = sorted(
+        {str(row["stage_key"]) for row in filtered if row.get("stage_key") is not None},
+        key=lambda value: value.lower(),
+    )
+    stages: list[str] = stage_order(config, available)
 
     row_labels: list[str] = sorted(
         {str(row["row_key"]) for row in filtered if row.get("row_key") is not None},
@@ -287,6 +335,20 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
 
 
 JSON_AGGREGATION_MODES: tuple[str, ...] = ("group_product", "group_only")
+
+
+def json_aggregation_modes(config: dict[str, Any]) -> list[str]:
+    """
+    Режимы агрегации в JSON-срезах.
+    Только product_analysis_mode из config (по умолчанию group_product) —
+    без дублирования group_only в каждом срезе.
+    """
+    from src.settings import product_analysis_mode
+
+    mode: str = product_analysis_mode(config)
+    if mode not in JSON_AGGREGATION_MODES:
+        mode = "group_product"
+    return [mode]
 
 
 def build_aggregation_visualization(

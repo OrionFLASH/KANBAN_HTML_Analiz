@@ -37,20 +37,34 @@ def empirical_percentile_stats(values: np.ndarray, p: float) -> dict[str, int | 
     - days: срок на границе (максимум среди нижних p% лидов)
     - count: сколько лидов вошло в нижние p%
     - min / max: мин и макс срок среди этих лидов
+    - le_count: число лидов со сроком ≤ days (порог)
+    - gt_count: число лидов со сроком > days
     """
     n: int = len(values)
     if n == 0:
-        return {"days": None, "count": 0, "min": None, "max": None}
+        return {
+            "days": None,
+            "count": 0,
+            "min": None,
+            "max": None,
+            "le_count": 0,
+            "gt_count": 0,
+        }
 
     sorted_vals: np.ndarray = np.sort(values)
     count: int = max(1, math.ceil(p / 100.0 * n))
     bottom: np.ndarray = sorted_vals[:count]
+    threshold: int = int(bottom[-1])
+    le_count: int = int(np.sum(sorted_vals <= threshold))
+    gt_count: int = int(n - le_count)
 
     return {
-        "days": int(bottom[-1]),
+        "days": threshold,
         "count": int(count),
         "min": int(bottom[0]),
-        "max": int(bottom[-1]),
+        "max": threshold,
+        "le_count": le_count,
+        "gt_count": gt_count,
     }
 
 
@@ -59,22 +73,33 @@ def compute_metric_percentiles(
     percentiles: list[float],
     metric_prefix: str,
 ) -> dict[str, Any]:
-    """Min/max/count + колонки для каждого перцентиля."""
+    """Min/max/count + колонки для каждого перцентиля (+ le/gt относительно порога)."""
     result: dict[str, Any] = {}
 
     if len(values) == 0:
         result[f"{metric_prefix}_min"] = None
         result[f"{metric_prefix}_max"] = None
         result[f"{metric_prefix}_count"] = 0
+        result[f"{metric_prefix}_min_le_count"] = 0
+        result[f"{metric_prefix}_min_gt_count"] = 0
+        result[f"{metric_prefix}_max_le_count"] = 0
+        result[f"{metric_prefix}_max_gt_count"] = 0
         for p in percentiles:
             label: str = percentile_label(p)
-            for suffix in ("days", "count", "min", "max"):
-                result[f"{metric_prefix}_{label}_{suffix}"] = None if suffix != "count" else 0
+            for suffix in ("days", "count", "min", "max", "le_count", "gt_count"):
+                result[f"{metric_prefix}_{label}_{suffix}"] = None if suffix not in ("count", "le_count", "gt_count") else 0
         return result
 
-    result[f"{metric_prefix}_min"] = int(values.min())
-    result[f"{metric_prefix}_max"] = int(values.max())
-    result[f"{metric_prefix}_count"] = int(len(values))
+    vmin: int = int(values.min())
+    vmax: int = int(values.max())
+    n: int = int(len(values))
+    result[f"{metric_prefix}_min"] = vmin
+    result[f"{metric_prefix}_max"] = vmax
+    result[f"{metric_prefix}_count"] = n
+    result[f"{metric_prefix}_min_le_count"] = int(np.sum(values <= vmin))
+    result[f"{metric_prefix}_min_gt_count"] = int(np.sum(values > vmin))
+    result[f"{metric_prefix}_max_le_count"] = n
+    result[f"{metric_prefix}_max_gt_count"] = 0
 
     for p in percentiles:
         stats: dict[str, int | None] = empirical_percentile_stats(values, p)
@@ -83,6 +108,8 @@ def compute_metric_percentiles(
         result[f"{metric_prefix}_{label}_count"] = stats["count"]
         result[f"{metric_prefix}_{label}_min"] = stats["min"]
         result[f"{metric_prefix}_{label}_max"] = stats["max"]
+        result[f"{metric_prefix}_{label}_le_count"] = stats["le_count"]
+        result[f"{metric_prefix}_{label}_gt_count"] = stats["gt_count"]
 
     return result
 

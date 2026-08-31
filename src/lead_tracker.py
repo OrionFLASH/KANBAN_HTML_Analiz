@@ -131,7 +131,14 @@ def _build_level_records_vectorized(
     }
     km_col: str | None = None
     label_col: str | None = None
-    extra_meta_keys: list[str] = ["deal_id", "inn", "change_conditions", "efs_flag"]
+    extra_meta_keys: list[str] = [
+        "deal_id",
+        "inn",
+        "client",
+        "change_conditions",
+        "efs_flag",
+        "vks",
+    ]
     for key in extra_meta_keys:
         if config.get("columns", {}).get(key):
             col_name: str = col(config, key)
