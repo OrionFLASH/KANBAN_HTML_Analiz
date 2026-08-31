@@ -1,0 +1,10 @@
+Docs/FileIN/
+log/
+IN/
+OUT/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+venv/
