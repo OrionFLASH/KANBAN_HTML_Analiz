@@ -92,7 +92,9 @@
     "timestamp_format": "%Y%m%d_%H%M%S",
     "excel_sheets": {
       "summary": "Сводная",
-      "overall": "Общий"
+      "overall": "Общий",
+      "matrix": "Матрица",
+      "charts": "Графики"
     },
     "excel_max_sheet_name_length": 31,
     "column_labels": {
@@ -175,6 +177,16 @@
   "duration_source": "columns",
   "stage_analysis_mode": "status",
   "percentiles": [20, 50, 80],
+  "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
+  "dashboard": {
+    "all_tb_label": "__ALL__",
+    "all_tb_display": "ВСЕ ТБ",
+    "default_tb": "__ALL__",
+    "default_metric": "days_on_stage",
+    "default_indicator": "p80",
+    "excel_max_chart_series": 8,
+    "max_chart_series": 12
+  },
   "parallel_workers": 0,
   "excel_theme": "green_red",
   "filters": {

@@ -28,6 +28,8 @@ KANBAN_HTML_Analiz/
 │   ├── filters.py
 │   ├── aggregator.py
 │   ├── percentile_stats.py
+│   ├── pivot_excel.py
+│   ├── visualization_data.py
 │   ├── excel_exporter.py
 │   ├── json_exporter.py
 │   ├── data_audit.py
@@ -36,7 +38,12 @@ KANBAN_HTML_Analiz/
 │   ├── progress.py
 │   └── Tests/
 │       ├── test_excel_loader.py
-│       └── test_percentile_stats.py
+│       ├── test_percentile_stats.py
+│       └── test_visualization_data.py
+├── HTML/
+│   ├── index.html
+│   ├── css/dashboard.css
+│   └── js/
 └── Docs/
     ├── CONFIG.md         # справочник config.json
     ├── BT_KANBAN.md
@@ -61,8 +68,15 @@ KANBAN_HTML_Analiz/
 4. Положить xlsx
 5. Настроить `config.json` — см. [CONFIG.md](CONFIG.md)
 6. `python run.py`
+7. Открыть дашборд: `cd HTML && python -m http.server 8080` → загрузить JSON из `OUT/`
 
-## Prod-режим
+## HTML-дашборд
+
+- Загрузка `kanban_report_*.json` через левую панель
+- Фильтры справа: ТБ, группа, продукт, стадия
+- Графики: ось X — число лидов, ось Y — дней
+- Матрица: продукт × стадия, значение — выбранный показатель (П80 и др.)
+
 
 ```json
 "mode": "prod"

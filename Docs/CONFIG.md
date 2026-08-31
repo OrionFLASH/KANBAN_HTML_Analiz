@@ -275,7 +275,35 @@
 
 Заголовки колонок перцентилей настраиваются в `output.percentile_column_labels` (шаблон `{p}` — число перцентиля).
 
-### `parallel_workers`
+### `stages_order`
+
+Порядок статусов в сводной матрице Excel/HTML (строки/колонки стадий):
+
+```json
+"stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"]
+```
+
+### `dashboard`
+
+Настройки дашборда и листа «Матрица»:
+
+| Ключ | Описание |
+|------|----------|
+| `all_tb_label` | Внутренний ключ «все ТБ» в JSON (`__ALL__`) |
+| `all_tb_display` | Подпись в UI и Excel (`ВСЕ ТБ`) |
+| `default_tb` | ТБ по умолчанию |
+| `default_metric` | `days_on_stage` или `days_since_deal` |
+| `default_indicator` | `min`, `max`, `p20`, `p50`, `p80` |
+| `excel_max_chart_series` | Число графиков на листе Excel |
+| `max_chart_series` | Макс. линий на одном HTML-графике |
+
+JSON содержит блок `visualizations`:
+
+- `distribution_series` — кривые для графиков (X: lead_index, Y: days)
+- `pivot_flat` — длинный формат для матрицы
+- `pivot_matrices` — предрасчитанные матрицы
+- `default_pivot_matrix` — срез по умолчанию
+
 
 | Значение | Поведение |
 |----------|-----------|

@@ -92,11 +92,11 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
     progress.stage("Экспорт Excel")
-    export_excel(stats, excel_path, config)
+    export_excel(stats, excel_path, config, records=records)
     progress.done(f"Excel: {excel_path.name}")
 
     progress.stage("Экспорт JSON")
-    export_json(stats, dimensions, config, json_path)
+    export_json(stats, dimensions, config, json_path, records=records)
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline
