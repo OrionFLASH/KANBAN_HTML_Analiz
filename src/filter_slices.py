@@ -9,7 +9,14 @@ from typing import Any, Iterator
 import pandas as pd
 
 from src.aggregator import build_all_statistics
-from src.filters import apply_config_only_filters, is_html_slice_filter
+from src.filters import (
+    apply_config_only_filters,
+    default_html_active_filters,
+    is_exclude_filter,
+    is_html_slice_filter,
+    row_keep_mask,
+    split_active_filter_names,
+)
 from src.settings import col, filter_column_name, with_product_analysis_mode
 from src.visualization_data import (
     JSON_AGGREGATION_MODES,
@@ -23,6 +30,9 @@ FILTER_DISPLAY_NAMES: dict[str, str] = {
     "data_entry": "Ввод данных",
     "strategy_label": "Все стратегии",
     "strategy_label_2026": "Стратегия · 2026",
+    "exclude_deal_otkaz": "Искл. отказ",
+    "exclude_deal_zakryta": "Искл. закрыта",
+    "exclude_deal_zaklyuchen": "Искл. заключен",
 }
 
 TOGGLE_LABELS: dict[str, str] = {
@@ -30,6 +40,9 @@ TOGGLE_LABELS: dict[str, str] = {
     "data_entry": "Ввод данных = 1",
     "strategy_label": "Метка содержит «Стратегия»",
     "strategy_label_2026": "Метка: «Стратегия» и «2026»",
+    "exclude_deal_otkaz": "Исключить «отказ» в стадии сделки",
+    "exclude_deal_zakryta": "Исключить «закрыта» в стадии сделки",
+    "exclude_deal_zaklyuchen": "Исключить «заключен» в стадии сделки",
 }
 
 
@@ -51,6 +64,11 @@ def filter_slice_key(active_names: list[str]) -> str:
     return "+".join(sorted(active_names))
 
 
+def default_filter_slice_key(config: dict[str, Any]) -> str:
+    """Ключ среза по умолчанию для HTML (default_active фильтры)."""
+    return filter_slice_key(default_html_active_filters(config))
+
+
 def iter_filter_combinations(config: dict[str, Any]) -> Iterator[list[str]]:
     """Все комбинации включённых HTML-фильтров (2^N, включая пустую)."""
     names: list[str] = html_filter_names(config)
@@ -59,14 +77,9 @@ def iter_filter_combinations(config: dict[str, Any]) -> Iterator[list[str]]:
             yield list(combo)
 
 
-def _filter_mask(df: pd.DataFrame, flt: dict[str, Any], column: str) -> pd.Series:
-    """Маска строк для одного фильтра."""
-    from src.filters import _text_match_mask
-
-    if "contains" in flt or "contains_all" in flt:
-        return _text_match_mask(df[column], flt)
-    value = flt.get("value", 1)
-    return pd.to_numeric(df[column], errors="coerce") == value
+def _filter_mask(df: pd.DataFrame, flt: dict[str, Any], column: str, config: dict[str, Any]) -> pd.Series:
+    """Маска строк для одного активного HTML-фильтра."""
+    return row_keep_mask(df, column, flt, config)
 
 
 def apply_filter_subset(
@@ -83,13 +96,13 @@ def apply_filter_subset(
 
     for name in active_names:
         flt: dict[str, Any] | None = filters_cfg.get(name)
-        if not isinstance(flt, dict):
+        if not isinstance(flt, dict) or is_exclude_filter(flt):
             continue
         column: str | None = filter_column_name(config, flt)
         if not column or column not in result.columns:
             logger.warning("HTML-фильтр '%s': колонка не найдена", name)
             return result.iloc[0:0].copy()
-        result = result[_filter_mask(result, flt, column)]
+        result = result[_filter_mask(result, flt, column, config)]
 
     return result.reset_index(drop=True)
 
@@ -110,11 +123,20 @@ def build_filter_catalog(config: dict[str, Any]) -> list[dict[str, Any]]:
             "display_name": FILTER_DISPLAY_NAMES.get(name, columns.get(column_key, name)),
             "toggle_label": TOGGLE_LABELS.get(name, FILTER_DISPLAY_NAMES.get(name, name)),
             "ui_mode": "toggle",
+            "default_active": bool(flt.get("default_active", False)),
         }
         exclusive: str | None = flt.get("exclusive_group")
         if exclusive:
             entry["exclusive_group"] = str(exclusive)
-        if "contains_all" in flt:
+        if is_exclude_filter(flt):
+            entry["type"] = "exclude_contains"
+            entry["filter_mode"] = "exclude"
+            token: str = str(flt.get("exclude_contains", ""))
+            entry["exclude_contains"] = token
+            entry["case_sensitive"] = flt.get("case_sensitive", False)
+            entry["html_label"] = f"Исключить стадии с «{token}»"
+            entry["ui_group"] = flt.get("ui_group", "terminal_deal_stages")
+        elif "contains_all" in flt:
             entry["type"] = "contains_all"
             entry["contains_all"] = list(flt.get("contains_all") or [])
             entry["case_sensitive"] = flt.get("case_sensitive", False)
@@ -188,12 +210,18 @@ def build_all_filter_slices(
         if progress:
             progress.step(f"JSON-срез {index + 1}/{len(combinations)}: {label}")
 
-        slice_df: pd.DataFrame = apply_filter_subset(base_df, config, active)
+        inclusion_active, exclusion_active = split_active_filter_names(config, active)
+        slice_df: pd.DataFrame = apply_filter_subset(base_df, config, inclusion_active)
         if slice_df.empty:
             logger.info("Срез '%s': нет строк после фильтров", key)
             continue
 
-        slice_records: pd.DataFrame = build_lead_stage_records(slice_df, config, progress=None)
+        slice_records: pd.DataFrame = build_lead_stage_records(
+            slice_df,
+            config,
+            progress=None,
+            exclusion_filter_names=exclusion_active,
+        )
         if slice_records.empty:
             logger.info("Срез '%s': нет lead_stage_records", key)
             continue

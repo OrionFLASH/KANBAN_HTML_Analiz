@@ -2,7 +2,7 @@ Docs/FileIN/
 log/
 IN/
 OUT/
-# Архив для пересылки без Git (POST/KANBAN_HTML_Analiz.zip) — см. Docs/DEPLOY.md
+# Копия для пересылки без Git (POST/KANBAN_HTML_Analiz/) — см. Docs/DEPLOY.md
 POST/
 HTML/data/*.json
 HTML/data/slices/

@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from src.data_audit import audit_lead_coverage, log_missing_metrics
+from src.filters import filter_terminal_deal_stage_rows
 from src.progress import ProgressReporter
 from src.settings import col, empty_stage_values, group_only_product_label, is_group_only_analysis
 
@@ -200,14 +201,20 @@ def build_lead_stage_records(
     df: pd.DataFrame,
     config: dict[str, Any],
     progress: ProgressReporter | None = None,
+    exclusion_filter_names: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Формирует таблицу: один лид — одна стадия — сроки нахождения. Все лиды сохраняются."""
+    """
+    Формирует таблицу: один лид — одна стадия — сроки нахождения.
+    Терминальная «Стадия сделки» отсекает только конкретную строку (дата отчёта),
+    не весь лид — см. filter_terminal_deal_stage_rows.
+    """
     stage_mode: str = config.get("stage_analysis_mode", "status")
 
     if progress:
         progress.step(f"Расчёт сроков на {len(df):,} строках (все строки входа)…")
 
     prepared: pd.DataFrame = _prepare_duration_columns(df, config)
+    prepared = filter_terminal_deal_stage_rows(prepared, config, exclusion_filter_names)
     frames: list[pd.DataFrame] = []
 
     if stage_mode in {"status", "both"}:

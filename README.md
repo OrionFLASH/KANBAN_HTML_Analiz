@@ -60,7 +60,7 @@ log/                 # логи INFO/DEBUG
 | `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа |
 | `aggregation` | Группировки и метрики |
 | `output` | Имена файлов, листы Excel, оформление |
-| `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`) |
+| `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`). Терминальные стадии сделки — построчное исключение (`exclude_deal_*`) |
 | `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
 | `manager_analytics` | Превышения P80 по КМ; `rank_selection`, `use_latest_report_date`; JSON `records` + `exceedances` + TOP-N |
 | `logging` | Файлы логов |
@@ -171,7 +171,7 @@ cd HTML && python -m http.server 8080
 
 ## Перенос на другой ПК (без Git)
 
-Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). Архив для почты: каталог `POST/KANBAN_HTML_Analiz.zip`.
+Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). Копия для пересылки без Git: каталог `POST/KANBAN_HTML_Analiz/` (без zip, без `src/Tests/`).
 
 ## История версий
 
@@ -193,3 +193,4 @@ cd HTML && python -m http.server 8080
 | 1.0.3 | 2026-08-31 | Excel без «Матрицы»; hotspots по КМ (Excel + JSON + UI); `top_hotspots_per_manager` |
 | 1.0.4 | 2026-08-31 | `rank_selection` для отбора TOP КМ; полные `records` в JSON; пересчёт TOP в UI |
 | 1.0.5 | 2026-08-31 | Топ-3 нарушителя по ТБ в UI; `exceedances`, `stuck_items`, `deal_id`/`inn`; срез `use_latest_report_date`; fix parse datetime64 |
+| 1.0.6 | 2026-08-31 | Исключение терминальных стадий сделки (построчно, UI + JSON); Excel: колонки «П80 КМ ≥» — число уникальных КМ с сроком ≥ P80 |

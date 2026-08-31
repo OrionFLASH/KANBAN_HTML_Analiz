@@ -19,6 +19,18 @@ const KanbanData = (() => {
     return slicesBase;
   }
 
+  function defaultActivePipelineFilters() {
+    const catalog = filterCatalog();
+    const fromCatalog = catalog.filter((item) => item.default_active).map((item) => item.name);
+    if (fromCatalog.length) return fromCatalog.sort();
+    const defaultSlice =
+      payload?.visualizations?.default_view?.filter_slice || payload?.meta?.default_slice;
+    if (defaultSlice && defaultSlice !== "none") {
+      return defaultSlice.split("+").sort();
+    }
+    return [];
+  }
+
   function _initFromPayload(data) {
     payload = data;
     const defaultAgg =
@@ -26,7 +38,7 @@ const KanbanData = (() => {
       payload?.visualizations?.excel_product_analysis_mode ||
       "group_product";
     aggregationMode = availableAggregationModes().includes(defaultAgg) ? defaultAgg : "group_product";
-    activePipelineFilters = [];
+    activePipelineFilters = defaultActivePipelineFilters();
   }
 
   function loadJson(text) {
@@ -605,6 +617,7 @@ const KanbanData = (() => {
     getAggregationMode,
     setActivePipelineFilters,
     getActivePipelineFilters,
+    defaultActivePipelineFilters,
     filterCatalog,
     filterSliceKey,
     resolveFilterSliceKey,

@@ -1,14 +1,16 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия архива:** 1.0.4 (2026-08-31)
+**Версия копии POST:** 1.0.6 (2026-08-31)
 
-Инструкция для работы после пересылки по почте или архивом.
+Инструкция для работы после пересылки по почте или копированием каталога.
 
-## Архив для почты
+## Каталог POST (без zip)
 
-Готовый zip: **`POST/KANBAN_HTML_Analiz.zip`** (обновляется при релизах).
+Актуальная копия проекта: **`POST/KANBAN_HTML_Analiz/`** (обновляется при релизах).
 
-Содержит **Python pipeline + HTML-дашборд** (каталог `HTML/`).
+Содержит **Python pipeline + HTML-дашборд** (каталог `HTML/`). Архив `.zip` **не** формируется — только зеркало структуры с файлами.
+
+**Не входит в POST:** `src/Tests/` (тесты только в Git-репозитории).
 
 ## Минимальный набор файлов (код + конфиг)
 
@@ -19,7 +21,7 @@ KANBAN_HTML_Analiz/
 ├── README.md
 ├── ROADMAP.md
 ├── .env.example
-├── src/
+├── src/                           # без каталога Tests/
 │   ├── main.py
 │   ├── excel_loader.py
 │   ├── lead_tracker.py
@@ -29,9 +31,7 @@ KANBAN_HTML_Analiz/
 │   ├── visualization_data.py
 │   ├── json_exporter.py
 │   ├── excel_exporter.py
-│   ├── pivot_excel.py
-│   ├── progress.py
-│   └── Tests/
+│   └── …
 ├── HTML/                          # ← дашборд (обязательно)
 │   ├── index.html
 │   ├── css/
@@ -50,7 +50,7 @@ KANBAN_HTML_Analiz/
     └── BT_KANBAN.md
 ```
 
-**Не включать:** `.git/`, `log/`, `OUT/`, `IN/`, `Docs/FileIN/`, `POST/`, `__pycache__/`
+**Не включать:** `.git/`, `log/`, `OUT/`, `IN/`, `Docs/FileIN/`, `POST/`, `src/Tests/`, `__pycache__/`
 
 ## Данные Excel (отдельно)
 
@@ -83,8 +83,8 @@ cd HTML && python -m http.server 8080
 | Графики линий | «По продуктам/группам», «По ТБ» — кривые «лиды × дни» |
 | Графики КМ | «КМ с нарушениями P80: по ТБ» / «… по группам/продуктам» — bar-chart |
 | Матрица | Группа/продукт × стадия; сортировка по клику |
-| BOTTOM менеджеры | Топ-N КМ по `rank_selection` (config); полные `records` в JSON; в UI — группы/продукты + метка стратегии; клик → детальная карточка (hotspots) |
-| Pipeline-фильтры | ВКЛ/ВЫКЛ: изменение условий, ввод данных, метки. **ЕФС** — только в `config.json` |
+| BOTTOM менеджеры | Секции по ТБ, топ-3 нарушителя P80; детализация — hotspots + ИНН / ID ПрПр / ID сделки; срез max(Дата отчета) |
+| Pipeline-фильтры | ВКЛ/ВЫКЛ: изменение условий, ввод данных, метки, **терминальные стадии сделки** (отказ / закрыта / заключен). **ЕФС** — только в `config.json` |
 
 ### Отбор TOP КМ (`manager_analytics.rank_selection`)
 
@@ -119,6 +119,7 @@ Excel и начальный TOP в UI — по этим настройкам. В
 
 ```bash
 python -c "import pandas, openpyxl; print('OK')"
-python -m pytest src/Tests/ -q
 python run.py
 ```
+
+> `pytest src/Tests/` — только в Git-репозитории разработки; в копии POST каталог `src/Tests/` отсутствует.

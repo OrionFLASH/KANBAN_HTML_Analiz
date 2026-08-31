@@ -156,13 +156,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "days": "П{p} дней",
                 "count": "П{p} лидов",
                 "min": "П{p} мин",
-                "max": "П{p} макс"
+                "max": "П{p} макс",
+                "km_count": "П{p} КМ ≥"
             },
             "days_since_deal": {
                 "days": "П{p} дн.сделки",
                 "count": "П{p} лид.сделки",
                 "min": "П{p} мин сд.",
-                "max": "П{p} макс сд."
+                "max": "П{p} макс сд.",
+                "km_count": "П{p} КМ ≥ сд."
             }
         },
         "excel_format": {
@@ -258,6 +260,36 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "contains_all": ["Стратегия", "2026"],
             "case_sensitive": False,
             "exclusive_group": "strategy_label",
+        },
+        "exclude_deal_otkaz": {
+            "enabled": True,
+            "column_key": "deal_stage",
+            "filter_mode": "exclude",
+            "exclude_contains": "отказ",
+            "case_sensitive": False,
+            "html_slice": True,
+            "default_active": True,
+            "ui_group": "terminal_deal_stages",
+        },
+        "exclude_deal_zakryta": {
+            "enabled": True,
+            "column_key": "deal_stage",
+            "filter_mode": "exclude",
+            "exclude_contains": "закрыта",
+            "case_sensitive": False,
+            "html_slice": True,
+            "default_active": True,
+            "ui_group": "terminal_deal_stages",
+        },
+        "exclude_deal_zaklyuchen": {
+            "enabled": True,
+            "column_key": "deal_stage",
+            "filter_mode": "exclude",
+            "exclude_contains": "заключен",
+            "case_sensitive": False,
+            "html_slice": True,
+            "default_active": True,
+            "ui_group": "terminal_deal_stages",
         },
     },
 }
@@ -405,6 +437,11 @@ def build_percentile_column_mapping(config: dict[str, Any]) -> dict[str, str]:
             p_text: str = percentile_display_value(p)
             label: str = percentile_label(p)
             for suffix, template in metric_templates.items():
+                if suffix == "km_count":
+                    continue
                 col_name: str = f"{metric}_{label}_{suffix}"
                 mapping[col_name] = template.format(p=p_text)
+            if abs(float(p) - 80.0) < 1e-9 and "km_count" in metric_templates:
+                col_name = f"{metric}_{label}_km_count"
+                mapping[col_name] = metric_templates["km_count"].format(p=p_text)
     return mapping

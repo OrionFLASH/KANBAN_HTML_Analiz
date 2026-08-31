@@ -214,12 +214,29 @@
     if (pipelineFilterBlock) pipelineFilterBlock.hidden = false;
     const active = new Set(KanbanData.getActivePipelineFilters());
 
-    const binary = catalog.filter((item) => !item.exclusive_group);
+    const inclusion = catalog.filter((item) => item.filter_mode !== "exclude" && !item.exclusive_group);
+    const exclusion = catalog.filter((item) => item.filter_mode === "exclude");
     const labelVariants = catalog.filter((item) => item.exclusive_group === "strategy_label");
 
-    binary.forEach((item) => {
+    inclusion.forEach((item) => {
       pipelineFilterList.appendChild(createPipelineToggle(item, active.has(item.name)));
     });
+
+    if (exclusion.length) {
+      const group = document.createElement("div");
+      group.className = "pipeline-toggle-group";
+      group.dataset.uiGroup = "terminal_deal_stages";
+
+      const groupTitle = document.createElement("div");
+      groupTitle.className = "pipeline-toggle-group__title";
+      groupTitle.textContent = "Исключить терминальные стадии сделки";
+      group.appendChild(groupTitle);
+
+      exclusion.forEach((item) => {
+        group.appendChild(createPipelineToggle(item, active.has(item.name)));
+      });
+      pipelineFilterList.appendChild(group);
+    }
 
     if (labelVariants.length) {
       const group = document.createElement("div");
@@ -547,7 +564,7 @@
   controls.resetFilters.addEventListener("click", () => {
     controls.stageFilter.value = "";
     controls.levelFilter.value = "";
-    KanbanData.setActivePipelineFilters([]);
+    KanbanData.setActivePipelineFilters(KanbanData.defaultActivePipelineFilters());
     populatePipelineFilters();
     populateTbFilter([]);
     populateGroupFilter();

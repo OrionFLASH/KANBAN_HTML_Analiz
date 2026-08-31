@@ -7,7 +7,12 @@ from typing import Any
 
 import pandas as pd
 
-from src.percentile_stats import compute_metric_percentiles, to_integer_days
+from src.percentile_stats import (
+    compute_metric_percentiles,
+    count_unique_km_at_or_above_p80,
+    percentile_label,
+    to_integer_days,
+)
 from src.settings import aggregation_group_columns, col
 
 logger: logging.Logger = logging.getLogger("kanban.aggregator")
@@ -17,14 +22,29 @@ def _aggregate_group(
     group: pd.DataFrame,
     metrics: list[str],
     percentiles: list[float],
+    config: dict[str, Any],
 ) -> dict[str, Any]:
     """Считает метрики для одной группы."""
     row: dict[str, Any] = {}
+    has_p80: bool = any(abs(float(p) - 80.0) < 1e-9 for p in percentiles)
+    km_col: str | None = None
+    if has_p80 and config.get("columns", {}).get("km"):
+        km_name: str = col(config, "km")
+        if km_name in group.columns:
+            km_col = km_name
+
     for metric in metrics:
         if metric not in group.columns:
             continue
         int_days = to_integer_days(group[metric])
         row.update(compute_metric_percentiles(int_days, percentiles, metric))
+        if has_p80 and km_col:
+            p80_label: str = percentile_label(80.0)
+            threshold_raw: Any = row.get(f"{metric}_{p80_label}_days")
+            threshold: int | None = int(threshold_raw) if threshold_raw is not None else None
+            row[f"{metric}_{p80_label}_km_count"] = count_unique_km_at_or_above_p80(
+                group, metric, threshold, km_col
+            )
     return row
 
 
@@ -59,7 +79,7 @@ def aggregate_statistics(
         if not isinstance(keys, tuple):
             keys = (keys,)
         row: dict[str, Any] = dict(zip(base_cols, keys))
-        row.update(_aggregate_group(group, metrics, percentiles))
+        row.update(_aggregate_group(group, metrics, percentiles, config))
         rows.append(row)
 
     result: pd.DataFrame = pd.DataFrame(rows)

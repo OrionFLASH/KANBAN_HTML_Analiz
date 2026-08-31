@@ -85,3 +85,24 @@ def compute_metric_percentiles(
         result[f"{metric_prefix}_{label}_max"] = stats["max"]
 
     return result
+
+
+def count_unique_km_at_or_above_p80(
+    group: pd.DataFrame,
+    metric: str,
+    threshold: int | None,
+    km_col: str | None,
+) -> int:
+    """
+    Число уникальных КМ, у которых срок по метрике >= порога P80 в группе.
+    """
+    if threshold is None or not km_col or km_col not in group.columns or group.empty:
+        return 0
+    days_numeric: pd.Series = pd.to_numeric(group[metric], errors="coerce")
+    valid: pd.Series = days_numeric.notna() & (days_numeric.round() >= threshold)
+    if not valid.any():
+        return 0
+    km_values: pd.Series = group.loc[valid, km_col].fillna("").astype(str).str.strip()
+    empty: set[str] = {"", "-", "nan", "none", "None"}
+    km_values = km_values[~km_values.str.lower().isin({v.lower() for v in empty})]
+    return int(km_values.nunique())

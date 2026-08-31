@@ -15,7 +15,7 @@ from src.config_loader import get_file_list, get_input_dir, get_output_dir, load
 from src.dictionaries import build_dimensions
 from src.excel_exporter import export_excel
 from src.excel_loader import load_all_files
-from src.filter_slices import build_all_filter_slices, filter_slice_key
+from src.filter_slices import build_all_filter_slices, default_filter_slice_key, filter_slice_key
 from src.filters import apply_filters
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
@@ -132,17 +132,24 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
             }
         }
 
+    default_slice_key: str = default_filter_slice_key(config) if precompute_slices else "none"
+    if default_slice_key not in filter_slices:
+        if "none" in filter_slices:
+            default_slice_key = "none"
+        elif filter_slices:
+            default_slice_key = next(iter(filter_slices))
+
     json_visualizations: dict = build_json_visualization_payload(
         config,
         filter_slices,
         filter_catalog,
-        default_slice_key="none",
+        default_slice_key=default_slice_key,
         embed_filter_slices=not bool(
             config.get("dashboard", {}).get("html_json", {}).get("bundle_mode", "split") == "split"
         ),
     )
-    none_slice: dict[str, Any] = filter_slices.get("none", {})
-    stats_by_mode: dict[str, dict] = none_slice.get("_stats_by_mode", {})
+    primary_slice: dict[str, Any] = filter_slices.get(default_slice_key, filter_slices.get("none", {}))
+    stats_by_mode: dict[str, dict] = primary_slice.get("_stats_by_mode", {})
     if not stats_by_mode:
         stats_by_mode = {config.get("product_analysis_mode", "group_product"): stats}
         for mode in JSON_AGGREGATION_MODES:
