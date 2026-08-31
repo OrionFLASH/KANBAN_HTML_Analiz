@@ -1,6 +1,6 @@
 # Бизнес-требования и системный анализ: KANBAN HTML Analiz
 
-**Версия:** 1.0.2  
+**Версия:** 1.0.3  
 **Дата:** 2026-08-31  
 **Источник:** `Docs/ToDo KANBAN.txt`
 
@@ -152,7 +152,8 @@
 - Превышение: срок лида **строго больше** P80
 - Топ-N менеджеров на каждый ТБ по числу превышений
 - Bar-графики в HTML: число КМ с нарушениями по ТБ и по группам/продуктам
-- Выход: лист Excel «Менеджеры», JSON с `top_by_tb` + `charts`, блок BOTTOM в HTML
+- **Hotspots** — топ зон превышения на каждого КМ (продукт×стадия, +N дн. к P80)
+- Выход: лист Excel «Менеджеры», JSON с `top_by_tb[].hotspots`, детальная карточка в HTML
 - Колонка `КМ` должна быть в `required_column_keys` для загрузки из Excel
 
 ---
@@ -170,9 +171,10 @@
 | `Сводная` | ТБ × Группа × Продукт × Стадия × min/max/перцентили |
 | `Общий` | Без разреза ТБ |
 | `{ТБ}` | Отдельный лист на каждый ТБ |
-| `Матрица` | Продукт/группа × стадия, фильтры |
 | `Графики` | Кривые «лиды × дни» |
-| `Менеджеры` | Топ-3 КМ по ТБ (превышения P80), если есть колонка КМ |
+| `Менеджеры` | Топ-N КМ по ТБ + текст «Топ зон превышения» |
+
+> Лист **«Матрица»** в Excel не формируется (v1.0.3). Интерактивная матрица — в HTML.
 
 Форматирование: условная раскраска (min — зелёный градиент, max — красный, перцентили — нейтральные оттенки).
 
@@ -188,7 +190,8 @@
 
 **Менеджеры** (`kanban_report_managers_{timestamp}.json`):
 
-- `top_by_tb`, `meta`, `charts` (`by_tb`, `facts`)
+- `top_by_tb[]` с **`hotspots`** — почему КМ в топе (продукт, стадия, превышение)
+- `meta`, `charts` (`by_tb`, `facts`)
 - При полном экспорте: `detail_by_product`, `manager_totals`
 
 > Копии `*_latest*` и запись в `HTML/data/` **не создаются**. JSON загружается в дашборд вручную.
@@ -240,7 +243,7 @@
 | `visualization_data.py` | Блок visualizations для JSON и Excel |
 | `excel_exporter.py` | Форматированный xlsx (openpyxl) |
 | `json_exporter.py` | JSON для HTML |
-| `pivot_excel.py` | Листы Матрица и Графики |
+| `pivot_excel.py` | Лист «Графики» в Excel (лист «Матрица» не создаётся) |
 | `main.py` | Оркестрация pipeline |
 
 ### 6.2. Технологический стек
@@ -288,6 +291,7 @@
     "metric": "days_on_stage",
     "percentile": 80,
     "top_managers_per_tb": 3,
+    "top_hotspots_per_manager": 5,
     "html_include_detail": false
   },
   "filters": {
@@ -323,7 +327,7 @@
 
 ---
 
-## 9. Согласованные решения (v1.0.2, 2026-08-31)
+## 9. Согласованные решения (v1.0.3, 2026-08-31)
 
 | Тема | Решение |
 |------|---------|
@@ -333,7 +337,8 @@
 | Фильтр ЕФС | `html_slice: false` — только config; `enabled: false` = строки с 0 и 1 |
 | JSON export | Split-bundle: manifest + `slices/`; без `*_latest*` и `HTML/data/` |
 | JSON filter_slices | 2^N для HTML-фильтров; `dashboard.precompute_html_filter_slices` |
-| Менеджеры (КМ) | P80 overall; топ-N на ТБ; `charts` для bar-графиков; `html_include_detail: false` на prod |
+| Менеджеры (КМ) | P80 overall; топ-N на ТБ; hotspots; детальная карточка в HTML |
+| Excel визуализация | Только лист «Графики»; «Матрица» — только HTML |
 | Excel-таблица | Имя в config (`excel.table_name`: `Base`); авто fallback на Sheet1 |
 | JSON | Только агрегаты (без lead_tracks); матрица из `pivot_flat` |
 | Перцентили | Настраиваемый список, default `[20, 50, 80]` |

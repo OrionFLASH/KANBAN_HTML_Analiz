@@ -157,8 +157,6 @@ def export_excel(
             frame.to_excel(writer, sheet_name=sheet_name, index=False)
 
         wb = writer.book
-        matrix_label: str = sheet_names.get("matrix", "Матрица")
-        charts_label: str = sheet_names.get("charts", "Графики")
 
         for sheet_name in wb.sheetnames:
             if sheet_name.startswith("_"):
@@ -168,7 +166,6 @@ def export_excel(
         if visualizations:
             add_visualization_sheets(
                 wb,
-                visualizations.get("pivot_flat", []),
                 visualizations.get("distribution_series", []),
                 config,
                 used_sheet_names=used_sheet_names,

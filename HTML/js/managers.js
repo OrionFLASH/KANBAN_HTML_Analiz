@@ -1,15 +1,21 @@
-/** Загрузка JSON менеджеров, панель BOTTOM и bar-графики «КМ с нарушениями P80». */
+/** Загрузка JSON менеджеров, детальные карточки КМ и bar-графики нарушений P80. */
 
 const KanbanManagers = (() => {
   let payload = null;
+  let selectedKey = null;
 
   function loadJson(text) {
     payload = JSON.parse(text);
+    selectedKey = null;
     return payload;
   }
 
   function getPayload() {
     return payload;
+  }
+
+  function managerKey(tb, km) {
+    return `${String(tb)}|${String(km)}`;
   }
 
   function chartsData() {
@@ -51,23 +57,6 @@ const KanbanManagers = (() => {
     return rows.filter((row) => tbSet.has(String(row.tb)));
   }
 
-  function filterDetail(filters) {
-    const rows = payload?.detail_by_product || [];
-    const tbSet = resolveTbFilter(filters);
-    let result = rows;
-    if (tbSet) result = result.filter((row) => tbSet.has(String(row.tb)));
-    if (filters?.productGroups?.length) {
-      result = result.filter((row) => filters.productGroups.includes(String(row.product_group)));
-    }
-    if (filters?.products?.length) {
-      result = result.filter((row) => filters.products.includes(String(row.product)));
-    }
-    if (filters?.stage) {
-      result = result.filter((row) => String(row.stage_key) === filters.stage);
-    }
-    return result;
-  }
-
   function filterFacts(filters) {
     let rows = chartsData().facts || [];
     const tbSet = resolveTbFilter(filters);
@@ -91,7 +80,6 @@ const KanbanManagers = (() => {
     return rows;
   }
 
-  /** Уникальные КМ с нарушениями по ключу сегмента (группа или продукт). */
   function aggregateFactsBySegment(facts, groupOnly) {
     const map = new Map();
     facts.forEach((fact) => {
@@ -112,10 +100,11 @@ const KanbanManagers = (() => {
       .sort((a, b) => b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals);
   }
 
-  /** Уникальные КМ с нарушениями внутри одного ТБ по сегменту. */
   function aggregateFactsByTbSegment(facts, tb, groupOnly) {
-    const scoped = facts.filter((f) => String(f.tb) === String(tb));
-    return aggregateFactsBySegment(scoped, groupOnly);
+    return aggregateFactsBySegment(
+      facts.filter((f) => String(f.tb) === String(tb)),
+      groupOnly
+    );
   }
 
   function toBarGroup(title, subtitle, rows, valueKey, labelKey) {
@@ -147,7 +136,7 @@ const KanbanManagers = (() => {
         groups.push(
           toBarGroup(
             `КМ с нарушениями ${pLabel} · по ТБ`,
-            "Число уникальных КМ, у которых есть сделки с превышением порога продукта×стадии",
+            "Число уникальных КМ с превышением порога продукта×стадии",
             byTb.map((row) => ({
               label: KanbanData.tbDisplay(row.tb),
               km_with_violations: row.km_with_violations,
@@ -185,7 +174,7 @@ const KanbanManagers = (() => {
         groups.push(
           toBarGroup(
             `КМ с нарушениями ${pLabel} · по ${segmentDim}`,
-            "Уникальные КМ с превышением порога (с учётом фильтров ТБ и стадии)",
+            "Уникальные КМ с превышением порога",
             segments,
             "km_with_violations",
             "label"
@@ -193,25 +182,23 @@ const KanbanManagers = (() => {
         );
       }
 
-      const byTb = filterByTbRows(filters)
+      filterByTbRows(filters)
         .filter((row) => row.km_with_violations > 0)
-        .slice()
         .sort((a, b) => b.km_with_violations - a.km_with_violations)
-        .slice(0, limit);
-
-      byTb.forEach((row) => {
-        const tbSegments = aggregateFactsByTbSegment(facts, row.tb, groupOnly).slice(0, limit);
-        if (!tbSegments.length) return;
-        groups.push(
-          toBarGroup(
-            `${KanbanData.tbDisplay(row.tb)} · ${segmentDim}`,
-            `${row.km_with_violations} КМ с нарушениями · ${row.violation_deals} сделок`,
-            tbSegments,
-            "km_with_violations",
-            "label"
-          )
-        );
-      });
+        .slice(0, limit)
+        .forEach((row) => {
+          const tbSegments = aggregateFactsByTbSegment(facts, row.tb, groupOnly).slice(0, limit);
+          if (!tbSegments.length) return;
+          groups.push(
+            toBarGroup(
+              `${KanbanData.tbDisplay(row.tb)} · ${segmentDim}`,
+              `${row.km_with_violations} КМ · ${row.violation_deals} сделок`,
+              tbSegments,
+              "km_with_violations",
+              "label"
+            )
+          );
+        });
     }
 
     return groups;
@@ -225,6 +212,101 @@ const KanbanManagers = (() => {
       .replace(/"/g, "&quot;");
   }
 
+  function hotspotSeverity(spot) {
+    const overshoot = Number(spot.max_overshoot) || 0;
+    const count = Number(spot.exceedance_count) || 0;
+    if (overshoot >= 20 || count >= 6) return "critical";
+    if (overshoot >= 10 || count >= 3) return "warning";
+    return "mild";
+  }
+
+  function segmentLabel(spot) {
+    if (KanbanData.isGroupOnly()) return String(spot.product_group || "—");
+    return `${spot.product_group || "—"} · ${spot.product || "—"}`;
+  }
+
+  function renderHotspotRow(spot, maxCount) {
+    const severity = hotspotSeverity(spot);
+    const count = Number(spot.exceedance_count) || 0;
+    const barPct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
+    const threshold = spot.threshold_days ?? "—";
+    const maxDays = spot.max_days ?? "—";
+    const overshoot = spot.max_overshoot ?? "—";
+
+    return (
+      `<li class="manager-hotspot manager-hotspot--${severity}">` +
+      `<div class="manager-hotspot__head">` +
+      `<span class="manager-hotspot__segment">${escapeHtml(segmentLabel(spot))}</span>` +
+      `<span class="manager-hotspot__stage">${escapeHtml(spot.stage_key)}</span>` +
+      `</div>` +
+      `<div class="manager-hotspot__metrics">` +
+      `<span><b>${count}</b> сделок</span>` +
+      `<span>макс <b>${maxDays}</b> дн.</span>` +
+      `<span>P80=${threshold}</span>` +
+      `<span class="manager-hotspot__delta">+${overshoot} дн.</span>` +
+      `</div>` +
+      `<div class="manager-hotspot__bar" aria-hidden="true">` +
+      `<span class="manager-hotspot__bar-fill" style="width:${barPct}%"></span>` +
+      `</div>` +
+      `</li>`
+    );
+  }
+
+  function renderDetailCard(row, filters) {
+    const hotspots = (row.hotspots || []).filter((spot) => {
+      if (filters?.stage && String(spot.stage_key) !== filters.stage) return false;
+      if (filters?.productGroups?.length && !filters.productGroups.includes(String(spot.product_group))) {
+        return false;
+      }
+      if (filters?.products?.length && !filters.products.includes(String(spot.product))) return false;
+      return true;
+    });
+
+    const maxCount = hotspots.reduce((m, s) => Math.max(m, Number(s.exceedance_count) || 0), 0);
+    const pLabel = percentileLabel();
+
+    let hotspotsHtml = "";
+    if (hotspots.length) {
+      hotspotsHtml =
+        `<ul class="manager-hotspot-list">` +
+        hotspots.map((spot) => renderHotspotRow(spot, maxCount)).join("") +
+        `</ul>`;
+    } else {
+      hotspotsHtml = `<p class="manager-detail__empty">Нет зон превышения для текущих фильтров.</p>`;
+    }
+
+    return (
+      `<article class="manager-detail" id="managerDetailCard">` +
+      `<div class="manager-detail__hero">` +
+      `<div class="manager-detail__rank">${row.rank}</div>` +
+      `<div class="manager-detail__identity">` +
+      `<h4 class="manager-detail__name">${escapeHtml(row.km)}</h4>` +
+      `<p class="manager-detail__tb">${escapeHtml(row.tb)}</p>` +
+      `</div>` +
+      `<div class="manager-detail__totals">` +
+      `<div class="manager-detail__stat">` +
+      `<span class="manager-detail__stat-value">${row.exceedance_count}</span>` +
+      `<span class="manager-detail__stat-label">превышений ${pLabel}</span>` +
+      `</div>` +
+      `<div class="manager-detail__stat">` +
+      `<span class="manager-detail__stat-value">${row.total_leads}</span>` +
+      `<span class="manager-detail__stat-label">лидов</span>` +
+      `</div>` +
+      `</div>` +
+      `</div>` +
+      `<p class="manager-detail__intro">` +
+      `Почему в топе: наибольшие отклонения по продуктам и стадиям (срок &gt; порога ${pLabel}).` +
+      `</p>` +
+      `<div class="manager-detail__legend">` +
+      `<span class="manager-detail__legend-item manager-detail__legend-item--critical">сильное</span>` +
+      `<span class="manager-detail__legend-item manager-detail__legend-item--warning">среднее</span>` +
+      `<span class="manager-detail__legend-item manager-detail__legend-item--mild">умеренное</span>` +
+      `</div>` +
+      hotspotsHtml +
+      `</article>`
+    );
+  }
+
   function render(container, filters) {
     if (!container) return;
     container.innerHTML = "";
@@ -233,7 +315,7 @@ const KanbanManagers = (() => {
       container.innerHTML =
         `<div class="managers-empty">` +
         `<p class="managers-empty__title">Нет данных по менеджерам</p>` +
-        `<p>Загрузите <code>kanban_managers_*.json</code> или выполните <code>run.py</code> с колонкой КМ.</p>` +
+        `<p>Загрузите <code>kanban_report_managers_*.json</code> или выполните <code>run.py</code> с колонкой КМ.</p>` +
         `</div>`;
       return;
     }
@@ -241,8 +323,8 @@ const KanbanManagers = (() => {
     const head = document.createElement("div");
     head.className = "managers-panel__head";
     head.innerHTML =
-      `<h3 class="managers-panel__title">BOTTOM: менеджеры с превышениями P80</h3>` +
-      `<p class="managers-panel__intro">${metaLine()} · срок на стадии &gt; порога продукта×стадии</p>`;
+      `<h3 class="managers-panel__title">Менеджеры: превышения P80</h3>` +
+      `<p class="managers-panel__intro">${metaLine()} · выберите КМ для детализации</p>`;
     container.appendChild(head);
 
     const top = filterTop(filters);
@@ -254,50 +336,44 @@ const KanbanManagers = (() => {
       return;
     }
 
+    const validKeys = new Set(top.map((row) => managerKey(row.tb, row.km)));
+    if (!selectedKey || !validKeys.has(selectedKey)) {
+      const first = top.find((row) => row.exceedance_count > 0) || top[0];
+      selectedKey = managerKey(first.tb, first.km);
+    }
+
     const topWrap = document.createElement("div");
     topWrap.className = "managers-top-grid";
     top.forEach((row) => {
-      const card = document.createElement("div");
-      card.className = "manager-card";
-      card.innerHTML =
+      const key = managerKey(row.tb, row.km);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "manager-card" + (key === selectedKey ? " manager-card--active" : "");
+      btn.dataset.managerKey = key;
+      btn.innerHTML =
         `<div class="manager-card__rank">${row.rank}</div>` +
         `<div class="manager-card__body">` +
         `<div class="manager-card__name">${escapeHtml(row.km)}</div>` +
         `<div class="manager-card__meta">${escapeHtml(row.tb)}</div>` +
-        `<div class="manager-card__stat"><span>${row.exceedance_count}</span> превышений · ${row.total_leads} лидов</div>` +
+        `<div class="manager-card__stat"><span>${row.exceedance_count}</span> превыш. · ${row.total_leads} лид.</div>` +
+        (row.hotspots?.length
+          ? `<div class="manager-card__hint">${escapeHtml(segmentLabel(row.hotspots[0]))} · ${escapeHtml(row.hotspots[0].stage_key)}</div>`
+          : "") +
         `</div>`;
-      topWrap.appendChild(card);
+      btn.addEventListener("click", () => {
+        selectedKey = key;
+        render(container, filters);
+      });
+      topWrap.appendChild(btn);
     });
     container.appendChild(topWrap);
 
-    const detail = filterDetail(filters);
-    if (detail.length) {
-      const tableWrap = document.createElement("div");
-      tableWrap.className = "managers-detail-wrap";
-      const table = document.createElement("table");
-      table.className = "managers-detail-table";
-      table.innerHTML =
-        `<thead><tr>` +
-        `<th>ТБ</th><th>КМ</th><th>Группа</th><th>Продукт</th><th>Стадия</th><th>P80</th><th>Превыш.</th>` +
-        `</tr></thead><tbody></tbody>`;
-      const tbody = table.querySelector("tbody");
-      detail
-        .sort((a, b) => b.exceedance_count - a.exceedance_count)
-        .slice(0, 200)
-        .forEach((row) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML =
-            `<td>${escapeHtml(row.tb)}</td>` +
-            `<td>${escapeHtml(row.km)}</td>` +
-            `<td>${escapeHtml(row.product_group)}</td>` +
-            `<td>${escapeHtml(row.product || "—")}</td>` +
-            `<td>${escapeHtml(row.stage_key)}</td>` +
-            `<td>${row.threshold_days ?? "—"}</td>` +
-            `<td><b>${row.exceedance_count}</b></td>`;
-          tbody.appendChild(tr);
-        });
-      tableWrap.appendChild(table);
-      container.appendChild(tableWrap);
+    const selected = top.find((row) => managerKey(row.tb, row.km) === selectedKey);
+    if (selected) {
+      const detailWrap = document.createElement("div");
+      detailWrap.className = "manager-detail-wrap";
+      detailWrap.innerHTML = renderDetailCard(selected, filters);
+      container.appendChild(detailWrap);
     }
   }
 

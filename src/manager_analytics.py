@@ -132,16 +132,36 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
 
     exceeded: pd.DataFrame = detail.loc[detail["exceeded"]].copy()
     if exceeded.empty:
-        by_product = pd.DataFrame(columns=product_cols + ["exceedance_count", "threshold_days"])
+        by_product = pd.DataFrame(
+            columns=product_cols
+            + [
+                "exceedance_count",
+                "threshold_days",
+                "max_days",
+                "max_overshoot",
+                "avg_overshoot",
+            ]
+        )
     else:
         by_product = (
             exceeded.groupby(product_cols, dropna=False)
             .agg(
                 exceedance_count=(lead_col, "count"),
                 threshold_days=("threshold_days", "max"),
+                max_days=("days_int", "max"),
+                avg_days=("days_int", "mean"),
             )
             .reset_index()
         )
+        by_product["max_overshoot"] = (
+            pd.to_numeric(by_product["max_days"], errors="coerce")
+            - pd.to_numeric(by_product["threshold_days"], errors="coerce")
+        ).clip(lower=0)
+        by_product["avg_overshoot"] = (
+            pd.to_numeric(by_product["avg_days"], errors="coerce")
+            - pd.to_numeric(by_product["threshold_days"], errors="coerce")
+        ).clip(lower=0)
+        by_product = by_product.drop(columns=["avg_days"])
 
     manager_totals: pd.DataFrame = (
         detail.groupby([tb_col, km_name], dropna=False)
@@ -153,6 +173,88 @@ def aggregate_manager_counts(detail: pd.DataFrame, config: dict[str, Any]) -> tu
     )
     manager_totals["exceedance_count"] = manager_totals["exceedance_count"].astype(int)
     return by_product, manager_totals
+
+
+def _hotspot_records(by_product: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Список зон превышения (продукт×стадия) с метриками отклонения."""
+    if by_product.empty:
+        return []
+    km_name: str | None = km_column(config)
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    tb_col: str = col(config, "tb")
+    rename: dict[str, str] = {
+        tb_col: "tb",
+        pg_col: "product_group",
+        prod_col: "product",
+    }
+    if km_name:
+        rename[km_name] = "km"
+    frame: pd.DataFrame = by_product.rename(columns=rename)
+    for col_name in ("max_days", "max_overshoot", "avg_overshoot", "threshold_days"):
+        if col_name in frame.columns:
+            frame[col_name] = pd.to_numeric(frame[col_name], errors="coerce").round(1)
+    if "exceedance_count" in frame.columns:
+        frame["exceedance_count"] = frame["exceedance_count"].astype(int)
+    return frame.to_dict(orient="records")
+
+
+def attach_hotspots_to_top(
+    top_tb: pd.DataFrame,
+    by_product: pd.DataFrame,
+    config: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Топ менеджеров с вложенным списком ключевых зон превышения."""
+    if top_tb.empty:
+        return []
+
+    top_n_hotspots: int = int(config.get("manager_analytics", {}).get("top_hotspots_per_manager", 5))
+    km_name: str = km_column(config) or "km"
+    tb_col: str = col(config, "tb")
+    hotspots: list[dict[str, Any]] = _hotspot_records(by_product, config)
+    by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    for item in hotspots:
+        key: tuple[str, str] = (str(item.get("tb", "")), str(item.get("km", "")))
+        by_key.setdefault(key, []).append(item)
+
+    for items in by_key.values():
+        items.sort(
+            key=lambda row: (
+                -int(row.get("exceedance_count") or 0),
+                -float(row.get("max_overshoot") or 0),
+                str(row.get("stage_key", "")),
+            )
+        )
+
+    top_records: list[dict[str, Any]] = _frame_to_records(top_tb, config)
+    for row in top_records:
+        key = (str(row.get("tb", "")), str(row.get("km", "")))
+        row["hotspots"] = by_key.get(key, [])[:top_n_hotspots]
+    return top_records
+
+
+def format_hotspots_excel_summary(hotspots: list[dict[str, Any]], config: dict[str, Any]) -> str:
+    """Текстовое резюме топ-зон для колонки Excel."""
+    if not hotspots:
+        return "—"
+    group_only: bool = is_group_only_analysis(config)
+    parts: list[str] = []
+    for idx, spot in enumerate(hotspots, start=1):
+        if group_only:
+            segment: str = str(spot.get("product_group", "—"))
+        else:
+            segment = f"{spot.get('product_group', '—')} · {spot.get('product', '—')}"
+        stage: str = str(spot.get("stage_key", "—"))
+        count: int = int(spot.get("exceedance_count") or 0)
+        overshoot: float = float(spot.get("max_overshoot") or 0)
+        threshold: float = float(spot.get("threshold_days") or 0)
+        max_days: float = float(spot.get("max_days") or 0)
+        parts.append(
+            f"{idx}) {segment} / {stage}: {count} сд., "
+            f"макс {max_days:.0f} дн. (P80={threshold:.0f}, +{overshoot:.0f})"
+        )
+    return " | ".join(parts)
 
 
 def build_km_violation_charts(
@@ -285,6 +387,7 @@ def build_manager_analytics(
     detail: pd.DataFrame = build_manager_exceedance_detail(records, thresholds, config)
     by_product, manager_totals = aggregate_manager_counts(detail, config)
     top_tb: pd.DataFrame = top_managers_per_tb(manager_totals, config)
+    top_records: list[dict[str, Any]] = attach_hotspots_to_top(top_tb, by_product, config)
     charts: dict[str, Any] = build_km_violation_charts(detail, manager_totals, config)
 
     logger.info(
@@ -309,7 +412,7 @@ def build_manager_analytics(
                 "для той же группы, продукта и стадии (порог из общей сводки без ТБ)."
             ),
         },
-        "top_by_tb": _frame_to_records(top_tb, config),
+        "top_by_tb": top_records,
         "detail_by_product": _frame_to_records(by_product, config),
         "manager_totals": _frame_to_records(manager_totals, config),
         "charts": charts,
@@ -318,7 +421,7 @@ def build_manager_analytics(
 
 
 def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, Any]) -> pd.DataFrame:
-    """Таблица для листа Excel: топ менеджеров по ТБ."""
+    """Таблица для листа Excel: топ менеджеров по ТБ с резюме зон превышения."""
     rows: list[dict[str, Any]] = payload.get("top_by_tb") or []
     if not rows:
         return pd.DataFrame()
@@ -326,15 +429,29 @@ def manager_analytics_to_excel_frame(payload: dict[str, Any], config: dict[str, 
     km_label: str = config.get("output", {}).get("column_labels", {}).get("km", "КМ")
     tb_label: str = config.get("output", {}).get("column_labels", {}).get("tb", "ТБ")
 
-    frame: pd.DataFrame = pd.DataFrame(rows)
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        copy_row: dict[str, Any] = dict(row)
+        copy_row["hotspots_summary"] = format_hotspots_excel_summary(row.get("hotspots") or [], config)
+        enriched.append(copy_row)
+
+    frame: pd.DataFrame = pd.DataFrame(enriched)
     rename: dict[str, str] = {
         "tb": tb_label,
         "rank": "Место",
         "km": km_label,
         "exceedance_count": "Превышений P80",
         "total_leads": "Лидов (уник.)",
+        "hotspots_summary": "Топ зон превышения (продукт · стадия)",
     }
-    cols: list[str] = ["tb", "rank", "km", "exceedance_count", "total_leads"]
+    cols: list[str] = [
+        "tb",
+        "rank",
+        "km",
+        "exceedance_count",
+        "total_leads",
+        "hotspots_summary",
+    ]
     cols = [c for c in cols if c in frame.columns]
     return frame[cols].rename(columns=rename)
 

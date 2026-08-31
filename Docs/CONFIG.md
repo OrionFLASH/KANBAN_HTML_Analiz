@@ -1,6 +1,6 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.2**).
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.3**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
 
@@ -62,7 +62,7 @@
 
 | Контекст | Что управляет config | Где применяется |
 |----------|----------------------|-----------------|
-| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки, Матрица, Графики, Менеджеры |
+| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки, **Графики**, **Менеджеры** (лист «Матрица» не создаётся) |
 | **JSON (основной)** | `dashboard.precompute_html_filter_slices`; фильтры с `html_slice: true` (не `enabled`) | `visualizations.filter_slices` — комбинации 2^N (N = число HTML-фильтров); база данных — после config-only фильтров |
 | **JSON (менеджеры)** | `manager_analytics.*`; колонка `km` в `required_column_keys` | `kanban_report_managers_{timestamp}.json` + блок `charts` |
 | **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations`; JSON менеджеров — bar-графики КМ | Локальный дашборд `HTML/` |
@@ -670,6 +670,9 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 | `timestamp_format` | strftime, напр. `%Y%m%d_%H%M%S` |
 | `excel_sheets.summary` | Лист «Сводная» (все ТБ) |
 | `excel_sheets.overall` | Лист «Общий» |
+| `excel_sheets.charts` | Лист «Графики» (кривые «лиды × дни») |
+| `excel_sheets.managers` | Лист «Менеджеры» (топ КМ + зоны превышения) |
+| `excel_sheets.matrix` | Устаревший ключ в config; лист **не создаётся** (матрица только в HTML) |
 | `excel_max_sheet_name_length` | Лимит Excel 31 символ |
 | `column_labels` | Заголовки колонок в Excel |
 | `excel_format` | freeze, ширина, форматы чисел, цвета |
@@ -794,9 +797,12 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 | `percentile` | Порог перцентиля (обычно `80`) |
 | `threshold_scope` | `overall` — порог из общей сводки без ТБ |
 | `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) |
-| `html_include_detail` | `false` (prod) — в HTML только `top_by_tb` + `charts`; `true` — также `detail_by_product`, `manager_totals` |
+| `top_hotspots_per_manager` | Топ зон превышения (продукт×стадия) на каждого КМ в топе (по умолчанию `5`) |
+| `html_include_detail` | `false` (prod) — в HTML `top_by_tb` (с `hotspots`) + `charts`; `true` — также `detail_by_product`, `manager_totals` |
 
 **Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ.
+
+**Hotspots** — ключевые зоны, по которым КМ попал в топ: продукт/группа, стадия, число сделок, порог P80, макс. дней и превышение (+N дн.).
 
 **Блок `charts` (в slim и полном JSON):**
 
@@ -809,9 +815,9 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 
 | Артефакт | Путь |
 |----------|------|
-| Excel | Лист `output.excel_sheets.managers` («Менеджеры») |
+| Excel | Лист «Менеджеры»: место, КМ, ТБ, превышения, колонка «Топ зон превышения» |
 | JSON | `OUT/kanban_report_managers_{timestamp}.json` |
-| HTML | Блок BOTTOM на вкладке «Сводная матрица» + bar-графики КМ на вкладке «Графики» |
+| HTML | Карточки топ-КМ + **детальная карточка** (hotspots, подсветка зон); bar-графики на вкладке «Графики» |
 
 **Структура JSON менеджеров (кратко):**
 
@@ -824,7 +830,25 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
     "km_column": "КМ"
   },
   "top_by_tb": [
-    { "tb": "…", "rank": 1, "km": "…", "exceedance_count": 12, "total_leads": 340 }
+    {
+      "tb": "…",
+      "rank": 1,
+      "km": "…",
+      "exceedance_count": 12,
+      "total_leads": 340,
+      "hotspots": [
+        {
+          "product_group": "…",
+          "product": "…",
+          "stage_key": "В РАБОТЕ",
+          "exceedance_count": 5,
+          "threshold_days": 30,
+          "max_days": 45,
+          "max_overshoot": 15,
+          "avg_overshoot": 8.2
+        }
+      ]
+    }
   ],
   "charts": {
     "by_tb": [
@@ -840,7 +864,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 }
 ```
 
-При `html_include_detail: false` поля `detail_by_product` и `manager_totals` в файл **не пишутся**; `charts` и `top_by_tb` — **всегда**.
+При `html_include_detail: false` поля `detail_by_product` и `manager_totals` в файл **не пишутся**; `charts`, `top_by_tb` и вложенные **`hotspots`** — **всегда**.
 
 > Этап пропускается **без ошибки**, если: `enabled: false`; колонки КМ нет в Excel; `km` не в `required_column_keys` (колонка не загружена); не удалось построить пороги P80.
 
@@ -853,6 +877,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "percentile": 80,
   "threshold_scope": "overall",
   "top_managers_per_tb": 3,
+  "top_hotspots_per_manager": 5,
   "html_include_detail": false
 }
 ```

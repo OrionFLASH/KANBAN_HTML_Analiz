@@ -164,7 +164,8 @@
 | 10.2 | Графики лидов × дней (Chart.js) | `HTML/js/charts.js` | `[v]` |
 | 10.3 | Сводная матрица продукт × стадия | `HTML/js/pivot.js` | `[v]` |
 | 10.4 | Блок `visualizations` в JSON | `src/visualization_data.py` | `[v]` |
-| 10.5 | Excel: листы Матрица и Графики | `src/pivot_excel.py` | `[v]` |
+| 10.5 | Excel: лист «Графики» (без «Матрицы») | `src/pivot_excel.py` | `[v]` |
+| 10.6 | Менеджеры: hotspots + детальная карточка КМ в HTML | `manager_analytics.py`, `managers.js` | `[v]` |
 
 ---
 

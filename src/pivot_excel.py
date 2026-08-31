@@ -352,28 +352,20 @@ def write_charts_sheet(
 
 def add_visualization_sheets(
     wb,
-    pivot_flat: list[dict[str, Any]],
     distribution_series: list[dict[str, Any]],
     config: dict[str, Any],
     used_sheet_names: set[str] | None = None,
 ) -> None:
-    """Добавляет скрытые данные, матрицу и графики."""
+    """Добавляет скрытые данные для графиков и лист «Графики» (без «Матрицы»)."""
     out_cfg: dict[str, Any] = config.get("output", {})
     sheet_names: dict[str, str] = out_cfg.get("excel_sheets", {})
     max_len: int = int(out_cfg.get("excel_max_sheet_name_length", 31))
     used: set[str] = used_sheet_names if used_sheet_names is not None else set(wb.sheetnames)
 
-    flat_ws = wb.create_sheet("_pivot_flat")
-    write_hidden_pivot_flat(flat_ws, pivot_flat)
-
     chart_ws = wb.create_sheet("_chart_src")
     write_hidden_chart_source(chart_ws, distribution_series)
-
-    matrix_name: str = sanitize_sheet_name(sheet_names.get("matrix", "Матрица"), used, max_len)
-    matrix_ws = wb.create_sheet(matrix_name)
-    write_matrix_sheet(matrix_ws, pivot_flat, distribution_series, config)
 
     charts_name: str = sanitize_sheet_name(sheet_names.get("charts", "Графики"), used, max_len)
     write_charts_sheet(wb, distribution_series, config, charts_name)
 
-    logger.info("Добавлены листы визуализации: %s, %s", matrix_name, charts_name)
+    logger.info("Добавлен лист визуализации: %s", charts_name)

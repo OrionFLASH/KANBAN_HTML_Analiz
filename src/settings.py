@@ -192,6 +192,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "percentile": 80,
         "threshold_scope": "overall",
         "top_managers_per_tb": 3,
+        "top_hotspots_per_manager": 5,
         "html_include_detail": False,
     },
     "parallel_workers": 0,

@@ -104,9 +104,10 @@ log/                 # логи INFO/DEBUG
 - **Сводная** — все ТБ
 - **Общий** — без разреза ТБ
 - **{ТБ}** — отдельный лист на каждый ТБ
-- **Матрица** — продукт × стадия, фильтры ТБ / показатель / метрика
-- **Менеджеры** — топ-N КМ по ТБ с превышениями P80 (если в Excel есть колонка КМ)
-- **Графики** — кривые «лиды × дни» (Chart.js в Excel через openpyxl)
+- **Менеджеры** — топ-N КМ по ТБ, колонка «Топ зон превышения» (продукт · стадия · +N дн.)
+- **Графики** — кривые «лиды × дни»
+
+> Лист **«Матрица»** в Excel **не создаётся** (с v1.0.3). Сводная матрица — только в HTML-дашборде.
 
 **JSON основной** (split-bundle, prod):
 
@@ -119,7 +120,7 @@ OUT/kanban_report_YYYYMMDD_HHMMSS_html/
 
 Содержит `visualizations.filter_slices` (комбинации HTML-фильтров), обе агрегации `group_product` / `group_only`. Копии `*_latest*` и `HTML/data/` **не создаются**.
 
-`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — аналитика КМ: `top_by_tb`, блок `charts` для bar-графиков; при `html_include_detail: true` — также `detail_by_product`, `manager_totals`.
+`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — аналитика КМ: `top_by_tb` с **`hotspots`** (почему КМ в топе), блок `charts` для bar-графиков.
 
 ## HTML-дашборд
 
@@ -137,7 +138,7 @@ cd HTML && python -m http.server 8080
 - **Графики КМ:** «КМ с нарушениями P80: по ТБ» / «… по группам/продуктам» — bar-chart (нужен JSON менеджеров)
 - **Агрегация в HTML:** «По продуктам» / «По группам» + pipeline-фильтры — срез из `visualizations.filter_slices`
 - **Pipeline-фильтры:** изменение условий, ввод данных, метки «Стратегия» / «Стратегия·2026». **ЕФС** — только `config.filters.efs_flag` (`enabled`, `value`, `html_slice: false`)
-- **Менеджеры:** отдельный JSON в `OUT/`; загрузка вручную в дашборде
+- **Менеджеры:** JSON в `OUT/`; клик по карточке КМ → **детальная карточка** (hotspots, подсветка слабых зон, мини-bars)
 - `config.product_analysis_mode` — только для **Excel**; в JSON — обе агрегации и все срезы фильтров
 - Режим «По ТБ»: графики **друг под другом** (одна колонка)
 
@@ -169,4 +170,5 @@ cd HTML && python -m http.server 8080
 | 0.9.0 | 2026-08-31 | JSON filter_slices (комбинации config.filters); HTML pipeline-фильтры |
 | 1.0.0 | 2026-08-31 | UI: иконки, ресайз, переключатели ВКЛ/ВЫКЛ; метка Стратегия/2026; аналитика КМ (Excel+JSON+HTML) |
 | 1.0.1 | 2026-08-31 | Документация config; `km` в `required_column_keys`; синхронизация POST |
-| 1.0.2 | 2026-08-31 | Split-bundle JSON; ЕФС config-only (`html_slice`); без `*_latest*`; bar-графики КМ; `charts` в JSON менеджеров |
+| 1.0.2 | 2026-08-31 | Split-bundle JSON; ЕФС config-only; bar-графики КМ; без `*_latest*` |
+| 1.0.3 | 2026-08-31 | Excel без «Матрицы»; hotspots по КМ (Excel + JSON + UI); `top_hotspots_per_manager` |
