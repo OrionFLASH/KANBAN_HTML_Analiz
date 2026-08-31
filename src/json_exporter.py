@@ -12,7 +12,14 @@ from typing import Any
 import pandas as pd
 
 from src.percentile_stats import percentile_label
-from src.settings import analysis_row_key, col, group_only_product_label, is_group_only_analysis
+from src.settings import (
+    analysis_row_key,
+    col,
+    group_only_product_label,
+    is_group_only_analysis,
+    with_product_analysis_mode,
+)
+from src.visualization_data import JSON_AGGREGATION_MODES
 
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
 
@@ -97,22 +104,41 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
     return records
 
 
+def _statistics_block(stats: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Блок statistics для одного режима агрегации."""
+    return {
+        "overall": _frame_to_statistics(stats["overall"], config),
+        "by_tb": _frame_to_statistics(stats["by_tb"], config),
+        "tb_sheets": {
+            tb: _frame_to_statistics(df, config)
+            for tb, df in stats.get("tb_sheets", {}).items()
+        },
+    }
+
+
 def export_json(
-    stats: dict[str, Any],
+    stats_by_mode: dict[str, dict[str, pd.DataFrame]],
     dimensions: dict[str, Any],
     config: dict[str, Any],
     output_path: Path,
     visualizations: dict[str, Any] | None = None,
 ) -> None:
-    """Сохраняет JSON с агрегатами и данными для HTML-дашборда."""
+    """Сохраняет JSON с обеими агрегациями (продукт + группа) для HTML-дашборда."""
+    excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
+    statistics: dict[str, Any] = {}
+    for mode in JSON_AGGREGATION_MODES:
+        mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
+        statistics[mode] = _statistics_block(stats_by_mode[mode], mode_config)
+
     payload: dict[str, Any] = {
         "meta": {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "mode": config.get("mode"),
             "duration_source": config.get("duration_source"),
             "stage_analysis_mode": config.get("stage_analysis_mode"),
-            "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
-            "row_dimension": analysis_row_key(config),
+            "product_analysis_mode": excel_mode,
+            "excel_product_analysis_mode": excel_mode,
+            "json_aggregation_modes": list(JSON_AGGREGATION_MODES),
             "group_only_product_label": group_only_product_label(config),
             "percentiles": config.get("percentiles"),
             "percentile_method": PERCENTILE_METHOD,
@@ -121,21 +147,14 @@ def export_json(
             "filters_applied": _active_pipeline_filters(config),
             "filters_active": bool(_active_pipeline_filters(config)),
             "data_scope_note": (
-                "Все агрегаты и visualizations построены после pipeline-фильтров "
-                "(config.filters с enabled=true). HTML-фильтры работают внутри этого среза."
+                "Excel формируется по config.product_analysis_mode. В JSON — обе агрегации "
+                "(group_product и group_only). HTML выбирает срез на странице."
             ),
             "columns": config.get("columns"),
             "stages_order": config.get("stages_order"),
         },
         "dimensions": dimensions,
-        "statistics": {
-            "overall": _frame_to_statistics(stats["overall"], config),
-            "by_tb": _frame_to_statistics(stats["by_tb"], config),
-            "tb_sheets": {
-                tb: _frame_to_statistics(df, config)
-                for tb, df in stats.get("tb_sheets", {}).items()
-            },
-        },
+        "statistics": statistics,
         "visualizations": visualizations or {},
     }
 
@@ -146,7 +165,6 @@ def export_json(
     latest_path: Path = output_path.parent / "kanban_report_latest.json"
     shutil.copy2(output_path, latest_path)
 
-    # Копия для HTML-дашборда при сервере из каталога HTML/ (fetch data/…)
     html_data_dir: Path = output_path.parent.parent / "HTML" / "data"
     html_data_dir.mkdir(parents=True, exist_ok=True)
     html_latest: Path = html_data_dir / "kanban_report_latest.json"

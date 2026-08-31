@@ -180,7 +180,7 @@
   ],
   "duration_source": "columns",
   "stage_analysis_mode": "status",
-  "product_analysis_mode": "group_only",
+  "product_analysis_mode": "group_product",
   "percentiles": [20, 50, 80],
   "stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"],
   "dashboard": {

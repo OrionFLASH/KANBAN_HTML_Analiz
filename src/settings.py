@@ -260,6 +260,15 @@ def filter_column_name(config: dict[str, Any], flt: dict[str, Any]) -> str | Non
     return None
 
 
+def with_product_analysis_mode(config: dict[str, Any], mode: str) -> dict[str, Any]:
+    """Копия config с подменённым product_analysis_mode (для JSON/HTML-срезов)."""
+    from copy import deepcopy
+
+    merged: dict[str, Any] = deepcopy(config)
+    merged["product_analysis_mode"] = mode
+    return merged
+
+
 def product_analysis_mode(config: dict[str, Any]) -> str:
     """Режим анализа продуктов: group_product | group_only."""
     return str(config.get("product_analysis_mode", "group_product"))

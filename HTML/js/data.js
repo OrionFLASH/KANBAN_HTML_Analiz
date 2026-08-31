@@ -2,6 +2,13 @@
 
 const KanbanData = (() => {
   let payload = null;
+  /** Выбранная агрегация на HTML-странице (не путать с config → Excel). */
+  let aggregationMode = "group_product";
+
+  const AGGREGATION_LABELS = {
+    group_product: "По продуктам",
+    group_only: "По группам",
+  };
 
   const METRIC_LABELS = {
     days_on_stage: "Дни на стадии",
@@ -18,20 +25,53 @@ const KanbanData = (() => {
 
   function loadJson(text) {
     payload = JSON.parse(text);
+    const defaultAgg =
+      payload?.visualizations?.default_view?.aggregation ||
+      payload?.visualizations?.excel_product_analysis_mode ||
+      "group_product";
+    aggregationMode = availableAggregationModes().includes(defaultAgg) ? defaultAgg : "group_product";
     return payload;
+  }
+
+  function setAggregationMode(mode) {
+    if (availableAggregationModes().includes(mode)) {
+      aggregationMode = mode;
+    }
+  }
+
+  function getAggregationMode() {
+    return aggregationMode;
+  }
+
+  function availableAggregationModes() {
+    const fromMeta = payload?.meta?.json_aggregation_modes;
+    if (fromMeta?.length) return fromMeta;
+    const aggs = viz().aggregations;
+    if (aggs && typeof aggs === "object") return Object.keys(aggs);
+    return ["group_product"];
+  }
+
+  function aggregationLabel(mode) {
+    return AGGREGATION_LABELS[mode] || mode;
+  }
+
+  /** Срез visualizations для текущей HTML-агрегации. */
+  function aggSlice() {
+    const aggs = viz().aggregations;
+    if (aggs && aggs[aggregationMode]) return aggs[aggregationMode];
+    return viz();
+  }
+
+  function isGroupOnly() {
+    return aggregationMode === "group_only";
   }
 
   function getPayload() {
     return payload;
   }
 
-  function isGroupOnly() {
-    const mode = payload?.meta?.product_analysis_mode || payload?.visualizations?.product_analysis_mode;
-    return mode === "group_only";
-  }
-
   function rowDimension() {
-    return viz().row_dimension || (isGroupOnly() ? "product_group" : "product");
+    return aggSlice().row_dimension || (isGroupOnly() ? "product_group" : "product");
   }
 
   function rowLabel(series) {
@@ -63,7 +103,7 @@ const KanbanData = (() => {
   }
 
   function distributionSeries() {
-    return viz().distribution_series || [];
+    return aggSlice().distribution_series || [];
   }
 
   /** Точки графика: из points или компактного days_sorted. */
@@ -81,7 +121,7 @@ const KanbanData = (() => {
   }
 
   function pivotFlat() {
-    return viz().pivot_flat || [];
+    return aggSlice().pivot_flat || [];
   }
 
   function tbOptions() {
@@ -109,12 +149,15 @@ const KanbanData = (() => {
   }
 
   function productGroupMap() {
-    /** Группа → множество продуктов (из серий распределения). */
+    /** Группа → множество продуктов (из серий group_product, для фильтра продуктов). */
     const map = new Map();
-    distributionSeries().forEach((row) => {
+    const placeholder = payload?.meta?.group_only_product_label || "—";
+    const productSeries =
+      viz().aggregations?.group_product?.distribution_series || viz().distribution_series || [];
+    productSeries.forEach((row) => {
       const group = String(row.product_group || "");
       const product = String(row.product || "");
-      if (!group || !product) return;
+      if (!group || !product || product === placeholder) return;
       if (!map.has(group)) map.set(group, new Set());
       map.get(group).add(product);
     });
@@ -419,18 +462,23 @@ const KanbanData = (() => {
   function metaLine() {
     if (!payload?.meta) return "JSON не загружен";
     const m = payload.meta;
-    const modeLabel = isGroupOnly() ? "только группы" : "группа+продукт";
+    const excelMode = m.excel_product_analysis_mode || m.product_analysis_mode || "group_product";
+    const viewLabel = aggregationLabel(aggregationMode);
     const filterNote = filtersActive() ? " | фильтры pipeline: да" : "";
-    const rowDim = m.row_dimension === "product_group" ? "строки: группы" : "строки: продукты";
     return (
       `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | ` +
-      `анализ: ${modeLabel} (${rowDim})${filterNote} | перцентили: ${(m.percentiles || []).join(", ")}`
+      `Excel: ${aggregationLabel(excelMode)} | HTML: ${viewLabel}${filterNote} | ` +
+      `перцентили: ${(m.percentiles || []).join(", ")}`
     );
   }
 
   return {
     loadJson,
     getPayload,
+    setAggregationMode,
+    getAggregationMode,
+    availableAggregationModes,
+    aggregationLabel,
     METRIC_LABELS,
     INDICATOR_LABELS,
     allTbLabel,

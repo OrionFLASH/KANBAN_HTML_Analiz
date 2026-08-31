@@ -286,13 +286,90 @@ def build_distribution_series(records: pd.DataFrame, config: dict[str, Any]) -> 
     return series_list
 
 
+JSON_AGGREGATION_MODES: tuple[str, ...] = ("group_product", "group_only")
+
+
+def build_aggregation_visualization(
+    records: pd.DataFrame,
+    stats: dict[str, pd.DataFrame],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """Срез visualizations для одного режима агрегации (продукт или группа)."""
+    pivot_flat: list[dict[str, Any]] = build_pivot_flat(stats, config)
+    dash_cfg: dict[str, Any] = config.get("dashboard", {})
+    all_tb_label: str = str(dash_cfg.get("all_tb_label", "__ALL__"))
+    default_tb: str = str(dash_cfg.get("default_tb", all_tb_label))
+    default_metric: str = str(dash_cfg.get("default_metric", "days_on_stage"))
+    default_indicator: str = str(dash_cfg.get("default_indicator", "p80"))
+
+    return {
+        "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
+        "row_dimension": analysis_row_key(config),
+        "distribution_series": build_distribution_series(records, config),
+        "distribution_format": "days_sorted"
+        if config.get("performance", {}).get("compact_distribution_series", True)
+        else "points",
+        "pivot_flat": pivot_flat,
+        "default_pivot_matrix": build_pivot_matrix(
+            pivot_flat, default_tb, default_metric, default_indicator, config
+        ),
+    }
+
+
+def build_json_visualization_payload(
+    records: pd.DataFrame,
+    stats_by_mode: dict[str, dict[str, pd.DataFrame]],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """Блок visualizations для JSON: обе агрегации (продукт + группа)."""
+    from src.settings import with_product_analysis_mode
+
+    dash_cfg: dict[str, Any] = config.get("dashboard", {})
+    all_tb_label: str = str(dash_cfg.get("all_tb_label", "__ALL__"))
+    default_tb: str = str(dash_cfg.get("default_tb", all_tb_label))
+    default_metric: str = str(dash_cfg.get("default_metric", "days_on_stage"))
+    default_indicator: str = str(dash_cfg.get("default_indicator", "p80"))
+
+    aggregations: dict[str, Any] = {}
+    for mode in JSON_AGGREGATION_MODES:
+        mode_config: dict[str, Any] = with_product_analysis_mode(config, mode)
+        mode_stats: dict[str, pd.DataFrame] = stats_by_mode[mode]
+        aggregations[mode] = build_aggregation_visualization(records, mode_stats, mode_config)
+
+    excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
+    excel_slice: dict[str, Any] = aggregations.get(excel_mode, aggregations["group_product"])
+
+    return {
+        "stage_order": stage_order(config),
+        "indicators": indicator_keys(config),
+        "metrics": list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"])),
+        "excel_product_analysis_mode": excel_mode,
+        "all_tb_label": all_tb_label,
+        "default_view": {
+            "tb": default_tb,
+            "metric": default_metric,
+            "indicator": default_indicator,
+            "aggregation": "group_product",
+        },
+        "aggregations": aggregations,
+        # Совместимость: плоские поля = срез Excel-режима из config
+        "product_analysis_mode": excel_mode,
+        "row_dimension": excel_slice.get("row_dimension"),
+        "distribution_series": excel_slice.get("distribution_series", []),
+        "distribution_format": excel_slice.get("distribution_format"),
+        "pivot_flat": excel_slice.get("pivot_flat", []),
+        "pivot_matrices": [],
+        "default_pivot_matrix": excel_slice.get("default_pivot_matrix"),
+    }
+
+
 def build_visualization_payload(
     records: pd.DataFrame,
     stats: dict[str, pd.DataFrame],
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Полный блок visualizations для JSON."""
-    pivot_flat: list[dict[str, Any]] = build_pivot_flat(stats, config)
+    """Полный блок visualizations для Excel (режим из config)."""
+    slice_data: dict[str, Any] = build_aggregation_visualization(records, stats, config)
     dash_cfg: dict[str, Any] = config.get("dashboard", {})
     all_tb_label: str = str(dash_cfg.get("all_tb_label", "__ALL__"))
     default_tb: str = str(dash_cfg.get("default_tb", all_tb_label))
@@ -302,6 +379,7 @@ def build_visualization_payload(
     precompute_matrices: bool = bool(
         config.get("performance", {}).get("precompute_pivot_matrices", False)
     )
+    pivot_flat: list[dict[str, Any]] = slice_data["pivot_flat"]
     pivot_matrices: list[dict[str, Any]] = []
     if precompute_matrices:
         pivot_matrices = build_all_pivot_matrices(pivot_flat, config)
@@ -311,20 +389,16 @@ def build_visualization_payload(
         "indicators": indicator_keys(config),
         "metrics": list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"])),
         "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
-        "row_dimension": analysis_row_key(config),
+        "row_dimension": slice_data["row_dimension"],
         "all_tb_label": all_tb_label,
         "default_view": {
             "tb": default_tb,
             "metric": default_metric,
             "indicator": default_indicator,
         },
-        "distribution_series": build_distribution_series(records, config),
-        "distribution_format": "days_sorted"
-        if config.get("performance", {}).get("compact_distribution_series", True)
-        else "points",
+        "distribution_series": slice_data["distribution_series"],
+        "distribution_format": slice_data["distribution_format"],
         "pivot_flat": pivot_flat,
         "pivot_matrices": pivot_matrices,
-        "default_pivot_matrix": build_pivot_matrix(
-            pivot_flat, default_tb, default_metric, default_indicator, config
-        ),
+        "default_pivot_matrix": slice_data["default_pivot_matrix"],
     }

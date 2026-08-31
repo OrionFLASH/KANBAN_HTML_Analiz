@@ -71,8 +71,6 @@ def extract_filter_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[
 
 def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]:
     """Собирает все справочники для экспорта."""
-    from src.settings import is_group_only_analysis
-
     dimensions: dict[str, Any] = {
         "tb": extract_tb_list(df, config),
         "stages": extract_stages(df, config),
@@ -80,8 +78,6 @@ def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]
         "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
         "filter_dimensions": extract_filter_dimensions(df, config),
     }
-    if is_group_only_analysis(config):
-        group_col: str = col(config, "product_group")
-        dimensions["product_groups"] = sorted(df[group_col].dropna().astype(str).unique().tolist())
-        dimensions["products"] = []
+    group_col: str = col(config, "product_group")
+    dimensions["product_groups"] = sorted(df[group_col].dropna().astype(str).unique().tolist())
     return dimensions

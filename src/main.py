@@ -17,7 +17,12 @@ from src.excel_loader import load_all_files
 from src.filters import apply_filters
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
-from src.visualization_data import build_visualization_payload
+from src.visualization_data import (
+    JSON_AGGREGATION_MODES,
+    build_json_visualization_payload,
+    build_visualization_payload,
+)
+from src.settings import with_product_analysis_mode
 from src.logger_setup import setup_logger
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
@@ -89,11 +94,16 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
         sys.exit(1)
 
     progress.stage("Агрегация статистики", f"{len(records):,} записей")
-    stats = build_all_statistics(records, config)
+    stats: dict = build_all_statistics(records, config)
+    stats_by_mode: dict[str, dict] = {config.get("product_analysis_mode", "group_product"): stats}
+    for mode in JSON_AGGREGATION_MODES:
+        if mode not in stats_by_mode:
+            stats_by_mode[mode] = build_all_statistics(records, with_product_analysis_mode(config, mode))
     progress.done(f"Агрегировано групп: {len(stats['overall'])}")
 
     progress.stage("Визуализация")
     visualizations: dict = build_visualization_payload(records, stats, config)
+    json_visualizations: dict = build_json_visualization_payload(records, stats_by_mode, config)
     progress.done("Данные для графиков и матрицы подготовлены")
 
     progress.stage("Экспорт Excel")
@@ -101,7 +111,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     progress.done(f"Excel: {excel_path.name}")
 
     progress.stage("Экспорт JSON")
-    export_json(stats, dimensions, config, json_path, visualizations=visualizations)
+    export_json(stats_by_mode, dimensions, config, json_path, visualizations=json_visualizations)
     progress.done(f"JSON: {json_path.name}")
 
     elapsed: float = time.monotonic() - t_pipeline

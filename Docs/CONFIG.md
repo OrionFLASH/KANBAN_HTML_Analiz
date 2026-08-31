@@ -263,11 +263,17 @@
 
 При `group_only` трекинг и агрегация идут по `лид × группа × ТБ × стадия`; в Excel/HTML строки матрицы — **группы**. Подпись в колонке «Продукт»: `processing.group_only_product_label` (по умолчанию `—`).
 
-В JSON при `group_only`:
-- `meta.row_dimension`: `"product_group"`
-- `statistics.*[].row_key` — название группы; `product` — placeholder
-- `dimensions.product_groups` — список групп; `dimensions.products` — пустой
-- `visualizations.distribution_series` — серии по группам (`row_key`, без разреза по продуктам)
+**Важно:** `product_analysis_mode` в `config.json` управляет только **Excel**. В JSON при каждом `run.py` экспортируются **оба** среза:
+
+| Ключ JSON | Содержимое |
+|-----------|------------|
+| `statistics.group_product` / `statistics.group_only` | Агрегаты overall, by_tb, tb_sheets |
+| `visualizations.aggregations.group_product` | `distribution_series`, `pivot_flat` по продуктам |
+| `visualizations.aggregations.group_only` | То же по группам |
+| `meta.excel_product_analysis_mode` | Режим Excel из config |
+| `meta.json_aggregation_modes` | `["group_product", "group_only"]` |
+
+HTML-дашборд выбирает срез переключателем «Агрегация строк».
 
 ### `percentiles`
 
@@ -351,10 +357,11 @@ JSON содержит блок `visualizations`:
 
 | Возможность | Описание |
 |-------------|----------|
+| Агрегация строк | Переключатель «По продуктам» / «По группам» — срез из `visualizations.aggregations` |
 | Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск, сворачивание |
 | Графики «свод + каждый» | Сверху все выбранные ТБ/группы/продукты; ниже — отдельная карточка на каждый |
-| Режим `group_only` | Графики и матрица по **группам**; фильтр продуктов скрыт |
-| Режим «По ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
+| Режим «По группам» | Фильтр продуктов скрыт; строки матрицы и графики — группы |
+| Режим «Пo ТБ» | Карточки **одна под другой** (`.charts-grid--by-tb`) — удобнее при многих линиях |
 | Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
 | Pipeline-фильтры | Оранжевый баннер, если `meta.filters_active` |
 

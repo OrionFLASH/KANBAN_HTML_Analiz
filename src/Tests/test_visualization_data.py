@@ -6,11 +6,14 @@ import pandas as pd
 
 from src.visualization_data import (
     build_distribution_series,
+    build_json_visualization_payload,
     build_pivot_flat,
     build_pivot_matrix,
     build_visualization_payload,
     series_chart_points,
 )
+from src.settings import with_product_analysis_mode
+from src.aggregator import build_all_statistics
 
 
 def test_distribution_points_sorted() -> None:
@@ -144,3 +147,45 @@ def test_distribution_series_group_only_merges_products() -> None:
     assert tb_series[0]["product"] == "—"
     assert tb_series[0]["days_sorted"] == [10, 30]
     assert tb_series[0]["total_leads"] == 2
+
+
+def test_json_payload_contains_both_aggregations() -> None:
+    """JSON visualizations содержит group_product и group_only."""
+    records = pd.DataFrame(
+        {
+            "ТБ": ["T1", "T1"],
+            "Группа продукта": ["G1", "G1"],
+            "Продукт": ["P1", "P2"],
+            "stage_key": ["S", "S"],
+            "analysis_level": ["status", "status"],
+            "days_on_stage": [10, 30],
+            "days_since_deal": [1, 1],
+        }
+    )
+    config = {
+        "columns": {"tb": "ТБ", "product_group": "Группа продукта", "product": "Продукт"},
+        "aggregation": {
+            "group_keys": ["product_group", "product", "analysis_level", "stage_key"],
+            "metrics": ["days_on_stage"],
+        },
+        "percentiles": [50],
+        "product_analysis_mode": "group_product",
+        "processing": {"group_only_product_label": "—"},
+        "dashboard": {"all_tb_label": "__ALL__", "default_tb": "__ALL__"},
+        "excel": {"category_markers": {}},
+        "stages_order": ["S"],
+        "performance": {"compact_distribution_series": True},
+    }
+    stats_product = build_all_statistics(records, config)
+    stats_group = build_all_statistics(records, with_product_analysis_mode(config, "group_only"))
+    payload = build_json_visualization_payload(
+        records,
+        {"group_product": stats_product, "group_only": stats_group},
+        config,
+    )
+    assert "aggregations" in payload
+    product_series = payload["aggregations"]["group_product"]["distribution_series"]
+    group_series = payload["aggregations"]["group_only"]["distribution_series"]
+    assert len(product_series) > len(group_series)
+    assert all(s["row_key"] == "G1" for s in group_series if s["tb"] == "T1")
+    assert payload["excel_product_analysis_mode"] == "group_product"

@@ -44,6 +44,13 @@
           <div class="filter-block">
             <div class="filter-block__label">График</div>
             <label class="field">
+              <span class="field-label">Агрегация строк</span>
+              <select id="aggregationMode" class="field-control">
+                <option value="group_product">По продуктам</option>
+                <option value="group_only">По группам</option>
+              </select>
+            </label>
+            <label class="field">
               <span class="field-label">Режим линий</span>
               <select id="chartMode" class="field-control">
                 <option value="by_product">По продуктам / группам: свод + каждый</option>

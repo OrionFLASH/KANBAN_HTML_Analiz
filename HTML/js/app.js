@@ -12,6 +12,7 @@
 
   const controls = {
     jsonFile: document.getElementById("jsonFile"),
+    aggregationMode: document.getElementById("aggregationMode"),
     chartMode: document.getElementById("chartMode"),
     metricSelect: document.getElementById("metricSelect"),
     indicatorSelect: document.getElementById("indicatorSelect"),
@@ -164,8 +165,42 @@
     syncProductListFromGroups();
   }
 
+  function updateAggregationUi() {
+    const groupOnly = KanbanData.isGroupOnly();
+    if (productFilterBlock) {
+      productFilterBlock.hidden = groupOnly;
+    }
+    const optProduct = controls.chartMode.querySelector('option[value="by_product"]');
+    const optTb = controls.chartMode.querySelector('option[value="by_tb"]');
+    if (groupOnly) {
+      productWidget.selectNone();
+      if (optProduct) optProduct.textContent = "По группам: свод + каждая";
+      if (optTb) optTb.textContent = "По ТБ: свод + каждый ТБ";
+    } else {
+      if (optProduct) optProduct.textContent = "По продуктам: свод + каждый";
+      if (optTb) optTb.textContent = "По ТБ: свод + каждый ТБ";
+    }
+  }
+
+  function populateAggregationControl() {
+    const modes = KanbanData.availableAggregationModes();
+    const current = KanbanData.getAggregationMode();
+    controls.aggregationMode.innerHTML = "";
+    modes.forEach((mode) => {
+      const opt = document.createElement("option");
+      opt.value = mode;
+      opt.textContent = KanbanData.aggregationLabel(mode);
+      controls.aggregationMode.appendChild(opt);
+    });
+    controls.aggregationMode.value = modes.includes(current) ? current : modes[0];
+    KanbanData.setAggregationMode(controls.aggregationMode.value);
+    updateAggregationUi();
+  }
+
   function populateControlsFromPayload() {
     const defaultView = KanbanData.getPayload()?.visualizations?.default_view || {};
+
+    populateAggregationControl();
 
     fillSelect(
       controls.metricSelect,
@@ -190,21 +225,6 @@
       ),
       true
     );
-
-    const groupOnly = KanbanData.isGroupOnly();
-    if (productFilterBlock) {
-      productFilterBlock.hidden = groupOnly;
-    }
-    const optProduct = controls.chartMode.querySelector('option[value="by_product"]');
-    const optTb = controls.chartMode.querySelector('option[value="by_tb"]');
-    if (groupOnly) {
-      productWidget.selectNone();
-      if (optProduct) optProduct.textContent = "По группам: свод + каждая";
-      if (optTb) optTb.textContent = "По ТБ: свод + каждый ТБ";
-    } else {
-      if (optProduct) optProduct.textContent = "По продуктам: свод + каждый";
-      if (optTb) optTb.textContent = "По ТБ: свод + каждый ТБ";
-    }
 
     updateFilterScopeBanner();
   }
@@ -308,6 +328,15 @@
       metaInfo.textContent = "Не удалось прочитать выбранный файл.";
     };
     reader.readAsText(file, "UTF-8");
+  });
+
+  controls.aggregationMode.addEventListener("change", () => {
+    KanbanData.setAggregationMode(controls.aggregationMode.value);
+    updateAggregationUi();
+    populateGroupFilter();
+    populateProductFilter();
+    KanbanPivot.resetSort();
+    refresh();
   });
 
   [
