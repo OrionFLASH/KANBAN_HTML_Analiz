@@ -95,14 +95,14 @@ def stats_frame_to_pivot_flat(
 
             col_index: dict[str, int] = {name: idx for idx, name in enumerate(chunk.columns)}
             g_idx: int = col_index[group_col]
-            p_idx: int = col_index[product_col]
+            p_idx: int | None = col_index.get(product_col)
             s_idx: int = col_index.get("stage_key", -1)
             a_idx: int = col_index.get("analysis_level", -1)
             v_idx: int = col_index[value_col]
 
             for row in chunk.itertuples(index=False, name=None):
                 group_value = row[g_idx]
-                product_value = placeholder if group_only else row[p_idx]
+                product_value = placeholder if group_only else row[p_idx]  # type: ignore[index]
                 row_key = group_value if group_only else product_value
                 flat.append(
                     {

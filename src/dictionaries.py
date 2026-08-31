@@ -83,4 +83,5 @@ def build_dimensions(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]
     if is_group_only_analysis(config):
         group_col: str = col(config, "product_group")
         dimensions["product_groups"] = sorted(df[group_col].dropna().astype(str).unique().tolist())
+        dimensions["products"] = []
     return dimensions

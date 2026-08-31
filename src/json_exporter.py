@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 
 from src.percentile_stats import percentile_label
-from src.settings import col
+from src.settings import analysis_row_key, col, group_only_product_label, is_group_only_analysis
 
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
 
@@ -65,12 +65,21 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
     percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
 
+    group_only: bool = is_group_only_analysis(config)
+    placeholder: str = group_only_product_label(config)
+    row_dim: str = analysis_row_key(config)
+
     records: list[dict[str, Any]] = []
     for row in frame.to_dict(orient="records"):
+        group_val = row.get(group_name)
+        product_val = placeholder if group_only else row.get(product_name)
+        row_key: str = str(group_val if group_only else (row.get(product_name) or group_val))
         item: dict[str, Any] = {
             "tb": row.get(tb_name),
-            "product_group": row.get(group_name),
-            "product": row.get(product_name),
+            "product_group": group_val,
+            "product": product_val,
+            "row_key": row_key,
+            "row_dimension": row_dim,
             "analysis_level": row.get("analysis_level"),
             "current_status": row.get("current_status"),
             "deal_stage": row.get("deal_stage") or None,
@@ -103,6 +112,8 @@ def export_json(
             "duration_source": config.get("duration_source"),
             "stage_analysis_mode": config.get("stage_analysis_mode"),
             "product_analysis_mode": config.get("product_analysis_mode", "group_product"),
+            "row_dimension": analysis_row_key(config),
+            "group_only_product_label": group_only_product_label(config),
             "percentiles": config.get("percentiles"),
             "percentile_method": PERCENTILE_METHOD,
             "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
@@ -135,4 +146,11 @@ def export_json(
     latest_path: Path = output_path.parent / "kanban_report_latest.json"
     shutil.copy2(output_path, latest_path)
 
+    # Копия для HTML-дашборда при сервере из каталога HTML/ (fetch data/…)
+    html_data_dir: Path = output_path.parent.parent / "HTML" / "data"
+    html_data_dir.mkdir(parents=True, exist_ok=True)
+    html_latest: Path = html_data_dir / "kanban_report_latest.json"
+    shutil.copy2(output_path, html_latest)
+
     logger.info("JSON сохранён: %s", output_path)
+    logger.info("JSON для дашборда: %s", html_latest)

@@ -181,7 +181,7 @@ const KanbanData = (() => {
   }
 
   function mergeSeriesList(seriesList, template) {
-    /** Объединяет кривые лидов в одну отсортированную шкалу дней."""
+    /** Объединяет кривые лидов в одну отсортированную шкалу дней. */
     const days = [];
     seriesList.forEach((s) => {
       seriesPoints(s).forEach((p) => days.push(p.days));
@@ -208,7 +208,7 @@ const KanbanData = (() => {
   }
 
   function resolveChartTbs(seriesList, filters) {
-    /** ТБ для детальных графиков (без псевдо __ALL__)."""
+    /** ТБ для детальных графиков (без псевдо __ALL__). */
     const allLabel = allTbLabel();
     const fromFilters = resolveTbSet(filters).filter((tb) => tb !== allLabel);
     if (fromFilters.length) {
@@ -220,7 +220,7 @@ const KanbanData = (() => {
   }
 
   function chartEligibleSeries(filtered, filters) {
-    /** Исключает свод __ALL__, если есть конкретные ТБ."""
+    /** Исключает свод __ALL__, если есть конкретные ТБ. */
     const allLabel = allTbLabel();
     const tbs = resolveTbSet(filters);
     if (tbs.length === 1 && tbs[0] === allLabel) {
@@ -245,6 +245,11 @@ const KanbanData = (() => {
       return `${f.name}=${f.value}`;
     });
     return `Pipeline-фильтры (данные уже срезаны): ${parts.join("; ")}`;
+  }
+
+  function selectedGroupsHint(filters) {
+    if (!isGroupOnly() || !filters?.productGroups?.length) return "";
+    return ` · ${filters.productGroups.length} групп`;
   }
 
   function groupSeriesForCharts(filtered, chartMode, maxSeries, filters) {
@@ -278,9 +283,10 @@ const KanbanData = (() => {
 
         if (summarySeries.length) {
           charts.push({
-            title: `Свод: все ТБ | ${stage}`,
+            title: `Свод: все ТБ${selectedGroupsHint(filters)} | ${stage}`,
             seriesList: summarySeries,
             tier: "summary",
+            layout: "stacked",
           });
         }
 
@@ -301,10 +307,12 @@ const KanbanData = (() => {
             .slice(0, limit);
 
           if (seriesList.length) {
+            const rowDim = isGroupOnly() ? "группы" : rowDimensionLabel().toLowerCase();
             charts.push({
-              title: `${tbDisplay(tb)} | ${stage}`,
+              title: `${tbDisplay(tb)} · ${rowDim}${selectedGroupsHint(filters)} | ${stage}`,
               seriesList,
               tier: "detail",
+              layout: "stacked",
             });
           }
         });
@@ -328,7 +336,7 @@ const KanbanData = (() => {
 
         if (summarySeries.length) {
           charts.push({
-            title: `Свод: все ${rowDim} | ${stage}`,
+            title: `Свод: все ${rowDim}${selectedGroupsHint(filters)} | ${stage}`,
             seriesList: summarySeries,
             tier: "summary",
           });
@@ -343,7 +351,7 @@ const KanbanData = (() => {
           .slice(0, limit)
           .forEach(([rk, list]) => {
             charts.push({
-              title: `${rk} | ${stage}`,
+              title: `${rk}${selectedGroupsHint(filters)} | ${stage}`,
               seriesList: [
                 mergeSeriesList(list, { stage_key: stage, row_key: rk, _chartLabel: rk }),
               ],
@@ -413,9 +421,10 @@ const KanbanData = (() => {
     const m = payload.meta;
     const modeLabel = isGroupOnly() ? "только группы" : "группа+продукт";
     const filterNote = filtersActive() ? " | фильтры pipeline: да" : "";
+    const rowDim = m.row_dimension === "product_group" ? "строки: группы" : "строки: продукты";
     return (
       `Сгенерировано: ${m.generated_at || "—"} | режим: ${m.mode || "—"} | ` +
-      `анализ: ${modeLabel}${filterNote} | перцентили: ${(m.percentiles || []).join(", ")}`
+      `анализ: ${modeLabel} (${rowDim})${filterNote} | перцентили: ${(m.percentiles || []).join(", ")}`
     );
   }
 

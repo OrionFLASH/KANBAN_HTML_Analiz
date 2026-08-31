@@ -224,6 +224,7 @@
   function renderCharts(filters, maxSeries, chartMode) {
     const filtered = KanbanData.filterSeries(filters);
     const chartGroups = KanbanData.groupSeriesForCharts(filtered, chartMode, maxSeries, filters);
+    chartsGrid.classList.toggle("charts-grid--by-tb", chartMode === "by_tb");
     KanbanCharts.render(chartsGrid, chartGroups, {
       chartMode,
       showLegend: controls.showLegend.checked,
@@ -231,16 +232,19 @@
     });
   }
 
-  function updateStats(filteredCount, filters) {
+  function updateStats(filteredCount) {
     const total = KanbanData.distributionSeries().length;
     const groupCount = groupWidget.getSelected().length;
     const productCount = productWidget.getSelected().length;
+    const groupOnly = KanbanData.isGroupOnly();
+    const productLine = groupOnly
+      ? ""
+      : ` · Продукты: <b>${productCount || "все"}</b>`;
     filterStats.innerHTML =
       `Серий в JSON: <b>${total}</b><br>` +
       `После фильтров: <b>${filteredCount}</b><br>` +
       `ТБ: <b>${tbWidget.getSelected().length || "все"}</b> · ` +
-      `Группы: <b>${groupCount || "все"}</b> · ` +
-      `Продукты: <b>${productCount || "все"}</b><br>` +
+      `${groupOnly ? "Группы (выбранные)" : "Группы"}: <b>${groupCount || "все"}</b>${productLine}<br>` +
       `Точек: <b>${KanbanData.distributionSeries().reduce((s, x) => s + KanbanData.seriesPointCount(x), 0)}</b>`;
   }
 
@@ -252,11 +256,12 @@
     const chartMode = controls.chartMode.value;
 
     const filtered = KanbanData.filterSeries(filters);
-    updateStats(filtered.length, filters);
+    updateStats(filtered.length);
 
     renderCharts(filters, maxSeries, chartMode);
 
     KanbanPivot.resetSort();
+
     const matrix = KanbanData.buildPivotMatrix(filters);
     KanbanPivot.render(pivotTable, matrix, pivotCaption);
   }
@@ -269,7 +274,7 @@
     const chartMode = controls.chartMode.value;
 
     const filtered = KanbanData.filterSeries(filters);
-    updateStats(filtered.length, filters);
+    updateStats(filtered.length);
 
     renderCharts(filters, maxSeries, chartMode);
 
@@ -278,11 +283,20 @@
   }
 
   function onJsonLoaded(text) {
-    KanbanData.loadJson(text);
-    metaInfo.textContent = KanbanData.metaLine();
-    KanbanPivot.resetSort();
-    populateControlsFromPayload();
-    refresh();
+    try {
+      KanbanData.loadJson(text);
+      metaInfo.textContent = KanbanData.metaLine();
+      KanbanPivot.resetSort();
+      populateControlsFromPayload();
+      refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      metaInfo.textContent = `Ошибка загрузки JSON: ${message}`;
+      console.error("[KANBAN] loadJson failed:", err);
+      chartsGrid.innerHTML =
+        `<div class="empty-state panel"><p class="empty-state__title">Не удалось разобрать JSON</p>` +
+        `<p>${message}</p></div>`;
+    }
   }
 
   controls.jsonFile.addEventListener("change", (event) => {
@@ -290,6 +304,9 @@
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => onJsonLoaded(String(reader.result));
+    reader.onerror = () => {
+      metaInfo.textContent = "Не удалось прочитать выбранный файл.";
+    };
     reader.readAsText(file, "UTF-8");
   });
 
@@ -352,10 +369,34 @@
     });
   });
 
-  fetch("../OUT/kanban_report_latest.json")
-    .then((r) => (r.ok ? r.text() : null))
-    .then((text) => {
-      if (text) onJsonLoaded(text);
-    })
-    .catch(() => {});
+  /** Кандидаты автозагрузки: data/ — при сервере из HTML/; ../OUT и /OUT — из корня проекта. */
+  const JSON_AUTOLOAD_URLS = [
+    "data/kanban_report_latest.json",
+    "../OUT/kanban_report_latest.json",
+    "/OUT/kanban_report_latest.json",
+  ];
+
+  async function autoloadJson() {
+    if (window.location.protocol === "file:") {
+      metaInfo.textContent =
+        "Автозагрузка недоступна (file://). Запустите HTTP-сервер или выберите JSON вручную.";
+      return;
+    }
+
+    for (const url of JSON_AUTOLOAD_URLS) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        onJsonLoaded(await response.text());
+        if (KanbanData.getPayload()) return;
+      } catch (err) {
+        console.warn("[KANBAN] autoload failed for", url, err);
+      }
+    }
+
+    metaInfo.textContent =
+      "JSON не найден. Выполните run.py или выберите kanban_report_*.json вручную.";
+  }
+
+  autoloadJson();
 })();

@@ -110,3 +110,37 @@ def test_pivot_matrix_value() -> None:
     matrix = build_pivot_matrix(flat, "__ALL__", "days_on_stage", "p80", config)
     assert matrix["values"]["ProdA"]["К ПРОДАЖЕ"] == 42
     assert matrix["values"]["ProdA"]["В РАБОТЕ"] is None
+
+
+def test_distribution_series_group_only_merges_products() -> None:
+    """В group_only серии строятся по группе, продукты объединены."""
+    records = pd.DataFrame(
+        {
+            "ТБ": ["T1", "T1"],
+            "Группа продукта": ["G1", "G1"],
+            "Продукт": ["P1", "P2"],
+            "stage_key": ["S", "S"],
+            "analysis_level": ["status", "status"],
+            "days_on_stage": [10, 30],
+            "days_since_deal": [1, 1],
+        }
+    )
+    config = {
+        "columns": {"tb": "ТБ", "product_group": "Группа продукта", "product": "Продукт"},
+        "aggregation": {"metrics": ["days_on_stage"]},
+        "percentiles": [50],
+        "stages_order": ["S"],
+        "product_analysis_mode": "group_only",
+        "processing": {"group_only_product_label": "—"},
+        "dashboard": {"all_tb_label": "__ALL__"},
+        "excel": {"category_markers": {}},
+        "performance": {"compact_distribution_series": True},
+    }
+    series = build_distribution_series(records, config)
+    tb_series = [s for s in series if s["tb"] == "T1"]
+    assert len(tb_series) == 1
+    assert tb_series[0]["row_key"] == "G1"
+    assert tb_series[0]["row_dimension"] == "product_group"
+    assert tb_series[0]["product"] == "—"
+    assert tb_series[0]["days_sorted"] == [10, 30]
+    assert tb_series[0]["total_leads"] == 2

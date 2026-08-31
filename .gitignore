@@ -3,6 +3,7 @@ log/
 IN/
 OUT/
 POST/
+HTML/data/*.json
 .env
 __pycache__/
 *.pyc

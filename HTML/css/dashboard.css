@@ -422,6 +422,24 @@ body::after {
   gap: 14px;
 }
 
+/* Режим «По ТБ»: карточки друг под другом — больше места для легенды и линий */
+.charts-grid.charts-grid--by-tb {
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.charts-grid.charts-grid--by-tb .chart-card {
+  width: 100%;
+}
+
+.charts-grid.charts-grid--by-tb .chart-wrap {
+  height: min(440px, 58vh);
+}
+
+.charts-grid.charts-grid--by-tb .chart-card--summary .chart-wrap {
+  height: min(380px, 50vh);
+}
+
 .chart-card {
   padding: 12px 14px;
   border-radius: var(--radius);
