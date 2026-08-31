@@ -1,6 +1,6 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.6**).
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.7**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
 
@@ -52,20 +52,20 @@
 | `percentiles` | array[int] | Список перцентилей (20, 50, 80…) |
 | `stages_order` | array[str] | Порядок стадий в матрице |
 | `dashboard` | object | Дашборд, матрица, предрасчёт filter_slices |
-| `manager_analytics` | object | Топ КМ по превышениям P80 |
+| `manager_analytics` | object | TOP по участникам команды / КМ; `team_files`, `rank_by_team`, `rank_selection` |
 | `parallel_workers` | int | 0 = авто, 1 = последовательно |
 | `excel_theme` | `"green_red"` \| `"minimal"` | Оформление Excel |
-| `html_json` | object | Split-bundle, compact JSON, прореживание серий для HTML |
+| `html_json` | object | По умолчанию monolith (один JSON для file://); split — опционально |
 | `filters` | object | Pipeline-фильтры; см. §13 (`html_slice`, `enabled`) |
 
 ### Excel vs JSON vs HTML — три контекста одного `config.json`
 
 | Контекст | Что управляет config | Где применяется |
 |----------|----------------------|-----------------|
-| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки, **Графики**, **Менеджеры** (лист «Матрица» не создаётся) |
+| **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки и **Менеджеры** (листы «Матрица» и «Графики» не создаются) |
 | **JSON (основной)** | `dashboard.precompute_html_filter_slices`; фильтры с `html_slice: true` (не `enabled`) | `visualizations.filter_slices` — комбинации 2^N (N = число HTML-фильтров); база данных — после config-only фильтров |
-| **JSON (менеджеры)** | `manager_analytics.*`, `rank_selection`, `use_latest_report_date`; колонки `km`, `label`, `deal_id`, `inn` | `kanban_report_managers_{timestamp}.json`: `records`, `exceedances`, `top_by_tb`, `top_by_tb_grouped`, `charts` |
-| **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations`; JSON менеджеров — секции по ТБ, топ-3 КМ, детализация ИНН/лиды/сделки | Локальный дашборд `HTML/` |
+| **JSON (менеджеры)** | `manager_analytics.*`, `rank_by_team`, `team_files`, `rank_selection`; колонки `km`, `vks`, `label`, `deal_id`, `inn`, `client` | Блок `managers` в monolith JSON (или отдельный файл): `records` (+`team`), `top_by_tb`, `charts` |
+| **HTML** | Pipeline ВКЛ/ВЫКЛ; зафиксированные фильтры; матрица (дни + ↑/↓ порога); менеджеры — роли и команда | Локальный дашборд `HTML/` (file://) |
 
 > **`enabled` в `filters` влияет на Excel и на config-only срез (`html_slice: false`).** HTML переключает готовые срезы JSON (`html_slice: true`) без пересчёта pipeline. Копии `*_latest*` и запись в `HTML/data/` **не создаются** — JSON загружается вручную.
 
@@ -209,9 +209,11 @@
 | `change_conditions` | _Изменение условий | Флаг 0/1 |
 | `data_entry` | _Ввод данных | Флаг 0/1 |
 | `efs_flag` | ЕФС флаг | Флаг 0/1 |
-| `km` | КМ | ФИО менеджера (аналитика менеджеров, лист «Менеджеры») |
-| `deal_id` | ID сделки | Идентификатор сделки (зависшие сделки в карточке КМ) |
+| `km` | КМ | ФИО менеджера (аналитика менеджеров / команда) |
+| `vks` | ВКС | ФИО ВКС (опционально; `optional_column_keys`) |
+| `deal_id` | ID сделки | Идентификатор сделки (зависшие сделки в карточке) |
 | `inn` | ИНН | ИНН клиента |
+| `client` | Клиент | Наименование клиента |
 
 **Пример переименования колонки в другом источнике:**
 
@@ -234,7 +236,7 @@
   "work_start_date", "current_status", "days_on_stage",
   "deal_created_date", "deal_stage", "days_since_deal",
   "tb", "change_conditions", "data_entry", "efs_flag", "label", "km",
-  "deal_id", "inn"
+  "deal_id", "inn", "client"
 ]
 ```
 
@@ -243,8 +245,18 @@
 | Базовый набор | Все ключи аналитики + фильтры + `label` |
 | **`km`** | Обязателен, если `manager_analytics.enabled: true` и в Excel есть колонка КМ. Без `km` в списке колонка **не загрузится** при `read_only_required_columns`, и аналитика менеджеров будет пропущена |
 | **`label`** | Нужен для `rank_selection.strategy_filter` (отбор TOP по метке «Стратегия» / «2026»). Без `label` в списке фильтр метки не применяется |
-| **`deal_id`**, **`inn`** | Идентификатор сделки и ИНН клиента — для `exceedances` и `hotspots[].stuck_items` в JSON/UI |
+| **`deal_id`**, **`inn`**, **`client`** | ID сделки, ИНН и наименование клиента — для `exceedances` и `hotspots[].stuck_items` (только при превышении P80) |
+| **`vks`** | Колонка ВКС — через `optional_column_keys` (читается если есть в файле, без ошибки если нет) |
+| **`client_display`** | Сокращение юрформ в имени клиента (ООО, АО, ИП…); список `abbreviations`: `{match, replace}`; применяется в JSON и UI |
 | Отключить менеджеров | `manager_analytics.enabled: false` — `km` можно убрать из списка для экономии памяти |
+
+### `optional_column_keys`
+
+Колонки, которые **желательно** загрузить, но отсутствие в Excel **не ошибка**. При `read_only_required_columns: true` они добавляются к `usecols`, если есть в шапке файла.
+
+```json
+"optional_column_keys": ["vks"]
+```
 
 > Оптимизация **не отбрасывает строки** — только ограничивает набор колонок при чтении.
 
@@ -319,14 +331,15 @@
 
 | Значение | Описание |
 |----------|----------|
-| `"status"` | Только «Текущий статус» |
-| `"substages"` | Только «Стадия сделки» (не «-») |
-| `"both"` | Оба уровня — две группы записей |
+| `"status"` | Только «Текущий статус» (**рекомендуется**). В meta: `analysis_level_locked: true`, `analysis_level: "status"` — фильтр уровня в HTML **скрыт** |
+| `"substages"` | Только «Стадия сделки» (не «-»). Уровень тоже зафиксирован (`analysis_level: "substage"`) |
+| `"both"` | Оба уровня — в HTML доступен фильтр «Уровень анализа» |
 
 ```json
-"stage_analysis_mode": "both"
+"stage_analysis_mode": "status"
 ```
 
+При `status` / `substages` в UI вместо селекта показывается locked-чип (как у агрегации).
 ### `product_analysis_mode`
 
 Режим детализации по продуктам:
@@ -358,7 +371,7 @@
 | `meta.excel_product_analysis_mode` | Режим Excel из config |
 | `meta.json_aggregation_modes` | `["group_product", "group_only"]` |
 
-HTML-дашборд выбирает срез переключателем «Агрегация строк».
+HTML-дашборд: агрегация **зафиксирована** в config (`aggregation_locked`); переключатель в UI заменён locked-чипом «По продуктам» / «По группам».
 
 ### `percentiles`
 
@@ -393,14 +406,29 @@ HTML-дашборд выбирает срез переключателем «А�
 
 Заголовки колонок перцентилей настраиваются в `output.percentile_column_labels` (шаблон `{p}` — число перцентиля).
 
-**Только для P80 (Excel):** дополнительная колонка `{metric}_p80_km_count` — число **уникальных КМ**, у которых срок по метрике **≥** значения П80 в этой группе (группа × стадия × ТБ). Шаблон заголовка: `km_count` в `percentile_column_labels` (напр. `П80 КМ ≥`). Требуется колонка `km` в `records`.
+**Только для P80 (Excel):** дополнительные колонки:
+
+| Суффикс | Смысл |
+|---------|--------|
+| `km_count` | Число **уникальных КМ** со сроком **≥** П80 |
+| `le_count` | Число лидов со сроком **≤** П80 |
+| `gt_count` | Число лидов со сроком **>** П80 |
+
+Шаблоны заголовков — в `output.percentile_column_labels`. В HTML-матрице `leads_le` / `leads_gt` показываются справа от дней (↑ красный / ↓ бирюзовый).
 
 ### `stages_order`
 
 Порядок статусов в сводной матрице Excel/HTML (строки/колонки стадий):
 
 ```json
-"stages_order": ["К ПРОДАЖЕ", "В РАБОТЕ"]
+"stages_order": [
+  "К ПРОДАЖЕ",
+  "ВЫЯВЛЕНИЕ ПОТРЕБНОСТИ",
+  "ОБСУЖДЕНИЕ УСЛОВИЙ",
+  "РЕАЛИЗАЦИЯ СДЕЛКИ",
+  "АКТИВАЦИЯ ПРОДУКТА",
+  "ПРОДАЖА ЗАВЕРШЕНА"
+]
 ```
 
 ### `dashboard`
@@ -416,34 +444,37 @@ HTML-дашборд выбирает срез переключателем «А�
 | `default_indicator` | `min`, `max`, `p20`, `p50`, `p80` |
 | `excel_max_chart_series` | Число графиков на листе Excel |
 | `max_chart_series` | Макс. линий на одном HTML-графике |
-| `precompute_html_filter_slices` | `true` — все комбинации `config.filters` в JSON (пустые пропускаются) |
-| `html_json` | Экспорт для HTML: split-bundle, compact, прореживание серий (см. ниже) |
+| `precompute_html_filter_slices` | `true` — все комбинации HTML-фильтров в JSON (пустые пропускаются) |
+| `show_managers_tab` | `true` / `false` — показывать вкладку «Менеджеры» в HTML |
+| `html_json` | Экспорт для HTML: monolith/split, compact, прореживание серий |
 
 ### `dashboard.html_json` — оптимизация для prod
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
-| `bundle_mode` | `"split"` | `"split"` — manifest + `slices/*.json` (lazy load в HTML); `"monolith"` — один файл (test) |
+| `bundle_mode` | `"monolith"` | `"monolith"` — один JSON со срезами (+ managers); `"split"` — каталог `*_html/slices` (нужен HTTP) |
 | `compact` | `true` | JSON без indent (меньше размер) |
-| `include_statistics` | `false` | Блок `statistics` не нужен HTML — не писать в архив |
-| `include_dimensions` | `true` | Справочники в manifest (~KB) |
-| `max_distribution_points` | `800` | Прореживание `days_sorted` в сериях для браузера |
-| `slices_subdir` | `"slices"` | Подкаталог файлов срезов |
-| `write_monolith_archive` | `true` | Писать slim-архив `kanban_report_{timestamp}.json` (указатель на split-bundle) |
+| `include_statistics` | `false` | Блок `statistics` (тяжёлый; UI не требует) |
+| `include_dimensions` | `true` | Справочники в JSON |
+| `max_distribution_points` | `800` | Прореживание `days_sorted` в сериях |
+| `slices_subdir` | `"slices"` | Только для `split` |
+| `write_monolith_archive` | `false` | Для split — slim-указатель; для monolith не используется |
+| `embed_managers` | `true` | Вложить блок `managers` в основной JSON |
+| `write_separate_managers_json` | `false` | Дополнительно писать `kanban_report_managers_*.json` |
 
-**Структура выхода после `run.py`:**
+**Структура выхода после `run.py` (monolith, по умолчанию):**
 
 ```
 OUT/
-  kanban_report_YYYYMMDD_HHMMSS.xlsx
-  kanban_report_YYYYMMDD_HHMMSS.json          # slim-архив (split) или monolith
-  kanban_report_YYYYMMDD_HHMMSS_html/
-    kanban_report_YYYYMMDD_HHMMSS.manifest.json
-    slices/none.json, slices/change_conditions.json, …
-  kanban_report_managers_YYYYMMDD_HHMMSS.json
+  kanban_report_YYYYMMDD_HHMMSS.xlsx      # Excel
+  kanban_report_YYYYMMDD_HHMMSS.json      # ← ЭТОТ файл грузить в UI
 ```
 
-**Split-bundle (prod):** каталог `OUT/kanban_report_{timestamp}_html/` — manifest + `slices/*.json`. Копии `*_latest*` и `HTML/data/` **не создаются**; JSON загружается в дашборд **вручную** через левую панель.
+**Split-bundle (опционально):** `bundle_mode: "split"` — каталог `*_html/` + lazy-load; **нужен HTTP к slices/** (на корпоративных ПК без серверов не использовать).
+
+**Monolith (по умолчанию, file://):** один файл `OUT/kanban_report_{timestamp}.json` — внутри `filter_slices` и блок `managers`. Каталоги `*_html` **не** создаются. В UI выбираете **только этот файл**.
+
+Запуск UI: открыть `HTML/index.html` в браузере (двойной клик / file://) — сервер не нужен.
 
 **Менеджеры:** JSON содержит **полные** `records` (все лиды×стадии с меткой) **только по актуальной дате отчёта** (`use_latest_report_date`); `exceedances` — только отклонения; `top_by_tb` / `top_by_tb_grouped` — предрасчёт по `rank_selection`; в UI TOP пересчитывается по фильтрам.
 
@@ -491,6 +522,11 @@ JSON содержит блок `visualizations`:
 | `json_aggregation_modes` | `["group_product", "group_only"]` |
 | `filters_applied` | Фильтры с `enabled=true` в config (только Excel) |
 | `filters_active` | `true`, если Excel-фильтры включены в config |
+| `config_locked_filters` | Список фильтров с `html_slice: false` для блока «Зафиксированные фильтры» в UI |
+| `analysis_level_locked` | `true` при `stage_analysis_mode` ∈ {status, substages} |
+| `analysis_level` | `"status"` / `"substage"` / `null` |
+| `excluded_stages` | Стадии, убранные из анализа (`exclude_equals`, напр. «К ПРОДАЖЕ») |
+| `stages_order` | Эффективный порядок стадий (без `excluded_stages`) |
 | `data_scope_note` | Excel vs JSON vs HTML |
 
 В `dimensions.filter_dimensions` — фактические значения колонок фильтров в отфильтрованном срезе.
@@ -501,13 +537,15 @@ JSON содержит блок `visualizations`:
 
 | Возможность | Описание |
 |-------------|----------|
-| Агрегация строк | Переключатель «По продуктам» / «По группам» — срез из `filter_slices.*.aggregations` |
-| Pipeline-фильтры | Левая панель: кнопки ВКЛ/ВЫКЛ по `filter_catalog` |
-| Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск, сворачивание |
-| Графики линий | Режимы «По продуктам/группам» и «По ТБ» — кривые «лиды × дни» |
-| Графики КМ | Режимы «КМ с нарушениями P80: по ТБ» и «… по группам/продуктам» — bar-chart; нужен JSON менеджеров |
-| Менеджеры (BOTTOM) | Секции **по ТБ**, топ-3 нарушителя P80; клик — детализация hotspots с таблицей **ИНН / ID ПрПр / ID сделки** |
-| Матрица | Сортировка по клику на заголовок стадии; при нескольких ТБ — max в ячейке |
+| Загрузка JSON | Кнопка выбора файла; после загрузки — **Сбросить** (очистка данных) |
+| Агрегация / уровень | Locked-чипы из config (`product_analysis_mode`, `stage_analysis_mode`) |
+| Pipeline-фильтры | Кнопки ВКЛ/ВЫКЛ по `filter_catalog` (`html_slice: true`) |
+| Зафиксированные фильтры | Чипы config-only (`html_slice: false`) — без переключателей |
+| Мультивыбор | ТБ, группы, продукты — чекбоксы, поиск |
+| Графики линий | «По продуктам/группам» и «По ТБ» |
+| Графики КМ | Bar-chart нарушений P80 (из блока managers) |
+| Матрица | ⅔ ячейки — дни; ⅓ — ↑ выше / ↓ ≤ порога; сортировка по клику на стадию |
+| Менеджеры | TOP-3 по ТБ (участники команды при `rank_by_team`); роли + состав команды на карточке |
 
 Файлы: `index.html`, `css/dashboard.css`, `js/data.js`, `js/icons.js`, `js/multi-filter.js`, `js/managers.js`, `js/charts.js`, `js/pivot.js`, `js/app.js`.
 
@@ -679,9 +717,8 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 | `timestamp_format` | strftime, напр. `%Y%m%d_%H%M%S` |
 | `excel_sheets.summary` | Лист «Сводная» (все ТБ) |
 | `excel_sheets.overall` | Лист «Общий» |
-| `excel_sheets.charts` | Лист «Графики» (кривые «лиды × дни») |
-| `excel_sheets.managers` | Лист «Менеджеры» (топ КМ + зоны превышения) |
-| `excel_sheets.matrix` | Устаревший ключ в config; лист **не создаётся** (матрица только в HTML) |
+| `excel_sheets.managers` | Лист «Менеджеры» (топ КМ + зоны превышения; колонка «Топ зон» — перенос строк) |
+| `excel_sheets.matrix` / `charts` | Устаревшие ключи; листы **не создаются** (графики и матрица — только в HTML) |
 | `excel_max_sheet_name_length` | Лимит Excel 31 символ |
 | `column_labels` | Заголовки колонок в Excel |
 | `excel_format` | freeze, ширина, форматы чисел, цвета |
@@ -721,10 +758,12 @@ HEX без `#`: min — зелёный, max — красный.
 | `contains_all` | array | — | Все подстроки обязательны |
 | `case_sensitive` | bool | `false` | Учёт регистра для текстовых фильтров |
 | `exclusive_group` | string | — | Группа взаимоисключения в HTML (варианты метки) |
-| `filter_mode` | string | `"include"` | `"exclude"` — **исключить** строки по подстроке (`exclude_contains`) |
-| `exclude_contains` | string | — | Подстрока для исключения (терминальные стадии сделки) |
-| `default_active` | bool | `false` | В HTML включён по умолчанию (ВКЛ при загрузке JSON) |
-| `ui_group` | string | — | Группа переключателей в левой панели (напр. `terminal_deal_stages`) |
+| `filter_mode` | string | `"include"` | `"exclude"` — исключить строки |
+| `exclude_contains` | string | — | Подстрока для исключения |
+| `exclude_equals` | string | — | Точное равенство (напр. «К ПРОДАЖЕ» в текущем статусе) |
+| `also_column_keys` | array | — | Доп. колонки для OR-проверки exclude |
+| `default_active` | bool | `false` | В HTML включён по умолчанию |
+| `ui_group` | string | — | Группа переключателей в левой панели |
 
 ### Роли поля `enabled`
 
@@ -797,15 +836,15 @@ HEX без `#`: min — зелёный, max — красный.
 
 HTML переключает срезы из `visualizations.filter_slices` кнопками **ВКЛ/ВЫКЛ** по `filter_catalog`. Варианты метки с одним `exclusive_group` **взаимоисключающие** в UI.
 
-### Исключение терминальных стадий сделки (`deal_stage`)
+### Исключение терминальных стадий (`deal_stage` / `current_status`)
 
-Строки с «Стадия сделки», содержащей терминальные подстроки, **не участвуют** в расчёте дней на стадиях, min/max, перцентилей, JSON-срезах и аналитике КМ.
+Строки с терминальными подстроками **не участвуют** в расчёте дней на стадиях, min/max, перцентилей, JSON-срезах и аналитике КМ.
 
-| Ключ фильтра | Подстрока (`exclude_contains`) | По умолчанию Excel + HTML |
-|--------------|-------------------------------|---------------------------|
-| `exclude_deal_otkaz` | `отказ` | **ВКЛ** |
-| `exclude_deal_zakryta` | `закрыта` | **ВКЛ** |
-| `exclude_deal_zaklyuchen` | `заключен` | **ВКЛ** |
+| Ключ фильтра | Колонки | Подстрока (`exclude_contains`) | По умолчанию Excel + HTML |
+|--------------|---------|-------------------------------|---------------------------|
+| `exclude_deal_otkaz` | `deal_stage` + `current_status` (`also_column_keys`) | `отказ` | **ВКЛ** |
+| `exclude_deal_zakryta` | `deal_stage` | `закрыта` | **ВКЛ** |
+| `exclude_deal_zaklyuchen` | `deal_stage` | `заключен` | **ВКЛ** |
 
 Регистр не учитывается (`case_sensitive: false`). **Пустая стадия** (`-`, `""`, `nan`) **всегда остаётся** в расчёте — исключаются только строки с непустой стадией и совпадением подстроки.
 
@@ -813,6 +852,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 "exclude_deal_otkaz": {
   "enabled": true,
   "column_key": "deal_stage",
+  "also_column_keys": ["current_status"],
   "filter_mode": "exclude",
   "exclude_contains": "отказ",
   "case_sensitive": false,
@@ -822,19 +862,43 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 }
 ```
 
+- **`also_column_keys`:** доп. колонки для OR-проверки той же подстроки (для «отказ» — ещё «Текущий статус»).
 - **Excel:** `enabled: true` — исключение при `run.py` (статистика, менеджеры).
-- **HTML:** три переключателя в группе «Исключить терминальные стадии сделки»; **ВКЛ** = исключать; **ВЫКЛ** = вернуть такие строки в расчёт.
+- **HTML:** три переключателя в группе «Исключить терминальные стадии»; **ВКЛ** = исключать; **ВЫКЛ** = вернуть такие строки в расчёт.
 - **JSON менеджеров:** лиды/сделки с терминальными стадиями **не попадают** в `records` / `exceedances` (фильтр на этапе pipeline).
 
-**Гранularity:** отсекается **только конкретная строка** (лид × дата отчёта × терминальная «Стадия сделки»). Тот же `ID ПрПр` на других датах отчёта или других стадиях **остаётся** в расчёте min/max/перцентилей и у менеджеров.
+**Гранularity:** отсекается **только конкретная строка** (лид × дата отчёта). Тот же `ID ПрПр` на других датах отчёта или других стадиях **остаётся** в расчёте min/max/перцентилей и у менеджеров.
 
 Срез по умолчанию в UI: все три исключения **ВКЛ** (ключ вида `exclude_deal_otkaz+exclude_deal_zakryta+exclude_deal_zaklyuchen`).
+
+> В текущем `config.json` терминальные `exclude_deal_*` обычно с `html_slice: false` — они **зафиксированы** в config и показываются в блоке «Зафиксированные фильтры», без переключателей в pipeline.
+
+### Исключение статуса «К ПРОДАЖЕ» (`exclude_current_for_sale`)
+
+Опциональный config-only фильтр: из анализа убираются лиды с **текущим статусом** ровно «К ПРОДАЖЕ»; колонка/опция этой стадии исчезает из матрицы и UI.
+
+```json
+"exclude_current_for_sale": {
+  "enabled": true,
+  "column_key": "current_status",
+  "filter_mode": "exclude",
+  "exclude_equals": "К ПРОДАЖЕ",
+  "case_sensitive": false,
+  "html_slice": false
+}
+```
+
+| Поле | Значение |
+|------|----------|
+| `enabled` | `true` — исключать; `false` — оставить стадию в анализе |
+| `exclude_equals` | Точное совпадение (не substring) |
+| `html_slice` | `false` — только config; в `meta.excluded_stages` и locked-чипах |
 
 ---
 
 ## 14. Аналитика менеджеров (`manager_analytics`, колонка `km`)
 
-Менеджер — **ФИО** из колонки Excel **КМ** (`columns.km`).
+Менеджер / участник — **ФИО**. При `rank_by_team: true` TOP считается не только по колонке КМ, а по **уникальным участникам команды** зависшего лида.
 
 | Поле | Описание |
 |------|----------|
@@ -842,14 +906,57 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 | `metric` | Метрика срока (обычно `days_on_stage`) |
 | `percentile` | Порог перцентиля (обычно `80`) |
 | `threshold_scope` | `overall` — порог из общей сводки без ТБ |
-| `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) — только КМ с `exceedance_count > 0` |
-| `top_hotspots_per_manager` | Топ зон превышения (продукт×стадия) на каждого КМ в топе (по умолчанию `5`) |
-| `top_stuck_items_per_hotspot` | Макс. зависших лидов/сделок в одной зоне hotspot (по умолчанию `15`) |
-| `use_latest_report_date` | `true` — для менеджеров берётся только `max(Дата отчета)`; в `meta.report_date_snapshot` — дата среза |
-| `rank_selection` | Пул отбора TOP КМ (см. ниже); Excel и начальный UI |
-| `html_include_detail` | Устарело для slim-режима: `records`, `exceedances`, `detail_by_product`, `manager_totals` **всегда** в JSON |
+| `top_managers_per_tb` | Топ-N в каждом ТБ (по умолчанию `3`) |
+| `top_hotspots_per_manager` | Топ зон превышения на карточке (по умолчанию `5`) |
+| `top_stuck_items_per_hotspot` | Макс. зависших лидов в одной зоне (по умолчанию `15`) |
+| `use_latest_report_date` | `true` — только `max(Дата отчета)` |
+| `rank_by_team` | `true` — TOP по участникам команды (нужны `team_files`) |
+| `team_files` | Файлы команды лида / сделки (см. ниже) |
+| `rank_selection` | Пул отбора TOP (группы, продукты, метка, ЕФС…) |
+| `html_include_detail` | Устарело: `records` / `exceedances` всегда в JSON |
 
-### `rank_selection` — отбор TOP КМ
+### `team_files` — команда лида и сделки
+
+Отдельные Excel (лежат рядом с kanban в `paths.input_*`):
+
+| Ключ | Описание |
+|------|----------|
+| `enabled` | Включить подгрузку |
+| `lead_team.test` / `.prod` | Файлы «Команда л …» — лидер лида (`Лидер = Да` по max дате отчёта на `ID ПрПр`) |
+| `deal_team.test` / `.prod` | Файлы «Команда с …» — лидеры сделки (`Лидер = Да` по max дате на `ID сделки`) |
+| `leader_values` | Значения «да» для колонки «Лидер» |
+| `columns` | Имена колонок файла команды |
+
+**Команда зависшего лида (уникальные ФИО):**
+
+1. Лидер(ы) лида из `lead_team`
+2. Лидер(ы) сделки из `deal_team`
+3. **КМ** из канбан-файла
+4. **ВКС** из канбан-файла (`optional_column_keys`)
+
+Повторы схлопываются; у человека собираются роли: `КМ`, `ВКС`, `Команда лида · …`, `Команда сделки · …`.
+
+**Алгоритм TOP:** перцентили по продукту×стадии → лиды с превышением P80 → разворот по участникам команды → TOP-N по ТБ → на карточке роли и состав команды.
+
+```json
+"team_files": {
+  "enabled": true,
+  "lead_team": { "test": ["тест Команда л ….xlsx"], "prod": [] },
+  "deal_team": { "test": ["тест Команда с ….xlsx"], "prod": [] },
+  "leader_values": ["Да", "да", "yes", "1"],
+  "columns": {
+    "report_date": "Дата отчета",
+    "lead_id": "ID ПрПр",
+    "deal_id": "ID сделки",
+    "member": "Участник команды",
+    "role": "Роль участника команды",
+    "is_leader": "Лидер",
+    "tb": "ТБ"
+  }
+}
+```
+
+### `rank_selection` — отбор TOP
 
 Задаёт **пул** групп/продуктов и фильтр метки для расчёта `top_by_tb` (Excel + начальное состояние UI). Полные данные — в `records`; пользователь в UI может сузить выбор.
 
@@ -882,7 +989,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 }
 ```
 
-> TOP-N — по превышениям P80 в пуле (Excel). JSON: **`records`** — все лиды актуального среза; **`exceedances`** — только отклонения (ID ПрПр, ID сделки, ИНН); ключ КМ: **`km_tb_key`** = ТБ+КМ. Пороги P80 — из **общей** сводки (все даты отчёта).
+> TOP-N — по превышениям P80 в пуле (Excel). JSON: **`records`** — все лиды актуального среза; `client` / `inn` / `deal_id` — **только** у строк с `exceeded: true`; **`exceedances`** — только отклонения; ключ КМ: **`km_tb_key`** = ТБ+КМ. Пороги P80 — из **общей** сводки (все даты отчёта).
 
 **Срез по дате отчёта (`use_latest_report_date: true`):**
 
@@ -893,7 +1000,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 
 **Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ (уникальный ключ ТБ+ФИО).
 
-**Hotspots** — зоны превышения с вложенным **`stuck_items[]`**: `lead_id`, `deal_id`, `inn`, `days_int`, `overshoot`.
+**Hotspots** — зоны превышения с вложенным **`stuck_items[]`**: `lead_id`, `deal_id`, `inn`, `client`, `days_int`, `overshoot`.
 
 **Блок `charts` (в slim и полном JSON):**
 
@@ -906,9 +1013,9 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 
 | Артефакт | Путь |
 |----------|------|
-| Excel | Лист «Менеджеры»: место, КМ, ТБ, превышения, колонка «Топ зон превышения» |
-| JSON | `OUT/kanban_report_managers_{timestamp}.json` |
-| HTML | Секции по ТБ, карточки топ-3 КМ; **детальная карточка** (hotspots + таблица зависших сделок); bar-графики на вкладке «Графики» |
+| Excel | Лист «Менеджеры»: место, участник/КМ, ТБ, превышения, **роли**, **команда**, зоны |
+| JSON | Блок `managers` в monolith (или `…_managers_*.json`) |
+| HTML | Секции по ТБ; карточка с ролями и командой по зависшим лидам |
 
 **Структура JSON менеджеров (кратко):**
 
@@ -936,13 +1043,13 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
     {
       "tb": "…", "km": "…", "product_group": "…", "product": "…",
       "stage_key": "В РАБОТЕ", "label": "Стратегия 2026", "lead_id": "…",
-      "deal_id": "…", "inn": "7701234567",
+      "deal_id": "…", "inn": "7701234567", "client": "ООО Пример",
       "days_int": 45, "threshold_days": 30, "exceeded": true
     }
   ],
   "exceedances": [
     {
-      "tb": "…", "km": "…", "lead_id": "…", "deal_id": "…", "inn": "7701234567",
+      "tb": "…", "km": "…", "lead_id": "…", "deal_id": "…", "inn": "7701234567", "client": "ООО Пример",
       "product_group": "…", "product": "…", "stage_key": "В РАБОТЕ",
       "days_int": 45, "threshold_days": 30, "overshoot": 15
     }
@@ -966,7 +1073,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
           "avg_overshoot": 8.2,
           "stuck_items": [
             {
-              "lead_id": "…", "deal_id": "…", "inn": "7701234567",
+              "lead_id": "…", "deal_id": "…", "inn": "7701234567", "client": "ООО Пример",
               "days_int": 45, "overshoot": 15
             }
           ]
@@ -1011,6 +1118,8 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "top_hotspots_per_manager": 5,
   "top_stuck_items_per_hotspot": 15,
   "use_latest_report_date": true,
+  "rank_by_team": true,
+  "team_files": { "enabled": true, "lead_team": { "test": [] }, "deal_team": { "test": [] } },
   "rank_selection": {
     "product_groups": [],
     "products": [],

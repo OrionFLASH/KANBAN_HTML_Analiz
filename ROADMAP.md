@@ -167,6 +167,9 @@
 | 10.5 | Excel: лист «Графики» (без «Матрицы») | `src/pivot_excel.py` | `[v]` |
 | 10.6 | Менеджеры: hotspots + детальная карточка КМ в HTML | `manager_analytics.py`, `managers.js` | `[v]` |
 | 10.7 | Отбор TOP КМ: `rank_selection`, полные `records`, пересчёт в UI | `manager_analytics.py`, `managers.js`, config | `[v]` |
+| 10.8 | Уменьшение JSON: config-only фильтры, убрать дубли viz, меню сжатия | `filter_slices`, `json_exporter`, UI | `[w]` |
+| 10.9 | Опционально исключить стадию «К ПРОДАЖЕ» из анализа (config-only) | `filters`, `visualization_data`, UI | `[v]` |
+| 10.10 | Команда лида/сделки: лидеры + КМ + ВКС → TOP-3 по ТБ, Excel/UI | `team_loader`, `manager_analytics`, UI | `[v]` |
 
 ---
 
@@ -221,6 +224,6 @@ src/
 
 ## Следующий шаг
 
+- **10.8** — согласовать и внедрить пункты сжатия JSON (см. чат)
 - **9.2** — prod-прогон на 22 файлах в каталоге `IN/`
 - **9.3** — профилирование на большом объёме
-- **Фаза 10** — HTML-дашборд по JSON

@@ -57,12 +57,12 @@ log/                 # логи INFO/DEBUG
 | `performance` | Workers, память, оптимизация чтения |
 | `progress` | Вывод статуса, тайминг этапов, сводка в конце |
 | `dates` | Форматы дат, пустые значения |
-| `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа |
+| `duration_source`, `stage_analysis_mode`, `percentiles` | Логика анализа. `stage_analysis_mode: status` — только статусы; фильтр уровня в HTML скрыт (`analysis_level_locked`) |
 | `aggregation` | Группировки и метрики |
 | `output` | Имена файлов, листы Excel, оформление |
-| `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`). Терминальные стадии сделки — построчное исключение (`exclude_deal_*`) |
+| `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). Config-only (`html_slice: false`): ЕФС, терминальные `exclude_deal_*`, опционально `exclude_current_for_sale` (исключить текущий статус «К ПРОДАЖЕ» из анализа и колонок UI) |
 | `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
-| `manager_analytics` | Превышения P80 по КМ; `rank_selection`, `use_latest_report_date`; JSON `records` + `exceedances` + TOP-N |
+| `manager_analytics` | Превышения P80; TOP по участникам команды (`rank_by_team` + `team_files`: команда лида/сделки); КМ+ВКС+лидеры; Excel/UI |
 | `logging` | Файлы логов |
 
 ### Частые настройки
@@ -112,10 +112,10 @@ log/                 # логи INFO/DEBUG
 - **Сводная** — все ТБ
 - **Общий** — без разреза ТБ
 - **{ТБ}** — отдельный лист на каждый ТБ
-- **Менеджеры** — топ-N КМ по ТБ (отбор по `rank_selection` в config), колонка «Топ зон превышения»
-- **Графики** — кривые «лиды × дни»
+- **Менеджеры** — топ-N участников/КМ по ТБ (при `rank_by_team` — по команде), роли и команда, зоны превышения
+- **Графики** — кривые «лиды × дни» (если лист ещё формируется в сборке; иначе — только HTML)
 
-> Лист **«Матрица»** в Excel **не создаётся** (с v1.0.3). Сводная матрица — только в HTML-дашборде.
+> Лист **«Матрица»** в Excel **не создаётся**. Сводная матрица — в HTML (дни + счётчики ≤ / > порога).
 
 **JSON основной** (split-bundle, prod):
 
@@ -133,8 +133,8 @@ OUT/kanban_report_YYYYMMDD_HHMMSS_html/
 | Блок | Содержание |
 |------|------------|
 | `meta.report_date_snapshot` | Дата актуальной выгрузки (max «Дата отчета») при `use_latest_report_date: true` |
-| `records[]` | Лиды×стадии актуального среза: метка, exceeded, порог P80, deal_id, inn |
-| `exceedances[]` | Только отклонения P80: lead_id, deal_id, inn, overshoot |
+| `records[]` | Лиды×стадии актуального среза: метка, exceeded, порог P80; `deal_id`/`inn`/`client` — только при exceeded |
+| `exceedances[]` | Только отклонения P80: lead_id, deal_id, inn, client, overshoot |
 | `top_by_tb[]` | TOP-N по `rank_selection` + `hotspots` + `stuck_items` |
 | `top_by_tb_grouped[]` | Те же данные, сгруппированные по ТБ для UI |
 | `dimensions` | Справочник групп и продуктов |
@@ -171,7 +171,7 @@ cd HTML && python -m http.server 8080
 
 ## Перенос на другой ПК (без Git)
 
-Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). Копия для пересылки без Git: каталог `POST/KANBAN_HTML_Analiz/` (без zip, без `src/Tests/`).
+Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). UI: один файл `OUT/kanban_report_*.json` (monolith). Копия для пересылки: `POST/KANBAN_HTML_Analiz/`.
 
 ## История версий
 
@@ -194,3 +194,4 @@ cd HTML && python -m http.server 8080
 | 1.0.4 | 2026-08-31 | `rank_selection` для отбора TOP КМ; полные `records` в JSON; пересчёт TOP в UI |
 | 1.0.5 | 2026-08-31 | Топ-3 нарушителя по ТБ в UI; `exceedances`, `stuck_items`, `deal_id`/`inn`; срез `use_latest_report_date`; fix parse datetime64 |
 | 1.0.6 | 2026-08-31 | Исключение терминальных стадий сделки (построчно, UI + JSON); Excel: колонки «П80 КМ ≥» — число уникальных КМ с сроком ≥ P80 |
+| 1.0.7 | 2026-08-31 | Config-only «К ПРОДАЖЕ»; команда лида/сделки + ВКС → TOP; матрица ↑/↓ порога; locked уровень `status`; сброс JSON; docs |
