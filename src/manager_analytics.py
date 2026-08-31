@@ -10,11 +10,105 @@ from typing import Any
 
 import pandas as pd
 
-from src.html_json_export import build_manager_html_payload
 from src.percentile_stats import percentile_label, to_integer_days
 from src.settings import col, group_only_product_label, is_group_only_analysis
 
 logger: logging.Logger = logging.getLogger("kanban.manager_analytics")
+
+# Режимы фильтра метки для отбора TOP КМ (согласованы с filters.strategy_label*)
+STRATEGY_FILTER_ALL: str = "all"
+STRATEGY_FILTER_STRATEGY: str = "strategy"
+STRATEGY_FILTER_STRATEGY_2026: str = "strategy_2026"
+STRATEGY_FILTER_NON_STRATEGY: str = "non_strategy"
+VALID_STRATEGY_FILTERS: frozenset[str] = frozenset(
+    {STRATEGY_FILTER_ALL, STRATEGY_FILTER_STRATEGY, STRATEGY_FILTER_STRATEGY_2026, STRATEGY_FILTER_NON_STRATEGY}
+)
+
+
+def rank_selection_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Параметры отбора TOP КМ из manager_analytics.rank_selection."""
+    raw: dict[str, Any] = dict(config.get("manager_analytics", {}).get("rank_selection") or {})
+    strategy: str = str(raw.get("strategy_filter", STRATEGY_FILTER_ALL))
+    if strategy not in VALID_STRATEGY_FILTERS:
+        strategy = STRATEGY_FILTER_ALL
+    groups: list[str] = [str(g) for g in raw.get("product_groups") or [] if str(g).strip()]
+    products: list[str] = [str(p) for p in raw.get("products") or [] if str(p).strip()]
+    return {
+        "product_groups": groups,
+        "products": products,
+        "strategy_filter": strategy,
+    }
+
+
+def _label_column(config: dict[str, Any]) -> str | None:
+    """Имя колонки «Метка» или None."""
+    if "label" not in config.get("columns", {}):
+        return None
+    return col(config, "label")
+
+
+def strategy_filter_mask(series: pd.Series, mode: str, config: dict[str, Any]) -> pd.Series:
+    """Маска строк по режиму strategy_filter (метка лида)."""
+    if mode == STRATEGY_FILTER_ALL:
+        return pd.Series(True, index=series.index)
+    text: pd.Series = series.fillna("").astype(str)
+    case: bool = False
+    filters_cfg: dict[str, Any] = config.get("filters", {})
+    if mode == STRATEGY_FILTER_STRATEGY:
+        flt: dict[str, Any] = filters_cfg.get("strategy_label") or {}
+        token: str = str(flt.get("contains", "Стратегия"))
+        case = bool(flt.get("case_sensitive", False))
+        return text.str.contains(token, case=case, na=False)
+    if mode == STRATEGY_FILTER_STRATEGY_2026:
+        flt = filters_cfg.get("strategy_label_2026") or {}
+        tokens: list[str] = [str(t) for t in flt.get("contains_all", ["Стратегия", "2026"]) if str(t)]
+        case = bool(flt.get("case_sensitive", False))
+        mask: pd.Series = pd.Series(True, index=series.index)
+        for token in tokens:
+            mask &= text.str.contains(token, case=case, na=False)
+        return mask
+    if mode == STRATEGY_FILTER_NON_STRATEGY:
+        flt = filters_cfg.get("strategy_label") or {}
+        token = str(flt.get("contains", "Стратегия"))
+        case = bool(flt.get("case_sensitive", False))
+        return ~text.str.contains(token, case=case, na=False)
+    return pd.Series(True, index=series.index)
+
+
+def apply_rank_selection(
+    detail: pd.DataFrame,
+    config: dict[str, Any],
+    rank_sel: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """
+    Оставляет строки detail, попадающие в пул отбора TOP КМ:
+    группы/продукты из rank_selection (пустой список = все) и фильтр метки.
+    """
+    if detail.empty:
+        return detail
+
+    sel: dict[str, Any] = rank_sel or rank_selection_config(config)
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    result: pd.DataFrame = detail.copy()
+
+    groups: list[str] = list(sel.get("product_groups") or [])
+    if groups and pg_col in result.columns:
+        allowed: set[str] = {str(g) for g in groups}
+        result = result[result[pg_col].astype(str).isin(allowed)]
+
+    products: list[str] = list(sel.get("products") or [])
+    if products and prod_col in result.columns and not is_group_only_analysis(config):
+        allowed_prod: set[str] = {str(p) for p in products}
+        result = result[result[prod_col].astype(str).isin(allowed_prod)]
+
+    label_name: str | None = _label_column(config)
+    strategy_mode: str = str(sel.get("strategy_filter", STRATEGY_FILTER_ALL))
+    if label_name and label_name in result.columns and strategy_mode != STRATEGY_FILTER_ALL:
+        mask: pd.Series = strategy_filter_mask(result[label_name], strategy_mode, config)
+        result = result[mask]
+
+    return result.reset_index(drop=True)
 
 
 def km_column(config: dict[str, Any]) -> str | None:
@@ -109,6 +203,9 @@ def build_manager_exceedance_detail(
         "threshold_days",
         "exceeded",
     ]
+    label_name: str | None = _label_column(config)
+    if label_name and label_name in merged.columns:
+        keep.append(label_name)
     keep = [c for c in keep if c and c in merged.columns]
     return merged[keep].reset_index(drop=True)
 
@@ -341,7 +438,7 @@ def top_managers_per_tb(manager_totals: pd.DataFrame, config: dict[str, Any]) ->
 
 
 def _frame_to_records(df: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
-    """DataFrame → список dict для JSON."""
+    """DataFrame → список dict для JSON (агрегаты без lead_id)."""
     if df.empty:
         return []
     km_name: str | None = km_column(config)
@@ -357,6 +454,50 @@ def _frame_to_records(df: pd.DataFrame, config: dict[str, Any]) -> list[dict[str
         rename[km_name] = "km"
     out: pd.DataFrame = df.rename(columns=rename)
     return out.to_dict(orient="records")
+
+
+def lead_records_to_json(detail: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Все строки лид×стадия для UI-фильтрации (полный набор)."""
+    if detail.empty:
+        return []
+    km_name: str | None = km_column(config)
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    tb_col: str = col(config, "tb")
+    lead_col: str = col(config, "lead_id")
+    label_name: str | None = _label_column(config)
+    rename: dict[str, str] = {
+        tb_col: "tb",
+        pg_col: "product_group",
+        prod_col: "product",
+        lead_col: "lead_id",
+    }
+    if km_name:
+        rename[km_name] = "km"
+    if label_name and label_name in detail.columns:
+        rename[label_name] = "label"
+    out: pd.DataFrame = detail.rename(columns=rename)
+    records: list[dict[str, Any]] = out.to_dict(orient="records")
+    for row in records:
+        row["exceeded"] = bool(row.get("exceeded"))
+        if row.get("days_int") is not None:
+            row["days_int"] = round(float(row["days_int"]), 1)
+        if row.get("threshold_days") is not None:
+            row["threshold_days"] = round(float(row["threshold_days"]), 1)
+    return records
+
+
+def build_manager_dimensions(detail: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]:
+    """Справочник групп и продуктов в данных менеджеров."""
+    if detail.empty:
+        return {"product_groups": [], "products": []}
+    pg_col: str = col(config, "product_group")
+    prod_col: str = col(config, "product")
+    groups: list[str] = sorted(detail[pg_col].dropna().astype(str).unique(), key=str)
+    products: list[str] = []
+    if prod_col in detail.columns and not is_group_only_analysis(config):
+        products = sorted(detail[prod_col].dropna().astype(str).unique(), key=str)
+    return {"product_groups": groups, "products": products}
 
 
 def build_manager_analytics(
@@ -386,16 +527,23 @@ def build_manager_analytics(
 
     detail: pd.DataFrame = build_manager_exceedance_detail(records, thresholds, config)
     by_product, manager_totals = aggregate_manager_counts(detail, config)
-    top_tb: pd.DataFrame = top_managers_per_tb(manager_totals, config)
-    top_records: list[dict[str, Any]] = attach_hotspots_to_top(top_tb, by_product, config)
+
+    rank_sel: dict[str, Any] = rank_selection_config(config)
+    ranked_detail: pd.DataFrame = apply_rank_selection(detail, config, rank_sel)
+    ranked_by_product, ranked_totals = aggregate_manager_counts(ranked_detail, config)
+    top_tb: pd.DataFrame = top_managers_per_tb(ranked_totals, config)
+    top_records: list[dict[str, Any]] = attach_hotspots_to_top(top_tb, ranked_by_product, config)
     charts: dict[str, Any] = build_km_violation_charts(detail, manager_totals, config)
+    dimensions: dict[str, Any] = build_manager_dimensions(detail, config)
+    lead_records: list[dict[str, Any]] = lead_records_to_json(detail, config)
 
     logger.info(
-        "Менеджеры: превышений %d, топ-записей %d, порогов P80 %d, chart facts %d",
+        "Менеджеры: превышений %d, топ-записей %d (отбор: %s), порогов P80 %d, lead records %d",
         int(detail["exceeded"].sum()) if not detail.empty else 0,
         len(top_tb),
+        rank_sel.get("strategy_filter"),
         len(thresholds),
-        len(charts.get("facts", [])),
+        len(lead_records),
     )
 
     return {
@@ -407,11 +555,15 @@ def build_manager_analytics(
             "threshold_scope": str(mgr_cfg.get("threshold_scope", "overall")),
             "top_managers_per_tb": int(mgr_cfg.get("top_managers_per_tb", 3)),
             "km_column": km_name,
+            "rank_selection": rank_sel,
             "description": (
                 "Превышение P80: срок лида на стадии строго больше порога P80 "
-                "для той же группы, продукта и стадии (порог из общей сводки без ТБ)."
+                "для той же группы, продукта и стадии (порог из общей сводки без ТБ). "
+                "TOP КМ — по rank_selection; полные данные в records для UI-фильтров."
             ),
         },
+        "dimensions": dimensions,
+        "records": lead_records,
         "top_by_tb": top_records,
         "detail_by_product": _frame_to_records(by_product, config),
         "manager_totals": _frame_to_records(manager_totals, config),
@@ -467,11 +619,7 @@ def export_manager_json(payload: dict[str, Any], output_path: Path, config: dict
         if compact
         else {"ensure_ascii": False, "indent": 2, "default": str}
     )
-    export_payload: dict[str, Any] = (
-        build_manager_html_payload(payload, config)
-        if not config.get("manager_analytics", {}).get("html_include_detail", False)
-        else payload
-    )
+    export_payload: dict[str, Any] = payload
     with output_path.open("w", encoding="utf-8") as fh:
         json.dump(export_payload, fh, **dump_kw)
 

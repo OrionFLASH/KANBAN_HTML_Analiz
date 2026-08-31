@@ -6,7 +6,11 @@ import pandas as pd
 
 from src.aggregator import build_all_statistics
 from src.lead_tracker import build_lead_stage_records
-from src.manager_analytics import build_manager_analytics, build_p80_thresholds
+from src.manager_analytics import (
+    apply_rank_selection,
+    build_manager_analytics,
+    build_p80_thresholds,
+)
 
 
 def _config() -> dict:
@@ -24,6 +28,7 @@ def _config() -> dict:
             "days_since_deal": "Количество дней с создания сделки",
             "tb": "ТБ",
             "km": "КМ",
+            "label": "Метка",
         },
         "required_column_keys": [
             "report_date",
@@ -37,6 +42,7 @@ def _config() -> dict:
             "deal_stage",
             "days_since_deal",
             "tb",
+            "label",
         ],
         "processing": {
             "empty_stage_values": ["", "-"],
@@ -82,6 +88,7 @@ def _raw_df() -> pd.DataFrame:
             "Количество дней с создания сделки": [5, 7, 8, 9, 10, 15, 3, 12],
             "ТБ": ["ТБ1", "ТБ1", "ТБ1", "ТБ1", "ТБ1", "ТБ2", "ТБ2", "ТБ2"],
             "КМ": ["Иванов", "Иванов", "Петров", "Петров", "Сидоров", "Иванов", "Петров", "Петров"],
+            "Метка": ["Стратегия 2026"] * 4 + ["Обычная"] * 4,
         }
     )
 
@@ -106,6 +113,46 @@ def test_build_manager_analytics_top3() -> None:
     assert isinstance(charts.get("facts"), list)
     with_viol = [row for row in charts["by_tb"] if row["km_with_violations"] > 0]
     assert with_viol
+
+
+def test_manager_payload_includes_records_and_rank_selection() -> None:
+    """JSON содержит полные records и rank_selection из config."""
+    config = _config()
+    records = build_lead_stage_records(_raw_df(), config)
+    stats = build_all_statistics(records, config)
+    payload = build_manager_analytics(records, stats, config)
+
+    assert payload is not None
+    assert isinstance(payload.get("records"), list)
+    assert len(payload["records"]) >= 1
+    assert "label" in payload["records"][0]
+    assert payload["meta"]["rank_selection"]["strategy_filter"] == "all"
+    assert "dimensions" in payload
+
+
+def test_rank_selection_strategy_2026() -> None:
+    """apply_rank_selection оставляет только лиды с меткой «Стратегия» и «2026»."""
+    from src.manager_analytics import build_manager_exceedance_detail
+
+    config = _config()
+    config["filters"] = {
+        "strategy_label": {"contains": "Стратегия", "case_sensitive": False},
+        "strategy_label_2026": {"contains_all": ["Стратегия", "2026"], "case_sensitive": False},
+    }
+    records = build_lead_stage_records(_raw_df(), config)
+    stats = build_all_statistics(records, config)
+    thresholds = build_p80_thresholds(stats["overall"], config)
+    detail = build_manager_exceedance_detail(records, thresholds, config)
+
+    filtered = apply_rank_selection(
+        detail,
+        config,
+        {"product_groups": [], "products": [], "strategy_filter": "strategy_2026"},
+    )
+    label_col = config["columns"]["label"]
+    assert not filtered.empty
+    assert all("2026" in str(v) and "Стратегия" in str(v) for v in filtered[label_col])
+    assert len(filtered) < len(detail)
 
 
 def test_p80_thresholds_built() -> None:

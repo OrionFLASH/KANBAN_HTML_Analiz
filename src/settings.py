@@ -194,6 +194,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "top_managers_per_tb": 3,
         "top_hotspots_per_manager": 5,
         "html_include_detail": False,
+        "rank_selection": {
+            "product_groups": [],
+            "products": [],
+            "strategy_filter": "all",
+        },
     },
     "parallel_workers": 0,
     "excel_theme": "green_red",

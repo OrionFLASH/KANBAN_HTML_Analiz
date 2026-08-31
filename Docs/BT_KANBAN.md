@@ -1,6 +1,6 @@
 # Бизнес-требования и системный анализ: KANBAN HTML Analiz
 
-**Версия:** 1.0.3  
+**Версия:** 1.0.4  
 **Дата:** 2026-08-31  
 **Источник:** `Docs/ToDo KANBAN.txt`
 
@@ -153,8 +153,9 @@
 - Топ-N менеджеров на каждый ТБ по числу превышений
 - Bar-графики в HTML: число КМ с нарушениями по ТБ и по группам/продуктам
 - **Hotspots** — топ зон превышения на каждого КМ (продукт×стадия, +N дн. к P80)
-- Выход: лист Excel «Менеджеры», JSON с `top_by_tb[].hotspots`, детальная карточка в HTML
-- Колонка `КМ` должна быть в `required_column_keys` для загрузки из Excel
+- **`rank_selection`** — пул групп/продуктов и фильтр метки для TOP-N; полные `records` в JSON
+- Выход: лист Excel «Менеджеры», JSON с `records` + `top_by_tb`, детальная карточка и пересчёт TOP в HTML
+- Колонки `КМ` и `Метка` должны быть в `required_column_keys` для загрузки из Excel (`label` — для `rank_selection.strategy_filter`)
 
 ---
 
@@ -190,15 +191,26 @@
 
 **Менеджеры** (`kanban_report_managers_{timestamp}.json`):
 
-- `top_by_tb[]` с **`hotspots`** — почему КМ в топе (продукт, стадия, превышение)
-- `meta`, `charts` (`by_tb`, `facts`)
-- При полном экспорте: `detail_by_product`, `manager_totals`
+- `records[]` — все лиды×стадии (метка, exceeded, порог)
+- `top_by_tb[]` с **`hotspots`** — предрасчёт по `rank_selection`
+- `meta.rank_selection`, `dimensions`, `charts` (`by_tb`, `facts`)
+- `detail_by_product`, `manager_totals` — всегда в файле
 
 > Копии `*_latest*` и запись в `HTML/data/` **не создаются**. JSON загружается в дашборд вручную.
 
 ### 5.4. HTML-дашборд
 
 Каталог `HTML/` — локальная страница; JSON загружается вручную из `OUT/`.
+
+| Раздел | Поведение |
+|--------|-----------|
+| Графики линий | Кривые «лиды × дни» по срезам `filter_slices` |
+| Графики КМ | Bar-chart по JSON менеджеров (`charts`) |
+| Матрица | `pivot_flat` из активного среза |
+| Менеджеры (BOTTOM) | Загрузка `kanban_report_managers_*.json`; TOP-N пересчитывается из `records` по фильтрам |
+| Отбор TOP КМ | Config: `rank_selection` — пул групп/продуктов и метка; UI: мультивыбор справа + выпадающий список «Метка (отбор TOP)» |
+
+> Pipeline-фильтры основного JSON **не** пересчитывают менеджеров — для КМ используется отдельный JSON и собственные фильтры отбора.
 
 ## 6. Системная архитектура
 
@@ -292,6 +304,11 @@
     "percentile": 80,
     "top_managers_per_tb": 3,
     "top_hotspots_per_manager": 5,
+    "rank_selection": {
+      "product_groups": [],
+      "products": [],
+      "strategy_filter": "all"
+    },
     "html_include_detail": false
   },
   "filters": {
@@ -327,7 +344,7 @@
 
 ---
 
-## 9. Согласованные решения (v1.0.3, 2026-08-31)
+## 9. Согласованные решения (v1.0.4, 2026-08-31)
 
 | Тема | Решение |
 |------|---------|
@@ -337,7 +354,8 @@
 | Фильтр ЕФС | `html_slice: false` — только config; `enabled: false` = строки с 0 и 1 |
 | JSON export | Split-bundle: manifest + `slices/`; без `*_latest*` и `HTML/data/` |
 | JSON filter_slices | 2^N для HTML-фильтров; `dashboard.precompute_html_filter_slices` |
-| Менеджеры (КМ) | P80 overall; топ-N на ТБ; hotspots; детальная карточка в HTML |
+| Менеджеры (КМ) | P80 overall; TOP-N по `rank_selection`; полные `records`; UI пересчитывает TOP по фильтрам |
+| Отбор TOP КМ | Config: пул `product_groups` / `products` + `strategy_filter`; Excel и старт UI — по config; JSON — все лиды |
 | Excel визуализация | Только лист «Графики»; «Матрица» — только HTML |
 | Excel-таблица | Имя в config (`excel.table_name`: `Base`); авто fallback на Sheet1 |
 | JSON | Только агрегаты (без lead_tracks); матрица из `pivot_flat` |
@@ -353,7 +371,7 @@
 - [v] Для каждого продукта — min/max/перцентили по каждой стадии
 - [v] Отдельные листы Excel по ТБ + сводная
 - [v] JSON пригоден для фильтрации по ТБ/продукту/стадии и pipeline-фильтрам (filter_slices)
-- [v] HTML-дашборд: графики линий, bar-графики КМ, матрица, pipeline ВКЛ/ВЫКЛ, менеджеры
+- [v] HTML-дашборд: графики линий, bar-графики КМ, матрица, pipeline ВКЛ/ВЫКЛ, менеджеры с `rank_selection`
 - [v] Фильтры: изменение условий, ввод данных, ЕФС (config-only), метка (2 варианта)
 - [ ] Prod-режим читает все 22 файла параллельно
 - [v] Выходные файлы в `OUT/` с timestamp

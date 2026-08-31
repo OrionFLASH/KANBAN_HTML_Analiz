@@ -1,17 +1,36 @@
-/** Загрузка JSON менеджеров, детальные карточки КМ и bar-графики нарушений P80. */
+/** Загрузка JSON менеджеров, отбор TOP КМ по фильтрам и детальные карточки. */
 
 const KanbanManagers = (() => {
   let payload = null;
   let selectedKey = null;
+  /** Текущий фильтр метки для отбора TOP (инициализируется из meta.rank_selection). */
+  let strategyFilter = "all";
+
+  const STRATEGY_LABELS = {
+    all: "Все метки",
+    strategy: "Стратегия",
+    strategy_2026: "Стратегия · 2026",
+    non_strategy: "Без стратегии",
+  };
 
   function loadJson(text) {
     payload = JSON.parse(text);
     selectedKey = null;
+    strategyFilter = payload?.meta?.rank_selection?.strategy_filter || "all";
     return payload;
   }
 
   function getPayload() {
     return payload;
+  }
+
+  function getStrategyFilter() {
+    return strategyFilter;
+  }
+
+  function setStrategyFilter(mode) {
+    strategyFilter = mode || "all";
+    selectedKey = null;
   }
 
   function managerKey(tb, km) {
@@ -23,7 +42,9 @@ const KanbanManagers = (() => {
   }
 
   function hasData() {
-    return Boolean(payload?.top_by_tb?.length);
+    return Boolean(
+      payload?.records?.length || payload?.top_by_tb?.length || payload?.detail_by_product?.length
+    );
   }
 
   function hasChartData() {
@@ -34,12 +55,17 @@ const KanbanManagers = (() => {
   function metaLine() {
     if (!payload?.meta) return "";
     const m = payload.meta;
-    return `P${m.percentile} · ${m.metric} · топ-${m.top_managers_per_tb} на ТБ`;
+    const strat = STRATEGY_LABELS[strategyFilter] || strategyFilter;
+    return `P${m.percentile} · ${m.metric} · топ-${m.top_managers_per_tb} на ТБ · ${strat}`;
   }
 
   function percentileLabel() {
     const m = payload?.meta || {};
     return String(m.percentile_label || `p${m.percentile || 80}`).toUpperCase();
+  }
+
+  function topLimit() {
+    return Math.max(1, Number(payload?.meta?.top_managers_per_tb) || 3);
   }
 
   function resolveTbFilter(filters) {
@@ -50,7 +76,186 @@ const KanbanManagers = (() => {
     return new Set(picked);
   }
 
-  function filterTop(filters) {
+  function matchesStrategy(label, mode) {
+    const text = String(label ?? "");
+    if (!mode || mode === "all") return true;
+    if (mode === "strategy") return /стратегия/i.test(text);
+    if (mode === "strategy_2026") return /стратегия/i.test(text) && /2026/.test(text);
+    if (mode === "non_strategy") return !/стратегия/i.test(text);
+    return true;
+  }
+
+  /** Пул групп/продуктов из config.rank_selection + сужение UI-фильтрами. */
+  function effectiveScope(filters) {
+    const cfg = payload?.meta?.rank_selection || {};
+    const poolGroups = (cfg.product_groups || []).filter(Boolean);
+    const poolProducts = (cfg.products || []).filter(Boolean);
+
+    let groups = null;
+    if (filters?.productGroups?.length) {
+      groups = new Set(filters.productGroups.map(String));
+      if (poolGroups.length) {
+        const pool = new Set(poolGroups.map(String));
+        groups = new Set([...groups].filter((g) => pool.has(g)));
+      }
+    } else if (poolGroups.length) {
+      groups = new Set(poolGroups.map(String));
+    }
+
+    let products = null;
+    if (filters?.products?.length) {
+      products = new Set(filters.products.map(String));
+      if (poolProducts.length) {
+        const pool = new Set(poolProducts.map(String));
+        products = new Set([...products].filter((p) => pool.has(p)));
+      }
+    } else if (poolProducts.length) {
+      products = new Set(poolProducts.map(String));
+    }
+
+    return { groups, products };
+  }
+
+  function filterLeadRecords(filters) {
+    const rows = payload?.records || [];
+    if (!rows.length) return [];
+
+    const tbSet = resolveTbFilter(filters);
+    const { groups, products } = effectiveScope(filters);
+
+    return rows.filter((row) => {
+      if (tbSet && !tbSet.has(String(row.tb))) return false;
+      if (groups && !groups.has(String(row.product_group))) return false;
+      if (products && !products.has(String(row.product))) return false;
+      if (filters?.stage && String(row.stage_key) !== filters.stage) return false;
+      if (!matchesStrategy(row.label, strategyFilter)) return false;
+      return true;
+    });
+  }
+
+  function aggregateHotspots(exceededRows, limit) {
+    const map = new Map();
+    exceededRows.forEach((row) => {
+      const key = [
+        String(row.tb),
+        String(row.km),
+        String(row.product_group),
+        String(row.product ?? "—"),
+        String(row.stage_key),
+      ].join("|");
+      if (!map.has(key)) {
+        map.set(key, {
+          tb: String(row.tb),
+          km: String(row.km),
+          product_group: String(row.product_group),
+          product: row.product != null ? String(row.product) : "—",
+          stage_key: String(row.stage_key),
+          exceedance_count: 0,
+          threshold_days: Number(row.threshold_days) || 0,
+          max_days: Number(row.days_int) || 0,
+          max_overshoot: 0,
+          avg_overshoot: 0,
+          _days: [],
+        });
+      }
+      const spot = map.get(key);
+      spot.exceedance_count += 1;
+      const days = Number(row.days_int) || 0;
+      spot._days.push(days);
+      if (days > spot.max_days) spot.max_days = days;
+      const thresh = Number(row.threshold_days) || 0;
+      if (thresh > spot.threshold_days) spot.threshold_days = thresh;
+    });
+
+    const hotspots = [...map.values()].map((spot) => {
+      const overs = Math.max(0, spot.max_days - spot.threshold_days);
+      const avgDays = spot._days.length
+        ? spot._days.reduce((a, b) => a + b, 0) / spot._days.length
+        : 0;
+      return {
+        tb: spot.tb,
+        km: spot.km,
+        product_group: spot.product_group,
+        product: spot.product,
+        stage_key: spot.stage_key,
+        exceedance_count: spot.exceedance_count,
+        threshold_days: Math.round(spot.threshold_days * 10) / 10,
+        max_days: Math.round(spot.max_days * 10) / 10,
+        max_overshoot: Math.round(overs * 10) / 10,
+        avg_overshoot: Math.round(Math.max(0, avgDays - spot.threshold_days) * 10) / 10,
+      };
+    });
+
+    hotspots.sort(
+      (a, b) =>
+        b.exceedance_count - a.exceedance_count ||
+        b.max_overshoot - a.max_overshoot ||
+        String(a.stage_key).localeCompare(String(b.stage_key), "ru")
+    );
+    return hotspots.slice(0, limit);
+  }
+
+  function recomputeTop(filters) {
+    const records = filterLeadRecords(filters);
+    if (records.length) {
+      const topN = topLimit();
+      const hotLimit = Number(payload?.meta?.top_hotspots_per_manager) || 5;
+      const byManager = new Map();
+
+      records.forEach((row) => {
+        const key = managerKey(row.tb, row.km);
+        if (!byManager.has(key)) {
+          byManager.set(key, {
+            tb: String(row.tb),
+            km: String(row.km),
+            exceedance_count: 0,
+            total_leads: new Set(),
+            exceeded_rows: [],
+          });
+        }
+        const bucket = byManager.get(key);
+        bucket.total_leads.add(String(row.lead_id));
+        if (row.exceeded) {
+          bucket.exceedance_count += 1;
+          bucket.exceeded_rows.push(row);
+        }
+      });
+
+      const tbOrder = [...new Set(records.map((r) => String(r.tb)))].sort((a, b) =>
+        a.localeCompare(b, "ru")
+      );
+      const result = [];
+
+      tbOrder.forEach((tb) => {
+        const bucketRows = [...byManager.values()]
+          .filter((b) => b.tb === tb)
+          .sort(
+            (a, b) =>
+              b.exceedance_count - a.exceedance_count ||
+              b.total_leads.size - a.total_leads.size ||
+              String(a.km).localeCompare(String(b.km), "ru")
+          )
+          .slice(0, topN);
+
+        bucketRows.forEach((row, idx) => {
+          result.push({
+            tb: row.tb,
+            km: row.km,
+            rank: idx + 1,
+            exceedance_count: row.exceedance_count,
+            total_leads: row.total_leads.size,
+            hotspots: aggregateHotspots(row.exceeded_rows, hotLimit),
+          });
+        });
+      });
+
+      return result;
+    }
+
+    return filterTopLegacy(filters);
+  }
+
+  function filterTopLegacy(filters) {
     const rows = payload?.top_by_tb || [];
     const tbSet = resolveTbFilter(filters);
     if (!tbSet) return rows;
@@ -61,15 +266,10 @@ const KanbanManagers = (() => {
     let rows = chartsData().facts || [];
     const tbSet = resolveTbFilter(filters);
     if (tbSet) rows = rows.filter((row) => tbSet.has(String(row.tb)));
-    if (filters?.productGroups?.length) {
-      rows = rows.filter((row) => filters.productGroups.includes(String(row.product_group)));
-    }
-    if (filters?.products?.length) {
-      rows = rows.filter((row) => filters.products.includes(String(row.product)));
-    }
-    if (filters?.stage) {
-      rows = rows.filter((row) => String(row.stage_key) === filters.stage);
-    }
+    const { groups, products } = effectiveScope(filters);
+    if (groups) rows = rows.filter((row) => groups.has(String(row.product_group)));
+    if (products) rows = rows.filter((row) => products.has(String(row.product)));
+    if (filters?.stage) rows = rows.filter((row) => String(row.stage_key) === filters.stage);
     return rows;
   }
 
@@ -97,7 +297,10 @@ const KanbanManagers = (() => {
         km_with_violations: v.kms.size,
         violation_deals: v.deals,
       }))
-      .sort((a, b) => b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals);
+      .sort(
+        (a, b) =>
+          b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals
+      );
   }
 
   function aggregateFactsByTbSegment(facts, tb, groupOnly) {
@@ -130,7 +333,10 @@ const KanbanManagers = (() => {
     if (chartMode === "km_by_tb") {
       const byTb = filterByTbRows(filters)
         .slice()
-        .sort((a, b) => b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals);
+        .sort(
+          (a, b) =>
+            b.km_with_violations - a.km_with_violations || b.violation_deals - a.violation_deals
+        );
 
       if (byTb.length) {
         groups.push(
@@ -252,16 +458,8 @@ const KanbanManagers = (() => {
     );
   }
 
-  function renderDetailCard(row, filters) {
-    const hotspots = (row.hotspots || []).filter((spot) => {
-      if (filters?.stage && String(spot.stage_key) !== filters.stage) return false;
-      if (filters?.productGroups?.length && !filters.productGroups.includes(String(spot.product_group))) {
-        return false;
-      }
-      if (filters?.products?.length && !filters.products.includes(String(spot.product))) return false;
-      return true;
-    });
-
+  function renderDetailCard(row) {
+    const hotspots = row.hotspots || [];
     const maxCount = hotspots.reduce((m, s) => Math.max(m, Number(s.exceedance_count) || 0), 0);
     const pLabel = percentileLabel();
 
@@ -295,7 +493,7 @@ const KanbanManagers = (() => {
       `</div>` +
       `</div>` +
       `<p class="manager-detail__intro">` +
-      `Почему в топе: наибольшие отклонения по продуктам и стадиям (срок &gt; порога ${pLabel}).` +
+      `Почему в топе: наибольшие отклонения по выбранным продуктам и меткам (срок &gt; порога ${pLabel}).` +
       `</p>` +
       `<div class="manager-detail__legend">` +
       `<span class="manager-detail__legend-item manager-detail__legend-item--critical">сильное</span>` +
@@ -305,6 +503,40 @@ const KanbanManagers = (() => {
       hotspotsHtml +
       `</article>`
     );
+  }
+
+  function rankSelectionHint() {
+    const cfg = payload?.meta?.rank_selection || {};
+    const parts = [];
+    if (cfg.product_groups?.length) parts.push(`группы: ${cfg.product_groups.length}`);
+    if (cfg.products?.length) parts.push(`продукты: ${cfg.products.length}`);
+    if (parts.length) return `Пул config: ${parts.join(", ")}.`;
+    return "Пул config: все группы и продукты.";
+  }
+
+  function renderStrategyControl(container, filters, onChange) {
+    const wrap = document.createElement("div");
+    wrap.className = "managers-rank-controls";
+    wrap.innerHTML =
+      `<label class="field field--inline">` +
+      `<span class="field-label">Метка (отбор TOP)</span>` +
+      `<select class="field-control" id="managerStrategyFilter"></select>` +
+      `</label>` +
+      `<p class="managers-rank-controls__hint">${escapeHtml(rankSelectionHint())} Группы/продукты — в панели фильтров справа.</p>`;
+
+    const select = wrap.querySelector("#managerStrategyFilter");
+    Object.entries(STRATEGY_LABELS).forEach(([value, label]) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+    select.value = strategyFilter;
+    select.addEventListener("change", () => {
+      setStrategyFilter(select.value);
+      onChange();
+    });
+    container.appendChild(wrap);
   }
 
   function render(container, filters) {
@@ -327,11 +559,13 @@ const KanbanManagers = (() => {
       `<p class="managers-panel__intro">${metaLine()} · выберите КМ для детализации</p>`;
     container.appendChild(head);
 
-    const top = filterTop(filters);
+    renderStrategyControl(container, filters, () => render(container, filters));
+
+    const top = recomputeTop(filters);
     if (!top.length) {
       const empty = document.createElement("p");
       empty.className = "managers-panel__empty";
-      empty.textContent = "Нет менеджеров для выбранных фильтров ТБ.";
+      empty.textContent = "Нет менеджеров для выбранных фильтров отбора.";
       container.appendChild(empty);
       return;
     }
@@ -372,7 +606,7 @@ const KanbanManagers = (() => {
     if (selected) {
       const detailWrap = document.createElement("div");
       detailWrap.className = "manager-detail-wrap";
-      detailWrap.innerHTML = renderDetailCard(selected, filters);
+      detailWrap.innerHTML = renderDetailCard(selected);
       container.appendChild(detailWrap);
     }
   }
@@ -380,6 +614,8 @@ const KanbanManagers = (() => {
   return {
     loadJson,
     getPayload,
+    getStrategyFilter,
+    setStrategyFilter,
     hasData,
     hasChartData,
     metaLine,

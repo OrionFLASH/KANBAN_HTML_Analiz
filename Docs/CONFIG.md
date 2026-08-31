@@ -1,6 +1,6 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.3**).
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.4**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
 
@@ -64,7 +64,7 @@
 |----------|----------------------|-----------------|
 | **Excel** | `filters.*.enabled: true` — AND; `product_analysis_mode`; config-only фильтры (`html_slice: false`) | Листы сводки, **Графики**, **Менеджеры** (лист «Матрица» не создаётся) |
 | **JSON (основной)** | `dashboard.precompute_html_filter_slices`; фильтры с `html_slice: true` (не `enabled`) | `visualizations.filter_slices` — комбинации 2^N (N = число HTML-фильтров); база данных — после config-only фильтров |
-| **JSON (менеджеры)** | `manager_analytics.*`; колонка `km` в `required_column_keys` | `kanban_report_managers_{timestamp}.json` + блок `charts` |
+| **JSON (менеджеры)** | `manager_analytics.*`, `rank_selection`; колонки `km`, `label` в `required_column_keys` | `kanban_report_managers_{timestamp}.json`: `records`, `top_by_tb`, `charts` |
 | **HTML** | Переключатели ВКЛ/ВЫКЛ по `filter_catalog`; агрегация из `filter_slices.*.aggregations`; JSON менеджеров — bar-графики КМ | Локальный дашборд `HTML/` |
 
 > **`enabled` в `filters` влияет на Excel и на config-only срез (`html_slice: false`).** HTML переключает готовые срезы JSON (`html_slice: true`) без пересчёта pipeline. Копии `*_latest*` и запись в `HTML/data/` **не создаются** — JSON загружается вручную.
@@ -239,6 +239,7 @@
 |---------|----------|
 | Базовый набор | Все ключи аналитики + фильтры + `label` |
 | **`km`** | Обязателен, если `manager_analytics.enabled: true` и в Excel есть колонка КМ. Без `km` в списке колонка **не загрузится** при `read_only_required_columns`, и аналитика менеджеров будет пропущена |
+| **`label`** | Нужен для `rank_selection.strategy_filter` (отбор TOP по метке «Стратегия» / «2026»). Без `label` в списке фильтр метки не применяется |
 | Отключить менеджеров | `manager_analytics.enabled: false` — `km` можно убрать из списка для экономии памяти |
 
 > Оптимизация **не отбрасывает строки** — только ограничивает набор колонок при чтении.
@@ -438,7 +439,7 @@ OUT/
 
 **Split-bundle (prod):** каталог `OUT/kanban_report_{timestamp}_html/` — manifest + `slices/*.json`. Копии `*_latest*` и `HTML/data/` **не создаются**; JSON загружается в дашборд **вручную** через левую панель.
 
-**Менеджеры:** `manager_analytics.html_include_detail: false` — в HTML `top_by_tb` + компактный блок `charts` для bar-графиков КМ; полный JSON с `detail_by_product` остаётся в `OUT/`.
+**Менеджеры:** JSON содержит **полные** `records` (все лиды×стадии с меткой); `top_by_tb` — предрасчёт по `rank_selection`; в UI TOP пересчитывается по фильтрам.
 
 JSON содержит блок `visualizations`:
 
@@ -798,7 +799,37 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 | `threshold_scope` | `overall` — порог из общей сводки без ТБ |
 | `top_managers_per_tb` | Топ-N менеджеров в каждом ТБ (по умолчанию `3`) |
 | `top_hotspots_per_manager` | Топ зон превышения (продукт×стадия) на каждого КМ в топе (по умолчанию `5`) |
-| `html_include_detail` | `false` (prod) — в HTML `top_by_tb` (с `hotspots`) + `charts`; `true` — также `detail_by_product`, `manager_totals` |
+| `rank_selection` | Пул отбора TOP КМ (см. ниже); Excel и начальный UI |
+| `html_include_detail` | Устарело для slim-режима: `records`, `detail_by_product`, `manager_totals` **всегда** в JSON |
+
+### `rank_selection` — отбор TOP КМ
+
+Задаёт **пул** групп/продуктов и фильтр метки для расчёта `top_by_tb` (Excel + начальное состояние UI). Полные данные — в `records`; пользователь в UI может сузить выбор.
+
+| Поле | Тип | По умолчанию | Описание |
+|------|-----|--------------|----------|
+| `product_groups` | string[] | `[]` | Группы в пуле отбора. Пустой массив = **все** группы |
+| `products` | string[] | `[]` | Продукты в пуле. Пустой массив = **все** продукты |
+| `strategy_filter` | string | `"all"` | Фильтр метки (`columns.label`) |
+
+**`strategy_filter`:**
+
+| Значение | Описание |
+|----------|----------|
+| `all` | Все метки |
+| `strategy` | Метка содержит «Стратегия» (как `filters.strategy_label`) |
+| `strategy_2026` | Метка содержит «Стратегия» **и** «2026» |
+| `non_strategy` | Метка **без** «Стратегия» |
+
+```json
+"rank_selection": {
+  "product_groups": ["Кредиты", "Депозиты"],
+  "products": [],
+  "strategy_filter": "strategy_2026"
+}
+```
+
+> TOP-N считается только по превышениям P80 в выбранном пуле. В JSON попадают **все** лиды (`records`); bar-графики и карточки в UI пересчитываются по фильтрам (группы/продукты справа + метка в блоке менеджеров).
 
 **Логика:** для каждой группы × продукт × стадия берётся P80 из overall; лид менеджера **превышает** порог, если срок **строго больше** P80. Считаются превышения по КМ×ТБ.
 
@@ -827,8 +858,21 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
     "metric": "days_on_stage",
     "percentile": 80,
     "top_managers_per_tb": 3,
-    "km_column": "КМ"
+    "km_column": "КМ",
+    "rank_selection": {
+      "product_groups": [],
+      "products": [],
+      "strategy_filter": "all"
+    }
   },
+  "dimensions": { "product_groups": ["…"], "products": ["…"] },
+  "records": [
+    {
+      "tb": "…", "km": "…", "product_group": "…", "product": "…",
+      "stage_key": "В РАБОТЕ", "label": "Стратегия 2026", "lead_id": "…",
+      "days_int": 45, "threshold_days": 30, "exceeded": true
+    }
+  ],
   "top_by_tb": [
     {
       "tb": "…",
@@ -864,9 +908,10 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 }
 ```
 
-При `html_include_detail: false` поля `detail_by_product` и `manager_totals` в файл **не пишутся**; `charts`, `top_by_tb` и вложенные **`hotspots`** — **всегда**.
+В JSON **всегда**: `records`, `dimensions`, `top_by_tb`, `charts`, `detail_by_product`, `manager_totals`.
 
-> Этап пропускается **без ошибки**, если: `enabled: false`; колонки КМ нет в Excel; `km` не в `required_column_keys` (колонка не загружена); не удалось построить пороги P80.
+> Этап пропускается **без ошибки**, если: `enabled: false`; колонки КМ нет в Excel; `km` не в `required_column_keys`; не удалось построить пороги P80.  
+> При отсутствии `label` в данных `strategy_filter` работает как `all`.
 
 ```json
 "columns": { "km": "КМ" },
@@ -878,6 +923,11 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "threshold_scope": "overall",
   "top_managers_per_tb": 3,
   "top_hotspots_per_manager": 5,
+  "rank_selection": {
+    "product_groups": [],
+    "products": [],
+    "strategy_filter": "all"
+  },
   "html_include_detail": false
 }
 ```

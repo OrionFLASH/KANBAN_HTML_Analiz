@@ -206,14 +206,19 @@
       "write_monolith_archive": true
     }
   },
-  "manager_analytics": {
+    "manager_analytics": {
     "enabled": true,
     "metric": "days_on_stage",
     "percentile": 80,
     "threshold_scope": "overall",
     "top_managers_per_tb": 3,
     "top_hotspots_per_manager": 5,
-    "html_include_detail": false
+    "html_include_detail": false,
+    "rank_selection": {
+      "product_groups": [],
+      "products": [],
+      "strategy_filter": "all"
+    }
   },
   "parallel_workers": 0,
   "excel_theme": "green_red",

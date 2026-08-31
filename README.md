@@ -62,7 +62,7 @@ log/                 # логи INFO/DEBUG
 | `output` | Имена файлов, листы Excel, оформление |
 | `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). ЕФС — только config (`html_slice: false`) |
 | `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
-| `manager_analytics` | Превышения P80 по КМ; отдельный JSON + bar-графики в HTML |
+| `manager_analytics` | Превышения P80 по КМ; `rank_selection`; JSON `records` + TOP-N |
 | `logging` | Файлы логов |
 
 ### Частые настройки
@@ -92,7 +92,12 @@ log/                 # логи INFO/DEBUG
   },
   "manager_analytics": {
     "enabled": true,
-    "html_include_detail": false
+    "top_managers_per_tb": 3,
+    "rank_selection": {
+      "product_groups": [],
+      "products": [],
+      "strategy_filter": "all"
+    }
   }
 }
 ```
@@ -104,7 +109,7 @@ log/                 # логи INFO/DEBUG
 - **Сводная** — все ТБ
 - **Общий** — без разреза ТБ
 - **{ТБ}** — отдельный лист на каждый ТБ
-- **Менеджеры** — топ-N КМ по ТБ, колонка «Топ зон превышения» (продукт · стадия · +N дн.)
+- **Менеджеры** — топ-N КМ по ТБ (отбор по `rank_selection` в config), колонка «Топ зон превышения»
 - **Графики** — кривые «лиды × дни»
 
 > Лист **«Матрица»** в Excel **не создаётся** (с v1.0.3). Сводная матрица — только в HTML-дашборде.
@@ -120,7 +125,15 @@ OUT/kanban_report_YYYYMMDD_HHMMSS_html/
 
 Содержит `visualizations.filter_slices` (комбинации HTML-фильтров), обе агрегации `group_product` / `group_only`. Копии `*_latest*` и `HTML/data/` **не создаются**.
 
-`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — аналитика КМ: `top_by_tb` с **`hotspots`** (почему КМ в топе), блок `charts` для bar-графиков.
+`OUT/kanban_report_managers_YYYYMMDD_HHMMSS.json` — аналитика КМ:
+
+| Блок | Содержание |
+|------|------------|
+| `records[]` | Все лиды×стадии: метка, exceeded, порог P80 |
+| `top_by_tb[]` | TOP-N по `rank_selection` + `hotspots` |
+| `dimensions` | Справочник групп и продуктов |
+| `charts` | Bar-графики КМ (`by_tb`, `facts`) |
+| `detail_by_product`, `manager_totals` | Агрегаты (полный набор) |
 
 ## HTML-дашборд
 
@@ -138,7 +151,7 @@ cd HTML && python -m http.server 8080
 - **Графики КМ:** «КМ с нарушениями P80: по ТБ» / «… по группам/продуктам» — bar-chart (нужен JSON менеджеров)
 - **Агрегация в HTML:** «По продуктам» / «По группам» + pipeline-фильтры — срез из `visualizations.filter_slices`
 - **Pipeline-фильтры:** изменение условий, ввод данных, метки «Стратегия» / «Стратегия·2026». **ЕФС** — только `config.filters.efs_flag` (`enabled`, `value`, `html_slice: false`)
-- **Менеджеры:** JSON в `OUT/`; клик по карточке КМ → **детальная карточка** (hotspots, подсветка слабых зон, мини-bars)
+- **Менеджеры:** полные `records` в JSON; TOP-N по `rank_selection` в config; в UI — фильтры групп/продуктов (справа) + «Метка (отбор TOP)»; пересчёт карточек на лету
 - `config.product_analysis_mode` — только для **Excel**; в JSON — обе агрегации и все срезы фильтров
 - Режим «По ТБ»: графики **друг под другом** (одна колонка)
 
@@ -172,3 +185,4 @@ cd HTML && python -m http.server 8080
 | 1.0.1 | 2026-08-31 | Документация config; `km` в `required_column_keys`; синхронизация POST |
 | 1.0.2 | 2026-08-31 | Split-bundle JSON; ЕФС config-only; bar-графики КМ; без `*_latest*` |
 | 1.0.3 | 2026-08-31 | Excel без «Матрицы»; hotspots по КМ (Excel + JSON + UI); `top_hotspots_per_manager` |
+| 1.0.4 | 2026-08-31 | `rank_selection` для отбора TOP КМ; полные `records` в JSON; пересчёт TOP в UI |

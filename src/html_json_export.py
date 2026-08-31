@@ -177,16 +177,14 @@ def export_split_html_bundle(
 
 
 def build_manager_html_payload(payload: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    """Облегчённый JSON менеджеров для HTML (только топ + meta)."""
-    mgr_cfg: dict[str, Any] = config.get("manager_analytics", {})
-    include_detail: bool = bool(mgr_cfg.get("html_include_detail", False))
-    slim: dict[str, Any] = {
+    """JSON менеджеров для HTML: полные records и агрегаты; top_by_tb — предрасчёт по rank_selection."""
+    return {
         "meta": payload.get("meta", {}),
+        "dimensions": payload.get("dimensions") or {"product_groups": [], "products": []},
+        "records": payload.get("records") or [],
         "top_by_tb": payload.get("top_by_tb") or [],
+        "detail_by_product": payload.get("detail_by_product") or [],
+        "manager_totals": payload.get("manager_totals") or [],
         "charts": payload.get("charts") or {"by_tb": [], "facts": []},
         "thresholds_count": payload.get("thresholds_count"),
     }
-    if include_detail:
-        slim["detail_by_product"] = payload.get("detail_by_product") or []
-        slim["manager_totals"] = payload.get("manager_totals") or []
-    return slim

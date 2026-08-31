@@ -166,6 +166,7 @@
 | 10.4 | Блок `visualizations` в JSON | `src/visualization_data.py` | `[v]` |
 | 10.5 | Excel: лист «Графики» (без «Матрицы») | `src/pivot_excel.py` | `[v]` |
 | 10.6 | Менеджеры: hotspots + детальная карточка КМ в HTML | `manager_analytics.py`, `managers.js` | `[v]` |
+| 10.7 | Отбор TOP КМ: `rank_selection`, полные `records`, пересчёт в UI | `manager_analytics.py`, `managers.js`, config | `[v]` |
 
 ---
 

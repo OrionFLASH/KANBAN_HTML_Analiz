@@ -1241,6 +1241,33 @@ body::after {
   line-height: 1.35;
 }
 
+.managers-rank-controls {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: var(--glass-radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+}
+
+.managers-rank-controls .field--inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.managers-rank-controls .field-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.managers-rank-controls__hint {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: var(--glass-muted);
+  line-height: 1.35;
+}
+
 .managers-panel__empty,
 .managers-empty {
   font-size: 12px;

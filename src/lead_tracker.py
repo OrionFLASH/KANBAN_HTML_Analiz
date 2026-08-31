@@ -129,10 +129,15 @@ def _build_level_records_vectorized(
         tb: "first",
     }
     km_col: str | None = None
+    label_col: str | None = None
     if config.get("columns", {}).get("km"):
         km_col = col(config, "km")
         if km_col in work.columns:
             meta_first[km_col] = "first"
+    if config.get("columns", {}).get("label"):
+        label_col = col(config, "label")
+        if label_col in work.columns:
+            meta_first[label_col] = "first"
     agg_map: dict[str, str] = {
         "days_on_stage": agg_mode,
         "days_since_deal": agg_mode,
@@ -175,6 +180,8 @@ def _build_level_records_vectorized(
     ]
     if km_col and km_col in best.columns:
         keep_cols.insert(4, km_col)
+    if label_col and label_col in best.columns:
+        keep_cols.insert(5 if km_col else 4, label_col)
     return best[[c for c in keep_cols if c in best.columns]].reset_index(drop=True)
 
 
