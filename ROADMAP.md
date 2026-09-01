@@ -170,6 +170,7 @@
 | 10.8 | Уменьшение JSON: config-only фильтры, убрать дубли viz, меню сжатия | `filter_slices`, `json_exporter`, UI | `[w]` |
 | 10.9 | Опционально исключить стадию «К ПРОДАЖЕ» из анализа (config-only) | `filters`, `visualization_data`, UI | `[v]` |
 | 10.10 | Команда лида/сделки: лидеры + КМ + ВКС → TOP-3 по ТБ, Excel/UI | `team_loader`, `manager_analytics`, UI | `[v]` |
+| 10.11 | **Разворот графика:** после «Свернуть» — сброс inline-размеров Chart.js, reflow layout | `chart-expand.js`, `dashboard.css` | `[v]` |
 
 ---
 

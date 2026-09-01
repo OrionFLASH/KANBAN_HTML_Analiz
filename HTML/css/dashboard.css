@@ -848,6 +848,18 @@ body::after {
   color: var(--glass-muted);
 }
 
+.charts-grid .chart-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.charts-grid .dist-panel,
+.charts-grid .chart-card {
+  max-width: 100%;
+  min-width: 0;
+}
+
 /* —— Разворот графика по клику —— */
 .chart-expand-layer {
   position: fixed;
@@ -968,10 +980,13 @@ body::after {
 .chart-expand-body .is-chart-expanded-node.chart-wrap {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: none;
+  width: auto;
   display: flex;
   flex-direction: column;
   margin: 0;
   cursor: default;
+  overflow: hidden;
 }
 
 .chart-expand-body .is-chart-expanded-node.dist-panel .chart-wrap,
@@ -979,6 +994,8 @@ body::after {
   flex: 1 1 auto;
   height: auto !important;
   min-height: 260px;
+  max-height: none;
+  width: 100% !important;
 }
 
 .chart-expand-layer[data-mode="panel"] .chart-expand-body .chart-wrap--dist,

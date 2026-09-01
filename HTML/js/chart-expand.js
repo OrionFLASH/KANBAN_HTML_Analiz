@@ -13,6 +13,23 @@ const KanbanChartExpand = (() => {
 
   let boundRoot = null;
 
+  const INLINE_LAYOUT_PROPS = [
+    "height",
+    "width",
+    "min-height",
+    "max-height",
+    "flex",
+    "flex-grow",
+    "flex-shrink",
+    "flex-basis",
+    "display",
+    "position",
+    "top",
+    "left",
+    "right",
+    "bottom",
+  ];
+
   function isExpanded() {
     return Boolean(state.mode);
   }
@@ -25,10 +42,25 @@ const KanbanChartExpand = (() => {
     });
   }
 
+  /** Сбрасывает inline-размеры после expand — иначе Chart.js оставляет «раздутый» контейнер. */
+  function clearExpandedInlineStyles(root) {
+    if (!root) return;
+    const nodes = [root, ...root.querySelectorAll(".chart-wrap, .dist-panel, .dist-stack, .dist-row, canvas")];
+    nodes.forEach((el) => {
+      INLINE_LAYOUT_PROPS.forEach((prop) => el.style.removeProperty(prop));
+    });
+  }
+
+  function resetExpandFrameStyles() {
+    if (!frame) return;
+    ["top", "left", "width", "height", "inset"].forEach((prop) => frame.style.removeProperty(prop));
+  }
+
   function mainRect() {
     const main = document.querySelector(".main");
-    if (!main) return { top: 56, left: 0, right: window.innerWidth, bottom: window.innerHeight - 8 };
-    return main.getBoundingClientRect();
+    if (!main) return { top: 56, left: 0, width: window.innerWidth, height: window.innerHeight - 64 };
+    const r = main.getBoundingClientRect();
+    return { top: r.top, left: r.left, width: r.width, height: r.height };
   }
 
   function positionPanelFrame() {
@@ -67,28 +99,47 @@ const KanbanChartExpand = (() => {
     layer.setAttribute("aria-hidden", "true");
     delete layer.dataset.mode;
     document.body.classList.remove("is-chart-expanded", "is-chart-expanded--group", "is-chart-expanded--panel");
+    resetExpandFrameStyles();
+    if (bodyEl) bodyEl.replaceChildren();
+  }
+
+  function reflowChartsAfterRestore(node) {
+    requestAnimationFrame(() => {
+      resizeChartsIn(node);
+      if (boundRoot) resizeChartsIn(boundRoot);
+      requestAnimationFrame(() => {
+        resizeChartsIn(node);
+      });
+    });
   }
 
   function collapse() {
     if (!state.mode || !state.node || !state.placeholder) {
       state = { mode: null, node: null, placeholder: null, cardTitle: "" };
       closeLayer();
-      if (bodyEl) bodyEl.innerHTML = "";
       return;
     }
 
-    const parent = state.placeholder.parentNode;
+    const node = state.node;
+    const placeholder = state.placeholder;
+    const parent = placeholder.parentNode;
+
+    node.classList.remove("is-chart-expanded-node");
+    clearExpandedInlineStyles(node);
+
     if (parent) {
-      parent.insertBefore(state.node, state.placeholder);
-      state.placeholder.remove();
+      parent.insertBefore(node, placeholder);
+      placeholder.remove();
     }
 
-    state.node.classList.remove("is-chart-expanded-node");
     state = { mode: null, node: null, placeholder: null, cardTitle: "" };
     closeLayer();
-    if (bodyEl) bodyEl.innerHTML = "";
 
-    if (boundRoot) resizeChartsIn(boundRoot);
+    if (node.isConnected) {
+      reflowChartsAfterRestore(node);
+    } else if (boundRoot) {
+      reflowChartsAfterRestore(boundRoot);
+    }
   }
 
   function expandPanel(panelEl, card) {
@@ -201,7 +252,9 @@ const KanbanChartExpand = (() => {
   window.addEventListener("resize", onResize);
   ["btn-settings-hide", "btn-settings-show", "btn-filters-hide", "btn-filters-show"].forEach((id) => {
     document.getElementById(id)?.addEventListener("click", () => {
-      window.setTimeout(onResize, 320);
+      window.setTimeout(() => {
+        if (isExpanded()) onResize();
+      }, 320);
     });
   });
 
