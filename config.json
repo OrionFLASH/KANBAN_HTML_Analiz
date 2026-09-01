@@ -1,5 +1,5 @@
 {
-  "mode": "test",
+  "mode": "prod",
   "paths": {
     "input_test": "IN/TEST",
     "input_prod": "IN/PROD",
