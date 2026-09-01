@@ -223,8 +223,28 @@ src/
 
 ---
 
+## Фаза 11 — Excel-only pipeline v2 (`Docs/ToDo KANBAN v2.txt`)
+
+| # | Задача | Модули / файлы | Статус |
+|---|--------|----------------|--------|
+| 11.1 | ROADMAP и `config_excel_v2.json` | `config_excel_v2.json` | `[v]` |
+| 11.2 | Отдельный launcher `run_excel.py` (без JSON/HTML) | `run_excel.py` | `[v]` |
+| 11.3 | Каталоги `IN/TEST`, `IN/PROD` | `IN/` | `[v]` |
+| 11.4 | Пакет `src/excel_report/` | `config_loader`, `snapshot`, `team_enrich`, `norms`, `exceedance`, `manager_summary`, `exporter`, `pipeline` | `[v]` |
+| 11.5 | Фильтры v2 (ЕФС, стратегия, терминальные стадии) | `config_excel_v2.json`, `filters.py` (reuse) | `[v]` |
+| 11.6 | Снимок уникальных ID + fill-forward по дате | `snapshot.py` | `[v]` |
+| 11.7 | Лидеры команд (TN, многострочные ячейки) | `team_enrich.py` | `[v]` |
+| 11.8 | Нормативы P20/P50/P80 по ТБ и «все тб» | `norms.py` | `[v]` |
+| 11.9 | Превышение P80 на строку лида | `exceedance.py` | `[v]` |
+| 11.10 | Листы: нормативы, уникальные ID, свод менеджер, свод ПрПр | `exporter.py` | `[v]` |
+| 11.11 | Сокращение «Клиент» (+ СЗ в config) | `client_names.py` (reuse) | `[v]` |
+| 11.12 | Тесты snapshot / pipeline | `src/Tests/test_excel_report.py` | `[v]` |
+| 11.13 | Перенос `run.py` pipeline в подпапку `src/` | — | `[ ]` |
+
+---
+
 ## Следующий шаг
 
+- **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD`
 - **10.8** — согласовать и внедрить пункты сжатия JSON (см. чат)
-- **9.2** — prod-прогон на 22 файлах в каталоге `IN/`
-- **9.3** — профилирование на большом объёме
+- **11.13** — опционально: перенос `run.py` pipeline в подпапку `src/`

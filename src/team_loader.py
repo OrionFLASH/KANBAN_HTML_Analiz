@@ -138,37 +138,33 @@ def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame
     if not is_team_files_enabled(config):
         return pd.DataFrame(), pd.DataFrame()
 
-    input_dir: Path = _input_dir(config)
-    lead_frames: list[pd.DataFrame] = []
-    deal_frames: list[pd.DataFrame] = []
+    lead_df: pd.DataFrame = load_team_kind_frames(config, "lead_team")
+    deal_df: pd.DataFrame = load_team_kind_frames(config, "deal_team")
+    return lead_df, deal_df
 
-    for name in _resolve_team_filenames(config, "lead_team"):
+
+def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
+    """Загружает и склеивает файлы одного типа команды (lead_team | deal_team)."""
+    if not is_team_files_enabled(config):
+        return pd.DataFrame()
+    if kind not in {"lead_team", "deal_team"}:
+        raise ValueError("kind должен быть 'lead_team' или 'deal_team'")
+
+    input_dir: Path = _input_dir(config)
+    frames: list[pd.DataFrame] = []
+    label: str = "лида" if kind == "lead_team" else "сделки"
+
+    for name in _resolve_team_filenames(config, kind):
         path: Path = input_dir / name
         if not path.exists():
-            logger.warning("Файл команды лида не найден: %s", path)
+            logger.warning("Файл команды %s не найден: %s", label, path)
             continue
-        frame = _read_team_file(path, config)
+        frame: pd.DataFrame = _read_team_file(path, config)
         frame["source_file"] = name
-        lead_frames.append(frame)
-        logger.info("Команда лида: %s — %s строк", name, f"{len(frame):,}")
+        frames.append(frame)
+        logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
 
-    for name in _resolve_team_filenames(config, "deal_team"):
-        path = input_dir / name
-        if not path.exists():
-            logger.warning("Файл команды сделки не найден: %s", path)
-            continue
-        frame = _read_team_file(path, config)
-        frame["source_file"] = name
-        deal_frames.append(frame)
-        logger.info("Команда сделки: %s — %s строк", name, f"{len(frame):,}")
-
-    lead_df: pd.DataFrame = (
-        pd.concat(lead_frames, ignore_index=True) if lead_frames else pd.DataFrame()
-    )
-    deal_df: pd.DataFrame = (
-        pd.concat(deal_frames, ignore_index=True) if deal_frames else pd.DataFrame()
-    )
-    return lead_df, deal_df
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def build_leader_lookup(

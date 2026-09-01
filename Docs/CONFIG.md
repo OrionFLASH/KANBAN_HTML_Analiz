@@ -1182,5 +1182,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
 ## 18. Связанные документы
 
 - [README.md](../README.md) — обзор и запуск
+- [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md) — справочник `config_excel_v2.json` (Excel-only pipeline v2, `run_excel.py`)
+- [BT_KANBAN.md](BT_KANBAN.md) — бизнес-требования
 - [DEPLOY.md](DEPLOY.md) — перенос на другой ПК
 - [BT_KANBAN.md](BT_KANBAN.md) — бизнес-требования

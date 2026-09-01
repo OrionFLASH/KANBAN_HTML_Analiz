@@ -16,6 +16,8 @@
 
 ## Запуск
 
+### HTML + JSON pipeline (основной)
+
 ```bash
 cd /path/to/KANBAN_HTML_Analiz
 python run.py
@@ -27,18 +29,41 @@ python run.py
 python -m src.main config.json
 ```
 
-> Пути в config и каталоги `log/`, `OUT/` считаются **от корня проекта** (где `run.py`), не от текущей папки IDE.
+### Excel-only pipeline v2
+
+Отдельный отчёт по лидам: нормативы, уникальные ID, превышения P80, своды менеджеров. **JSON не создаётся.**
+
+```bash
+python run_excel.py
+```
+
+Конфиг: `config_excel_v2.json` — полный справочник: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md)
+
+| Режим | Каталог входа | Выход |
+|-------|---------------|-------|
+| `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_*.xlsx` |
+| `prod` | `IN/PROD` | то же |
+
+В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config).
+
+> Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
 ## Структура проекта
 
 ```
-config.json          # параметры (см. Docs/CONFIG.md)
-run.py               # точка запуска
+config.json          # HTML+JSON pipeline (см. Docs/CONFIG.md)
+config_excel_v2.json # Excel-only v2 (см. Docs/CONFIG_EXCEL_V2.md)
+run.py               # запуск HTML+JSON
+run_excel.py         # запуск Excel v2
 src/                 # исходный код
-Docs/CONFIG.md       # полный справочник config.json
-Docs/FileIN/         # test-данные (в .gitignore)
-IN/                  # prod-данные
-OUT/                 # результаты с timestamp
+  excel_report/      # pipeline v2 (snapshot, norms, exceedance, …)
+Docs/CONFIG.md       # справочник config.json
+Docs/CONFIG_EXCEL_V2.md  # справочник config_excel_v2.json
+Docs/FileIN/         # test-данные (legacy; v2 — IN/TEST)
+IN/TEST/             # test-данные для run_excel.py
+IN/PROD/             # prod-данные для run_excel.py
+OUT/                 # результаты run.py
+OUT/excel_v2/        # результаты run_excel.py
 log/                 # логи INFO/DEBUG
 ```
 
@@ -116,6 +141,19 @@ log/                 # логи INFO/DEBUG
 - **Графики** — кривые «лиды × дни» (если лист ещё формируется в сборке; иначе — только HTML)
 
 > Лист **«Матрица»** в Excel **не создаётся**. Сводная матрица — в HTML (дни + счётчики ≤ / > порога).
+
+### Excel v2 (`run_excel.py`)
+
+`OUT/excel_v2/kanban_excel_v2_YYYYMMDD_HHMMSS.xlsx`:
+
+| Лист | Содержание |
+|------|------------|
+| **Нормативы** | Min/max, P20/P50/P80 по ТБ и «все тб» |
+| **Уникальные ID** | Снимок лидов, лидеры, P80, превышение |
+| **Свод по менеджеру** | ФИО/ТН, число нарушений, разрез «Группа + Продукт» |
+| **Свод ПрПр с отклонениями** | Детализация каждого превышения |
+
+Подробнее: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md)
 
 **JSON основной** (split-bundle, prod):
 
@@ -197,3 +235,4 @@ cd HTML && python -m http.server 8080
 | 1.0.6 | 2026-08-31 | Исключение терминальных стадий сделки (построчно, UI + JSON); Excel: колонки «П80 КМ ≥» — число уникальных КМ с сроком ≥ P80 |
 | 1.0.7 | 2026-08-31 | Config-only «К ПРОДАЖЕ»; команда лида/сделки + ВКС → TOP; матрица ↑/↓ порога; locked уровень `status`; сброс JSON; вкладка «Менеджеры» опциональна, без отдельной загрузки JSON |
 | 1.0.8 | 2026-08-31 | HTML: гистограмма + ECDF + ранговая шкала; перцентили на графиках; разворот по клику (график / карточка) |
+| 2.0.0 | 2026-09-01 | **Excel v2:** `run_excel.py`, `config_excel_v2.json`, `src/excel_report/`; 4 листа (нормативы, уникальные ID, свод менеджер, отклонения); параллель этапов; [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) |

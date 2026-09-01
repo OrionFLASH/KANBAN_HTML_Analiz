@@ -123,31 +123,42 @@ def _format_sheet(ws, config: dict[str, Any]) -> None:
                 cell.number_format = int_fmt
 
 
-def _format_managers_hotspots_column(ws, config: dict[str, Any]) -> None:
-    """Перенос по словам и высота строк для колонки «Топ зон превышения»."""
-    if ws.max_row < 1:
-        return
-    headers: list[Any] = [cell.value for cell in ws[1]]
-    col_idx: int | None = None
-    for idx, header in enumerate(headers, start=1):
-        if header and "Топ зон" in str(header):
-            col_idx = idx
-            break
-    if col_idx is None:
+def _format_multiline_columns(
+    ws,
+    config: dict[str, Any],
+    header_markers: list[str],
+) -> None:
+    """Перенос по словам и высота строк для колонок с многострочным текстом."""
+    if ws.max_row < 1 or not header_markers:
         return
 
+    headers: list[Any] = [cell.value for cell in ws[1]]
     fmt_cfg: dict[str, Any] = config.get("output", {}).get("excel_format", {})
     max_width: int = int(fmt_cfg.get("hotspots_column_width", 55))
-    letter: str = get_column_letter(col_idx)
-    ws.column_dimensions[letter].width = max_width
-
     wrap_align: Alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
-    for row_idx in range(2, ws.max_row + 1):
-        cell = ws.cell(row=row_idx, column=col_idx)
-        cell.alignment = wrap_align
-        text: str = str(cell.value or "")
-        lines: int = max(1, text.count("\n") + 1) if text and text != "—" else 1
-        ws.row_dimensions[row_idx].height = max(15.0, min(15.0 * lines, 120.0))
+
+    for marker in header_markers:
+        col_idx: int | None = None
+        for idx, header in enumerate(headers, start=1):
+            if header and marker in str(header):
+                col_idx = idx
+                break
+        if col_idx is None:
+            continue
+
+        letter: str = get_column_letter(col_idx)
+        ws.column_dimensions[letter].width = max_width
+        for row_idx in range(2, ws.max_row + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.alignment = wrap_align
+            text: str = str(cell.value or "")
+            lines: int = max(1, text.count("\n") + 1) if text and text != "—" else 1
+            ws.row_dimensions[row_idx].height = max(15.0, min(15.0 * lines, 120.0))
+
+
+def _format_managers_hotspots_column(ws, config: dict[str, Any]) -> None:
+    """Перенос по словам и высота строк для колонки «Топ зон превышения»."""
+    _format_multiline_columns(ws, config, ["Топ зон"])
 
 
 def export_excel(

@@ -1,0 +1,325 @@
+{
+  "mode": "test",
+  "paths": {
+    "input_test": "IN/TEST",
+    "input_prod": "IN/PROD",
+    "output": "OUT/excel_v2",
+    "log": "log"
+  },
+  "logging": {
+    "logger_name": "kanban_excel_v2",
+    "info_file_prefix": "INFO_excel_v2",
+    "debug_file_prefix": "DEBUG_excel_v2",
+    "hour_format": "%Y%m%d_%H"
+  },
+  "test_files": [
+    "тест Канбан 2Т2Г (ALL) на 31-08-2026.xlsx"
+  ],
+  "prod_files": [
+    "Канбан Все ТБ (фильтр) на 31-08-2026.xlsx"
+  ],
+  "columns": {
+    "report_date": "Дата отчета",
+    "lead_id": "ID ПрПр",
+    "product_group": "Группа продукта",
+    "product": "Продукт",
+    "inn": "ИНН",
+    "client_id": "Идентификатор клиента",
+    "client": "Клиент",
+    "work_start_date": "Дата начала работы",
+    "current_status": "Текущий статус",
+    "days_on_stage": "Количество дней на текущей стадии",
+    "deal_id": "ID сделки",
+    "source_deal_id": "ID сделки в исходной системе",
+    "deal_created_date": "Дата создания сделки",
+    "deal_stage": "Стадия сделки",
+    "days_since_deal": "Количество дней с создания сделки",
+    "tb_code": "Код ТБ",
+    "tb": "ТБ",
+    "gosb": "ГОСБ",
+    "km": "КМ",
+    "vks": "ВКС",
+    "label": "Метка",
+    "change_conditions": "_Изменение условий",
+    "efs_flag": "ЕФС флаг"
+  },
+  "required_column_keys": [
+    "report_date",
+    "lead_id",
+    "product_group",
+    "product",
+    "current_status",
+    "days_on_stage",
+    "tb",
+    "efs_flag",
+    "change_conditions",
+    "label"
+  ],
+  "optional_column_keys": [
+    "inn",
+    "client_id",
+    "client",
+    "work_start_date",
+    "deal_id",
+    "source_deal_id",
+    "deal_created_date",
+    "deal_stage",
+    "days_since_deal",
+    "tb_code",
+    "gosb",
+    "km",
+    "vks"
+  ],
+  "excel": {
+    "sheet_name": "Sheet1",
+    "table_name": "Base",
+    "table_auto": true,
+    "engine": "openpyxl",
+    "na_values": [""],
+    "category_markers": {
+      "for_sale": "К ПРОДАЖЕ",
+      "in_work": "В РАБОТЕ",
+      "unknown": "UNKNOWN"
+    }
+  },
+  "processing": {
+    "empty_stage_values": ["", "-", "nan", "None"],
+    "dedup_same_date_agg": "max",
+    "pick_across_dates": "max_days_then_latest_report_date",
+    "group_only_product_label": "—",
+    "audit_row_counts": true,
+    "duration_fallback_to_columns": true
+  },
+  "dates": {
+    "dayfirst": true,
+    "excel_origin": "1899-12-30",
+    "formats": ["%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"],
+    "empty_values": ["", "-", "nan", "none", "nat", "null", "N/A", "n/a"]
+  },
+  "duration_source": "columns",
+  "stage_analysis_mode": "status",
+  "product_analysis_mode": "group_product",
+  "percentiles": [20, 50, 80],
+  "aggregation": {
+    "group_keys": [
+      "product_group",
+      "product",
+      "analysis_level",
+      "current_status",
+      "stage_key"
+    ],
+    "metrics": ["days_on_stage"]
+  },
+  "filters": {
+    "efs_flag": {
+      "enabled": true,
+      "column_key": "efs_flag",
+      "value": 1,
+      "html_slice": false
+    },
+    "change_conditions": {
+      "enabled": true,
+      "column_key": "change_conditions",
+      "value": 0,
+      "html_slice": false
+    },
+    "data_entry": {
+      "enabled": false,
+      "column_key": "data_entry",
+      "value": 0,
+      "html_slice": false
+    },
+    "strategy_label_2026": {
+      "enabled": true,
+      "column_key": "label",
+      "contains_all": ["Стратегия", "2026"],
+      "case_sensitive": false,
+      "html_slice": false
+    },
+    "exclude_current_otkaz": {
+      "enabled": true,
+      "column_key": "current_status",
+      "filter_mode": "exclude",
+      "exclude_contains": "отказ",
+      "case_sensitive": false,
+      "html_slice": false
+    },
+    "exclude_deal_otkaz": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "filter_mode": "exclude",
+      "exclude_contains": "отказ",
+      "case_sensitive": false,
+      "html_slice": false
+    },
+    "exclude_deal_zakryta": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "filter_mode": "exclude",
+      "exclude_contains": "закрыта",
+      "case_sensitive": false,
+      "html_slice": false
+    },
+    "exclude_deal_zaklyuchen": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "filter_mode": "exclude",
+      "exclude_contains": "заключен",
+      "case_sensitive": false,
+      "html_slice": false
+    }
+  },
+  "team_files": {
+    "enabled": true,
+    "lead_team": {
+      "test": ["тест Команда л 2Т2Г на 31-08-2026.xlsx"],
+      "prod": ["Команда лида на 31-08-2026.xlsx"]
+    },
+    "deal_team": {
+      "test": ["тест Команда с 2Т2Г на 31-08-2026.xlsx"],
+      "prod": ["Команда сделки на 31-08-2026.xlsx"]
+    },
+    "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+    "columns": {
+      "report_date": "Дата отчета",
+      "lead_id": "ID ПрПр",
+      "deal_id": "ID сделки",
+      "member_tab_number": "Табельный номер участника команды",
+      "member": "Участник команды",
+      "role": "Роль участника команды",
+      "is_leader": "Лидер",
+      "tb": "ТБ"
+    },
+    "output_columns": {
+      "lead": {
+        "member_tab_number": "TN Лидера лида",
+        "member": "ФИО Лидера лида",
+        "role": "Роль Лидера лида",
+        "tb": "ТБ Лидера лида"
+      },
+      "deal": {
+        "member_tab_number": "TN Лидера сделки",
+        "member": "ФИО Лидера сделки",
+        "role": "Роль Лидера сделки",
+        "tb": "ТБ Лидера сделки"
+      }
+    }
+  },
+  "client_display": {
+    "enabled": true,
+    "abbreviations": [
+      {"match": "публичное акционерное общество", "replace": "ПАО"},
+      {"match": "непубличное акционерное общество", "replace": "НАО"},
+      {"match": "закрытое акционерное общество", "replace": "ЗАО"},
+      {"match": "открытое акционерное общество", "replace": "ОАО"},
+      {"match": "общество с ограниченной ответственностью", "replace": "ООО"},
+      {"match": "акционерное общество", "replace": "АО"},
+      {"match": "специализированный застройщик", "replace": "СЗ"},
+      {"match": "специализрованный застройщик", "replace": "СЗ"},
+      {"match": "индивидуальный предприниматель", "replace": "ИП"},
+      {"match": "федеральное государственное бюджетное учреждение", "replace": "ФГБУ"},
+      {"match": "федеральное государственное унитарное предприятие", "replace": "ФГУП"},
+      {"match": "государственное унитарное предприятие", "replace": "ГУП"},
+      {"match": "муниципальное унитарное предприятие", "replace": "МУП"},
+      {"match": "автономная некоммерческая организация", "replace": "АНО"},
+      {"match": "некоммерческая организация", "replace": "НКО"},
+      {"match": "товарищество собственников жилья", "replace": "ТСЖ"},
+      {"match": "товарищество собственников недвижимости", "replace": "ТСН"},
+      {"match": "крестьянское (фермерское) хозяйство", "replace": "КФХ"},
+      {"match": "крестьянское фермерское хозяйство", "replace": "КФХ"},
+      {"match": "производственный кооператив", "replace": "ПК"},
+      {"match": "сельскохозяйственный производственный кооператив", "replace": "СПК"},
+      {"match": "полное товарищество", "replace": "ПТ"},
+      {"match": "товарищество на вере", "replace": "ТНВ"},
+      {"match": "коммандитное товарищество", "replace": "КТ"}
+    ]
+  },
+  "output": {
+    "report_prefix": "kanban_excel_v2",
+    "timestamp_format": "%Y%m%d_%H%M%S",
+    "all_tb_label": "все тб",
+    "excel_max_sheet_name_length": 31,
+    "sheets": {
+      "norms": "Нормативы",
+      "leads": "Уникальные ID",
+      "managers": "Свод по менеджеру",
+      "violations": "Свод ПрПр с отклонениями"
+    },
+    "column_labels": {
+      "product_group": "Группа продукта",
+      "product": "Продукт",
+      "tb": "ТБ",
+      "current_status": "Стадия работы с лидом",
+      "days_on_stage_min": "Мин срок дней",
+      "days_on_stage_max": "Макс срок дней",
+      "days_on_stage_count": "Число лидов",
+      "min_header_marker": "Мин",
+      "max_header_marker": "Макс"
+    },
+    "percentile_column_labels": {
+      "days_on_stage": {
+        "days": "П{p} дней",
+        "count": "П{p} лидов",
+        "min": "П{p} мин",
+        "max": "П{p} макс",
+        "le_count": "П{p} лидов ≤",
+        "gt_count": "П{p} лидов >"
+      }
+    },
+    "excel_format": {
+      "freeze_panes": "A2",
+      "float_format": "0.00",
+      "int_format": "0",
+      "max_column_width": 45,
+      "min_column_width": 12,
+      "sample_rows_for_width": 200,
+      "hotspots_column_width": 55,
+      "colors": {
+        "min": "C6EFCE",
+        "max": "FFC7CE"
+      }
+    },
+    "snapshot_columns": {
+      "product_group": "Группа продукта",
+      "product": "Продукт",
+      "current_status": "Стадия работы с лидом",
+      "inn": "ИНН",
+      "client_id": "Идентификатор клиента",
+      "client": "Клиент",
+      "work_start_date": "Дата начала работы",
+      "deal_id": "ID сделки",
+      "source_deal_id": "ID сделки в исходной системе",
+      "deal_created_date": "Дата создания сделки",
+      "deal_stage": "Текущая стадия сделки",
+      "tb_code": "Код ТБ",
+      "tb": "ТБ",
+      "gosb": "ГОСБ",
+      "km": "КМ",
+      "vks": "ВКС"
+    },
+    "exceedance_columns": {
+      "p80_norm": "Норматив P80",
+      "current_days": "Текущий срок",
+      "exceedance_flag": "превышение",
+      "exceedance_days": "дней отклонения"
+    }
+  },
+  "excel_theme": "green_red",
+  "parallel_workers": 0,
+  "performance": {
+    "max_parallel_workers": 4,
+    "reserve_cpu_cores": 1,
+    "read_only_required_columns": true,
+    "downcast_numeric": true,
+    "free_memory_between_stages": true,
+    "compact_distribution_series": true,
+    "precompute_pivot_matrices": false,
+    "parallel_pipeline_stages": true,
+    "parallel_stage_workers": 0
+  },
+  "progress": {
+    "enabled": true,
+    "log_every_seconds": 3,
+    "show_timing_summary": true
+  }
+}
