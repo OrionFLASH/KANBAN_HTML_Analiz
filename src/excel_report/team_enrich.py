@@ -14,6 +14,7 @@ from src.team_loader import (
     load_team_frames,
     normalize_person_name,
 )
+from src.tab_number import normalize_tab_number_multiline
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.team_enrich")
 
@@ -36,6 +37,18 @@ def _team_columns(config: dict[str, Any]) -> dict[str, str]:
         if value:
             result[str(key)] = str(value)
     return result
+
+
+def _multiline_tab_agg(values: pd.Series) -> str | None:
+    """Склеивает нормализованные табельные номера через перевод строки."""
+    cleaned: list[str] = []
+    for value in values:
+        normalized: str | None = normalize_tab_number_multiline(value)
+        if normalized:
+            cleaned.append(normalized)
+    if not cleaned:
+        return None
+    return "\n".join(cleaned)
 
 
 def _multiline_agg(values: pd.Series) -> str | None:
@@ -82,26 +95,67 @@ def build_leaders_lookup_df(
     ].copy()
 
     leader_text: pd.Series = work[leader_col].fillna("").astype(str).str.strip().str.casefold()
+    before_leader: int = len(work)
     work = work.loc[leader_text.isin(leader_values)]
+    if len(work) < before_leader:
+        logger.info(
+            "Команда (%s): оставлены только лидеры (%d → %d строк, Лидер из config)",
+            source,
+            before_leader,
+            len(work),
+        )
     if work.empty:
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
     work["_id"] = work[id_col].astype(str).str.strip()
     work = work.loc[work["_id"] != ""]
     work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
+    bad_date: int = int(work["_date"].isna().sum())
+    if bad_date:
+        logger.warning(
+            "Команда (%s): %s строк лидеров без разобранной «%s» — не участвуют в lookup",
+            source,
+            f"{bad_date:,}",
+            date_col,
+        )
     work = work.dropna(subset=["_date"])
     if work.empty:
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
+    pick_mode: str = str(
+        (config.get("team_files") or {}).get("pick_report_date", "latest")
+    ).casefold()
+    if pick_mode != "latest":
+        logger.warning(
+            "Команда (%s): pick_report_date=%s не поддерживается, используется latest",
+            source,
+            pick_mode,
+        )
+
     idx_latest: pd.Series = work.groupby("_id", sort=False)["_date"].idxmax()
     latest: pd.DataFrame = work.loc[idx_latest].copy()
     latest["_name"] = latest[member_col].map(normalize_person_name)
+    before_names: int = len(latest)
     latest = latest.loc[latest["_name"] != ""]
+    if len(latest) < before_names:
+        logger.warning(
+            "Команда (%s): %s строк лидеров без ФИО пропущены",
+            source,
+            before_names - len(latest),
+        )
+    before_dedup: int = len(latest)
     latest = latest.drop_duplicates(subset=["_id", "_name"], keep="first")
+    if len(latest) < before_dedup:
+        logger.info(
+            "Команда (%s): дедупликация (_id, ФИО): %d → %d строк",
+            source,
+            before_dedup,
+            len(latest),
+        )
 
     agg_spec: dict[str, Any] = {"member": ("_name", _multiline_agg)}
     if tn_col in latest.columns:
-        agg_spec["member_tab_number"] = (tn_col, _multiline_agg)
+        agg_spec["member_tab_number"] = (tn_col, _multiline_tab_agg)
     if role_col in latest.columns:
         agg_spec["role"] = (role_col, _multiline_agg)
     if tb_col in latest.columns:

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pandas as pd
 
+from src.excel_report.snapshot import build_lead_snapshot
 from src.lead_tracker import build_lead_stage_records
 from src.performance import resolve_parallel_workers
 from src.team_loader import load_team_kind_frames
@@ -16,7 +17,7 @@ logger: logging.Logger = logging.getLogger("kanban.excel_v2.parallel")
 
 
 def parallel_pipeline_enabled(config: dict[str, Any]) -> bool:
-    """Включено ли распараллеливание независимых этапов."""
+    """Включено ли распараллеливание загрузки файлов команд (I/O)."""
     return bool(config.get("performance", {}).get("parallel_pipeline_stages", True))
 
 
@@ -27,56 +28,45 @@ def stage_workers(config: dict[str, Any], task_count: int) -> int:
     return max(1, min(task_count, base))
 
 
-def _build_snapshot_task(args: tuple[pd.DataFrame, dict[str, Any]]) -> pd.DataFrame:
-    """Обёртка для ProcessPoolExecutor: снимок лидов."""
-    from src.excel_report.snapshot import build_lead_snapshot
-
-    df, cfg = args
-    return build_lead_snapshot(df, cfg)
-
-
-def _build_records_task(args: tuple[pd.DataFrame, dict[str, Any]]) -> pd.DataFrame:
-    """Обёртка для ProcessPoolExecutor: lead×стадия."""
-    df, cfg = args
-    return build_lead_stage_records(df, cfg, None)
-
-
 def run_snapshot_records_teams_parallel(
     filtered_df: pd.DataFrame,
     config: dict[str, Any],
     shared_config: dict[str, Any],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Параллельно: снимок лидов, трекинг стадий, загрузка команд лида и сделки.
+    Снимок и трекинг — последовательно в основном процессе (без pickle DataFrame).
+    Файлы команд — параллельно в ThreadPool (I/O).
     Возвращает (snapshot, records, lead_team_df, deal_team_df).
     """
-    workers: int = stage_workers(config, 4)
+    workers: int = stage_workers(config, 2)
+    terminal_applied: bool = True
 
-    if not parallel_pipeline_enabled(config) or workers <= 1:
-        from src.excel_report.snapshot import build_lead_snapshot
-
-        snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
-        records: pd.DataFrame = build_lead_stage_records(filtered_df, config, None)
-        lead_team_df: pd.DataFrame = load_team_kind_frames(shared_config, "lead_team")
-        deal_team_df: pd.DataFrame = load_team_kind_frames(shared_config, "deal_team")
-        return snapshot, records, lead_team_df, deal_team_df
-
-    logger.info("Параллельные этапы: snapshot + records + команды (workers=%d)", workers)
-
-    cpu_workers: int = min(2, workers)
-    io_workers: int = min(2, workers)
-
-    with ProcessPoolExecutor(max_workers=cpu_workers) as cpu_pool, ThreadPoolExecutor(
-        max_workers=io_workers
-    ) as io_pool:
-        fut_snapshot = cpu_pool.submit(_build_snapshot_task, (filtered_df, config))
-        fut_records = cpu_pool.submit(_build_records_task, (filtered_df, config))
-        fut_lead = io_pool.submit(load_team_kind_frames, shared_config, "lead_team")
-        fut_deal = io_pool.submit(load_team_kind_frames, shared_config, "deal_team")
-
-        snapshot = fut_snapshot.result()
-        records = fut_records.result()
-        lead_team_df = fut_lead.result()
-        deal_team_df = fut_deal.result()
+    if parallel_pipeline_enabled(config) and workers > 1:
+        logger.info(
+            "Параллельная загрузка команд (ThreadPool, workers=%d); snapshot+records — последовательно",
+            workers,
+        )
+        with ThreadPoolExecutor(max_workers=workers) as io_pool:
+            fut_lead = io_pool.submit(load_team_kind_frames, shared_config, "lead_team")
+            fut_deal = io_pool.submit(load_team_kind_frames, shared_config, "deal_team")
+            snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
+            records: pd.DataFrame = build_lead_stage_records(
+                filtered_df,
+                config,
+                None,
+                terminal_filters_already_applied=terminal_applied,
+            )
+            lead_team_df: pd.DataFrame = fut_lead.result()
+            deal_team_df: pd.DataFrame = fut_deal.result()
+    else:
+        snapshot = build_lead_snapshot(filtered_df, config)
+        records = build_lead_stage_records(
+            filtered_df,
+            config,
+            None,
+            terminal_filters_already_applied=terminal_applied,
+        )
+        lead_team_df = load_team_kind_frames(shared_config, "lead_team")
+        deal_team_df = load_team_kind_frames(shared_config, "deal_team")
 
     return snapshot, records, lead_team_df, deal_team_df

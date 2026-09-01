@@ -194,6 +194,60 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "max": "FFC7CE",
             },
         },
+        "statistics": {
+            "attach_counts_left": True,
+            "min": {
+                "compute": True,
+                "export": False,
+                "export_le_count": False,
+                "export_gt_count": False,
+            },
+            "max": {
+                "compute": True,
+                "export": False,
+                "export_le_count": False,
+                "export_gt_count": False,
+            },
+            "total_count": {
+                "compute": True,
+                "export": True,
+            },
+            "percentiles": [
+                {
+                    "p": 20,
+                    "compute": True,
+                    "export_days": True,
+                    "export_count": False,
+                    "export_le_count": False,
+                    "export_gt_count": False,
+                    "export_min": False,
+                    "export_max": False,
+                    "export_km_count": False,
+                },
+                {
+                    "p": 50,
+                    "compute": True,
+                    "export_days": True,
+                    "export_count": False,
+                    "export_le_count": False,
+                    "export_gt_count": False,
+                    "export_min": False,
+                    "export_max": False,
+                    "export_km_count": False,
+                },
+                {
+                    "p": 80,
+                    "compute": True,
+                    "export_days": True,
+                    "export_count": False,
+                    "export_le_count": True,
+                    "export_gt_count": True,
+                    "export_min": True,
+                    "export_max": True,
+                    "export_km_count": True,
+                },
+            ],
+        },
     },
     "logging": {
         "logger_name": "kanban",
@@ -532,33 +586,6 @@ def percentile_display_value(p: float) -> str:
 
 def build_percentile_column_mapping(config: dict[str, Any]) -> dict[str, str]:
     """Генерирует mapping колонок перцентилей → русские заголовки Excel."""
-    from src.percentile_stats import percentile_label
+    from src.statistics_config import build_percentile_column_mapping as _build
 
-    templates: dict[str, dict[str, str]] = config["output"].get(
-        "percentile_column_labels",
-        DEFAULT_CONFIG["output"]["percentile_column_labels"],
-    )
-    metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
-    percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
-    # Только для P80: КМ ≥ и счётчики лидов ≤ / > порога
-    p80_only_suffixes: frozenset[str] = frozenset({"km_count", "le_count", "gt_count"})
-
-    mapping: dict[str, str] = {}
-    for metric in metrics:
-        metric_templates: dict[str, str] = templates.get(metric, templates.get("days_on_stage", {}))
-        for p in percentiles:
-            p_text: str = percentile_display_value(p)
-            label: str = percentile_label(p)
-            is_p80: bool = abs(float(p) - 80.0) < 1e-9
-            for suffix, template in metric_templates.items():
-                if suffix in p80_only_suffixes:
-                    continue
-                col_name: str = f"{metric}_{label}_{suffix}"
-                mapping[col_name] = template.format(p=p_text)
-            if is_p80:
-                for suffix in ("le_count", "gt_count", "km_count"):
-                    if suffix not in metric_templates:
-                        continue
-                    col_name = f"{metric}_{label}_{suffix}"
-                    mapping[col_name] = metric_templates[suffix].format(p=p_text)
-    return mapping
+    return _build(config)

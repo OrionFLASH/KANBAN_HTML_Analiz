@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from src.data_audit import audit_rows
 from src.settings import filter_column_name, filter_column_names
 
 logger: logging.Logger = logging.getLogger("kanban.filters")
@@ -22,9 +23,17 @@ def is_exclude_filter(flt: dict[str, Any]) -> bool:
 
 
 def _text_match_mask(series: pd.Series, flt: dict[str, Any]) -> pd.Series:
-    """Маска для contains / contains_all."""
+    """Маска для contains / contains_all / contains_any."""
     case: bool = bool(flt.get("case_sensitive", False))
     text: pd.Series = series.astype(str)
+    if "contains_any" in flt:
+        tokens: list[str] = [str(t) for t in flt["contains_any"] if str(t).strip()]
+        if not tokens:
+            return pd.Series(True, index=series.index)
+        mask_any: pd.Series = pd.Series(False, index=series.index)
+        for token in tokens:
+            mask_any |= text.str.contains(token, case=case, na=False)
+        return mask_any
     if "contains_all" in flt:
         tokens: list[str] = [str(t) for t in flt["contains_all"] if str(t)]
         if not tokens:
@@ -35,7 +44,7 @@ def _text_match_mask(series: pd.Series, flt: dict[str, Any]) -> pd.Series:
         return mask
     if "contains" in flt:
         return text.str.contains(str(flt["contains"]), case=case, na=False)
-    raise ValueError("Фильтр не содержит contains или contains_all")
+    raise ValueError("Фильтр не содержит contains, contains_all или contains_any")
 
 
 def _mask_empty_column_values(series: pd.Series, config: dict[str, Any]) -> pd.Series:
@@ -127,7 +136,7 @@ def row_keep_mask(df: pd.DataFrame, column: str, flt: dict[str, Any], config: di
         if config is not None:
             return ~exclude_row_drop_mask(df, flt, config)
         return ~exclude_match_mask(df[column], flt, config)
-    if "contains" in flt or "contains_all" in flt:
+    if "contains" in flt or "contains_all" in flt or "contains_any" in flt:
         return _text_match_mask(df[column], flt)
     value = flt.get("value", 1)
     return pd.to_numeric(df[column], errors="coerce") == value
@@ -181,6 +190,8 @@ def filter_terminal_deal_stage_rows(
     df: pd.DataFrame,
     config: dict[str, Any],
     exclusion_filter_names: list[str] | None = None,
+    *,
+    audit_each_filter: bool = False,
 ) -> pd.DataFrame:
     """
     Убирает строки с терминальной стадией (конкретная дата отчёта).
@@ -195,24 +206,27 @@ def filter_terminal_deal_stage_rows(
     if not names or df.empty:
         return df
 
-    keep: pd.Series = pd.Series(True, index=df.index)
+    result: pd.DataFrame = df
     filters_cfg: dict[str, Any] = config.get("filters", {})
     for name in names:
         flt: dict[str, Any] | None = filters_cfg.get(name)
         if not isinstance(flt, dict) or not is_exclude_filter(flt):
             continue
-        keep &= ~exclude_row_drop_mask(df, flt, config)
+        before: int = len(result)
+        mask: pd.Series = ~exclude_row_drop_mask(result, flt, config)
+        result = result.loc[mask]
+        after: int = len(result)
+        logger.info("Фильтр '%s' (искл.): %d -> %d строк", name, before, after)
+        if audit_each_filter:
+            audit_rows(
+                f"exclude:{name}",
+                before,
+                after,
+                config,
+                reason=f"фильтр '{name}' (exclude)",
+            )
 
-    before: int = len(df)
-    result: pd.DataFrame = df.loc[keep].reset_index(drop=True)
-    if len(result) < before:
-        logger.info(
-            "Терминальные стадии: %d → %d строк (%s)",
-            before,
-            len(result),
-            ", ".join(names),
-        )
-    return result
+    return result.reset_index(drop=True)
 
 
 def _apply_filter_subset(
@@ -221,9 +235,10 @@ def _apply_filter_subset(
     filters_cfg: dict[str, Any],
     *,
     include_filter: Any,
+    audit_each_filter: bool = False,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Общая логика AND-фильтрации с предикатом include_filter(name, flt)."""
-    result: pd.DataFrame = df.copy()
+    result: pd.DataFrame = df
     active: list[str] = []
 
     for name, flt in filters_cfg.items():
@@ -243,15 +258,29 @@ def _apply_filter_subset(
             mask = row_keep_mask(result, column, flt, config)
 
         before: int = len(result)
-        result = result[mask]
+        result = result.loc[mask]
+        after: int = len(result)
         active.append(name)
         mode_label: str = "искл." if is_exclude_filter(flt) else "вкл."
-        logger.info("Фильтр '%s' (%s): %d -> %d строк", name, mode_label, before, len(result))
+        logger.info("Фильтр '%s' (%s): %d -> %d строк", name, mode_label, before, after)
+        if audit_each_filter:
+            audit_rows(
+                f"filter:{name}",
+                before,
+                after,
+                config,
+                reason=f"фильтр '{name}' ({mode_label})",
+            )
 
     return result.reset_index(drop=True), active
 
 
-def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+def apply_filters(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+    *,
+    audit_each_filter: bool = False,
+) -> pd.DataFrame:
     """Оставляет строки после включённых фильтров Excel (без exclude — см. lead_tracker)."""
     filters_cfg: dict[str, Any] = config.get("filters", {})
     result, active = _apply_filter_subset(
@@ -260,6 +289,7 @@ def apply_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
         filters_cfg,
         include_filter=lambda _name, flt: bool(flt.get("enabled", False))
         and not is_exclude_filter(flt),
+        audit_each_filter=audit_each_filter,
     )
 
     if active:

@@ -209,6 +209,8 @@ def build_lead_stage_records(
     config: dict[str, Any],
     progress: ProgressReporter | None = None,
     exclusion_filter_names: list[str] | None = None,
+    *,
+    terminal_filters_already_applied: bool = False,
 ) -> pd.DataFrame:
     """
     Формирует таблицу: один лид — одна стадия — сроки нахождения.
@@ -221,7 +223,8 @@ def build_lead_stage_records(
         progress.step(f"Расчёт сроков на {len(df):,} строках (все строки входа)…")
 
     prepared: pd.DataFrame = _prepare_duration_columns(df, config)
-    prepared = filter_terminal_deal_stage_rows(prepared, config, exclusion_filter_names)
+    if not terminal_filters_already_applied:
+        prepared = filter_terminal_deal_stage_rows(prepared, config, exclusion_filter_names)
     frames: list[pd.DataFrame] = []
 
     if stage_mode in {"status", "both"}:

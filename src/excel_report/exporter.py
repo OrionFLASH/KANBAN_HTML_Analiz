@@ -8,8 +8,8 @@ from typing import Any
 
 import pandas as pd
 
-from src.excel_exporter import _format_multiline_columns, _format_sheet
-from src.excel_sanitize import sanitize_dataframe, sanitize_sheet_name
+from src.excel_exporter import _format_multiline_columns, _format_sheet, _prepare_excel_frame
+from src.excel_sanitize import sanitize_sheet_name
 from src.export_overflow import (
     build_csv_redirect_sheet,
     export_overflow_csv_sheets,
@@ -66,7 +66,7 @@ def export_excel_v2(
         for key, frame in excel_sheets.items():
             title: str = sanitize_sheet_name(sheet_names.get(key, key), used_sheet_names, max_len)
             sheet_key_by_title[title] = key
-            prepared[title] = sanitize_dataframe(frame)
+            prepared[title] = _prepare_excel_frame(frame, config)
 
     with pd.ExcelWriter(path, engine=engine) as writer:
         for title, frame in prepared.items():

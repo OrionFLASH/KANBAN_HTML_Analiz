@@ -186,7 +186,48 @@
 
 22 имени Kanban-файлов (остаток, «К продаже и Отказ», «ВСЕ», «Реализация сделки» по ТБ). Полный список — в `config.json` / `config_excel_v2.json` → `prod_files`.
 
+### `output.statistics` — что считать и что выводить
+
+Все показатели **считаются** при агрегации (если `compute: true`). Флаги `export_*` управляют **колонками Excel** и полями JSON.
+
+| Блок | Ключи | По умолчанию (export) |
+|------|-------|------------------------|
+| `min` / `max` | `export`, `export_le_count`, `export_gt_count` | не выводятся |
+| `total_count` | `export` | **да** — число лидов в группе |
+| `percentiles[]` | `p`, `export_days`, `export_le_count`, `export_gt_count`, `export_min`, `export_max`, `export_km_count` | P20/P50: только `days`; P80: `days` + le/gt/min/max |
+| `attach_counts_left` | bool | `true` — счётчики `≤` слева от границы перцентиля |
+
+Пример (P80 с полным набором):
+
+```json
+"statistics": {
+  "attach_counts_left": true,
+  "total_count": { "compute": true, "export": true },
+  "min": { "compute": true, "export": false },
+  "max": { "compute": true, "export": false },
+  "percentiles": [
+    { "p": 20, "export_days": true, "export_le_count": false },
+    { "p": 80, "export_days": true, "export_le_count": true, "export_gt_count": true, "export_min": true, "export_max": true }
+  ]
+}
+```
+
+Заголовки колонок — в `output.percentile_column_labels` (шаблон `{p}` → 20, 50, 80).
+
 ### Проверка входных файлов перед запуском
+
+Перед загрузкой данных `run.py` и `run_excel.py` проверяют наличие **всех** файлов для текущего `mode`:
+
+| Режим | Каталог | Что проверяется |
+|-------|---------|-----------------|
+| `test` | `paths.input_test` | `test_files` + `team_files.*.test` (если `enabled`) |
+| `prod` | `paths.input_prod` | `prod_files` + `team_files.*.prod` (если `enabled`) |
+
+При отсутствии хотя бы одного файла — сообщение в лог и консоль, **обработка не начинается** (код выхода `1`). Модуль: `src/input_files_check.py`.
+
+**Prod (текущий config):** 22 Kanban + 8 «Команда лида» + 8 «Команда сделки» = **38 файлов** в `IN/PROD/`.
+
+---
 
 Перед загрузкой данных `run.py` и `run_excel.py` проверяют наличие **всех** файлов для текущего `mode`:
 

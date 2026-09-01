@@ -16,7 +16,7 @@ from src.html_json_export import (
     public_slice_payload,
 )
 from src.json_sanitize import dump_json_file
-from src.percentile_stats import percentile_label
+from src.statistics_config import extract_metric_json, statistics_config
 from src.settings import (
     analysis_row_key,
     col,
@@ -117,21 +117,6 @@ def _config_locked_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
     return locked
 
 
-def _extract_percentiles(row: dict[str, Any], metric: str, percentiles: list[float]) -> dict[str, Any]:
-    """Собирает вложенный блок percentiles для одной метрики."""
-    result: dict[str, Any] = {}
-    for p in percentiles:
-        label: str = percentile_label(p)
-        result[label] = {
-            "days": row.get(f"{metric}_{label}_days"),
-            "count": row.get(f"{metric}_{label}_count"),
-            "min": row.get(f"{metric}_{label}_min"),
-            "max": row.get(f"{metric}_{label}_max"),
-            "le_count": row.get(f"{metric}_{label}_le_count"),
-            "gt_count": row.get(f"{metric}_{label}_gt_count"),
-        }
-    return result
-
 
 def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[dict[str, Any]]:
     """Преобразует DataFrame статистики в список словарей."""
@@ -142,7 +127,6 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
     group_name: str = col(config, "product_group")
     product_name: str = col(config, "product")
     metrics: list[str] = list(config["aggregation"].get("metrics", ["days_on_stage", "days_since_deal"]))
-    percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
 
     group_only: bool = is_group_only_analysis(config)
     placeholder: str = group_only_product_label(config)
@@ -166,12 +150,7 @@ def _frame_to_statistics(frame: pd.DataFrame, config: dict[str, Any]) -> list[di
             "metrics": {},
         }
         for metric in metrics:
-            item["metrics"][metric] = {
-                "min": row.get(f"{metric}_min"),
-                "max": row.get(f"{metric}_max"),
-                "count": row.get(f"{metric}_count"),
-                "percentiles": _extract_percentiles(row, metric, percentiles),
-            }
+            item["metrics"][metric] = extract_metric_json(row, metric, config)
         records.append(item)
     return records
 
@@ -230,6 +209,7 @@ def _build_meta(
         "aggregation_locked": True,
         "group_only_product_label": group_only_product_label(config),
         "percentiles": config.get("percentiles"),
+        "statistics_export": statistics_config(config),
         "percentile_method": PERCENTILE_METHOD,
         "percentile_method_description": PERCENTILE_METHOD_DESCRIPTION,
         "filters": config.get("filters"),

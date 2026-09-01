@@ -30,22 +30,26 @@ def _detect_category(filename: str, config: dict[str, Any]) -> str:
     return markers.get("unknown", "UNKNOWN")
 
 
+def _table_ref_from_workbook(wb: Any, sheet_name: str, table_name: str) -> str | None:
+    """Диапазон именованной таблицы из уже открытой книги openpyxl."""
+    if sheet_name not in wb.sheetnames:
+        return None
+    ws = wb[sheet_name]
+    for tbl in ws.tables.values():
+        if tbl.name == table_name:
+            return tbl.ref
+    return None
+
+
 def _resolve_table_range(
     file_path: Path,
     sheet_name: str,
     table_name: str,
 ) -> str | None:
     """Возвращает диапазон именованной таблицы Excel или None."""
-    # read_only не поддерживает ws.tables — только метаданные, без загрузки ячеек
     wb = load_workbook(file_path, read_only=False, data_only=True, keep_links=False)
     try:
-        if sheet_name not in wb.sheetnames:
-            return None
-        ws = wb[sheet_name]
-        for tbl in ws.tables.values():
-            if tbl.name == table_name:
-                return tbl.ref
-        return None
+        return _table_ref_from_workbook(wb, sheet_name, table_name)
     finally:
         wb.close()
 
@@ -55,7 +59,7 @@ def _read_excel_dataframe(
     config: dict[str, Any],
     use_columns: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Читает лист или именованную таблицу Excel."""
+    """Читает лист или именованную таблицу Excel (одно открытие файла через ExcelFile)."""
     excel_cfg: dict[str, Any] = config["excel"]
     sheet_name: str = excel_cfg["sheet_name"]
     table_name: str = excel_cfg["table_name"]
@@ -71,22 +75,31 @@ def _read_excel_dataframe(
     if use_columns:
         read_kwargs["usecols"] = use_columns
 
-    if use_auto:
-        cell_range: str | None = _resolve_table_range(file_path, sheet_name, table_name)
-        if cell_range:
-            match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
-            if not match:
-                raise ValueError(f"Некорректный диапазон таблицы: {cell_range}")
-            start_row: int = int(match.group(2))
-            end_row: int = int(match.group(4))
-            return pd.read_excel(
-                file_path,
-                header=start_row - 1,
-                nrows=end_row - start_row,
-                **read_kwargs,
+    with pd.ExcelFile(
+        file_path,
+        engine=engine,
+        engine_kwargs={"read_only": False, "data_only": True, "keep_links": False},
+    ) as xls:
+        if use_auto and engine == "openpyxl":
+            cell_range: str | None = _table_ref_from_workbook(
+                xls.book,
+                sheet_name,
+                table_name,
             )
+            if cell_range:
+                match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
+                if not match:
+                    raise ValueError(f"Некорректный диапазон таблицы: {cell_range}")
+                start_row: int = int(match.group(2))
+                end_row: int = int(match.group(4))
+                return pd.read_excel(
+                    xls,
+                    header=start_row - 1,
+                    nrows=end_row - start_row,
+                    **read_kwargs,
+                )
 
-    return pd.read_excel(file_path, **read_kwargs)
+        return pd.read_excel(xls, **read_kwargs)
 
 
 def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:

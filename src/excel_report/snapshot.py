@@ -27,6 +27,14 @@ def _nonempty_mask(series: pd.Series, empty: set[str]) -> pd.Series:
     return ~as_str.isin(empty)
 
 
+def _first_nonempty_per_group(series: pd.Series, empty: set[str]) -> Any:
+    """Первое непустое значение в серии (порядок строк уже по убыванию даты)."""
+    mask: pd.Series = _nonempty_mask(series, empty)
+    if not mask.any():
+        return pd.NA
+    return series.loc[mask.index[mask]].iloc[0]
+
+
 def snapshot_column_map(config: dict[str, Any]) -> dict[str, str]:
     """Ключ колонки config → заголовок Excel на листе уникальных ID."""
     raw: dict[str, Any] = config.get("output", {}).get("snapshot_columns") or {}
@@ -36,7 +44,7 @@ def snapshot_column_map(config: dict[str, Any]) -> dict[str, str]:
 def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """
     Уникальные ID ПрПр с подтягиванием полей из самых свежих непустых строк.
-    Один проход сортировки, без цепочки merge.
+    Один проход сортировки и groupby, без цепочки merge.
     """
     if df.empty:
         return pd.DataFrame()
@@ -60,8 +68,9 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
     work = work.sort_values([lead_col, report_col], ascending=[True, False], kind="mergesort")
 
     empty: set[str] = _empty_tokens(config)
-    latest: pd.DataFrame = work.drop_duplicates(subset=[lead_col], keep="first")
+    grouped = work.groupby(lead_col, sort=False)
 
+    latest: pd.DataFrame = work.drop_duplicates(subset=[lead_col], keep="first")
     indexed: pd.DataFrame = latest[[lead_col]].set_index(lead_col)
     indexed["_report_date"] = latest[report_col].values
     if days_col in latest.columns:
@@ -76,11 +85,7 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
         if src_col not in work.columns:
             indexed[key] = pd.NA
             continue
-        mask: pd.Series = _nonempty_mask(work[src_col], empty)
-        first_series: pd.Series = (
-            work.loc[mask].drop_duplicates(subset=[lead_col], keep="first").set_index(lead_col)[src_col]
-        )
-        indexed[key] = first_series
+        indexed[key] = grouped[src_col].apply(lambda s: _first_nonempty_per_group(s, empty))
 
     result: pd.DataFrame = indexed.reset_index()
 
@@ -90,7 +95,7 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
         )
 
     logger.info("Снимок лидов: %s уникальных ID", f"{len(result):,}")
-    return result
+    return result.reset_index(drop=True)
 
 
 def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:

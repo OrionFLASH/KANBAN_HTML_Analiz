@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from src.settings import col
+from src.tab_number import normalize_tab_number, normalize_tab_number_multiline
 from src.team_loader import normalize_person_name
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.manager_summary")
@@ -19,7 +20,7 @@ ROLE_VKS: str = "ВКС"
 
 def _manager_key(tab_number: str | None, name: str) -> str:
     """Уникальный ключ менеджера: табельный или ФИО."""
-    tn: str = str(tab_number or "").strip()
+    tn: str = normalize_tab_number(tab_number)
     if tn:
         return f"TN:{tn}"
     return f"FIO:{name.casefold()}"
@@ -80,7 +81,7 @@ def _collect_manager_entries(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
                     name: str = normalize_person_name(fio)
                     if not name:
                         continue
-                    tn: str = tn_lines[idx].strip() if idx < len(tn_lines) else ""
+                    tn: str = normalize_tab_number(tn_lines[idx]) if idx < len(tn_lines) else ""
                     role: str = role_lines[idx].strip() if idx < len(role_lines) else default_role
                     mgr_tb: str = tb_lines[idx].strip() if idx < len(tb_lines) else str(row.get(tb_col, ""))
                     entries.append(

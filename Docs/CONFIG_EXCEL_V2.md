@@ -89,12 +89,15 @@ python -m src.excel_report.pipeline
 
 Все фильтры с `enabled: true` объединяются по **AND**. Текстовые сравнения — **без учёта регистра** (`case_sensitive: false`).
 
+> **Нет HTML/JSON:** в `config_excel_v2.json` **не используется** поле `html_slice` из `config.json`. Оно нужно только для дашборда (`filter_slices`, переключатели в UI). В v2 действует только `enabled: true/false` — фильтр либо применяется к Excel, либо нет.
+
 | Имя фильтра | Тип | Действие |
 |-------------|-----|----------|
 | `efs_flag` | value | Оставить `ЕФС флаг` = 1 |
 | `change_conditions` | value | Оставить `_Изменение условий` = 0 |
-| `strategy_label_2026` | contains_all | Метка содержит «Стратегия» и «2026» |
+| `strategy_label_2026` | contains_any | Метка содержит «Стратегия 2 квартал 2026» или «Стратегия 2 кватал 2026» (без учёта регистра) |
 | `exclude_current_otkaz` | exclude | Убрать «Текущий статус» с «отказ» |
+| `exclude_current_for_sale` | exclude | Убрать «Текущий статус» = «К продаже» (без учёта регистра) |
 | `exclude_deal_otkaz` | exclude | Убрать «Стадия сделки» с «отказ» |
 | `exclude_deal_zakryta` | exclude | Убрать стадию с «закрыта» |
 | `exclude_deal_zaklyuchen` | exclude | Убрать стадию с «заключен» |
@@ -159,6 +162,10 @@ python -m src.excel_report.pipeline
 ### Проверка входных файлов
 
 Перед обработкой — та же логика, что в [CONFIG.md](CONFIG.md) §3: все Kanban + team_files для `mode` должны лежать в `IN/TEST` или `IN/PROD`. Иначе pipeline останавливается.
+
+### output.statistics
+
+Управление экспортом min/max/перцентилей (расчёт всегда полный). По умолчанию: число лидов — да; min/max — нет; P20/P50 — только граница; P80 — граница + le/gt/min/max. См. [CONFIG.md](CONFIG.md).
 
 ---
 

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from src.performance import resolve_parallel_workers
 from src.project_paths import resolve_path
 from src.settings import col
+from src.tab_number import normalize_team_tab_column
 
 logger: logging.Logger = logging.getLogger("kanban.team_loader")
 
@@ -59,6 +62,7 @@ def _team_column_map(config: dict[str, Any]) -> dict[str, str]:
         "report_date": "Дата отчета",
         "lead_id": "ID ПрПр",
         "deal_id": "ID сделки",
+        "member_tab_number": "Табельный номер участника команды",
         "member": "Участник команды",
         "role": "Роль участника команды",
         "is_leader": "Лидер",
@@ -148,6 +152,13 @@ def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame
     return lead_df, deal_df
 
 
+def _load_one_team_file(path: Path, name: str, config: dict[str, Any]) -> pd.DataFrame:
+    """Читает один файл команды и помечает source_file."""
+    frame: pd.DataFrame = _read_team_file(path, config)
+    frame["source_file"] = name
+    return frame
+
+
 def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
     """Загружает и склеивает все файлы одного типа команды (lead_team | deal_team)."""
     if not is_team_files_enabled(config):
@@ -160,10 +171,9 @@ def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
     if not filenames:
         return pd.DataFrame()
 
-    frames: list[pd.DataFrame] = []
     label: str = "лида" if kind == "lead_team" else "сделки"
     mode: str = str(config.get("mode", "test"))
-
+    paths: list[tuple[Path, str]] = []
     for name in filenames:
         path: Path = input_dir / name
         if not path.is_file():
@@ -171,12 +181,35 @@ def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
                 f"Файл команды {label} не найден: {path} "
                 f"(режим: {mode}, каталог: {input_dir})"
             )
-        frame: pd.DataFrame = _read_team_file(path, config)
-        frame["source_file"] = name
-        frames.append(frame)
-        logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
+        paths.append((path, name))
+
+    perf: dict[str, Any] = config.get("performance", {})
+    parallel: bool = bool(perf.get("parallel_team_files", True))
+    workers: int = resolve_parallel_workers(config)
+    frames: list[pd.DataFrame] = []
+
+    if parallel and workers > 1 and len(paths) > 1:
+        with ThreadPoolExecutor(max_workers=min(workers, len(paths))) as pool:
+            futures = {
+                pool.submit(_load_one_team_file, path, name, config): name
+                for path, name in paths
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                frame = future.result()
+                frames.append(frame)
+                logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
+    else:
+        for path, name in paths:
+            frame = _load_one_team_file(path, name, config)
+            frames.append(frame)
+            logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
 
     combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
+    cols: dict[str, str] = _team_column_map(config)
+    tn_col: str = cols.get("member_tab_number", "")
+    if tn_col:
+        combined = normalize_team_tab_column(combined, tn_col)
     logger.info(
         "Команда %s: загружено %d файлов, всего %s строк",
         label,

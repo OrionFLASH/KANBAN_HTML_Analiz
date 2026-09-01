@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.data_audit import audit_rows
+from src.data_audit import audit_rows, audit_snapshot_coverage
 from src.excel_loader import load_all_files
 from src.excel_report.config_loader import (
     config_for_shared_modules,
@@ -77,13 +77,18 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     _maybe_free_memory(config)
 
     progress.stage("Фильтрация", f"{rows_loaded:,} строк")
-    filtered_df: pd.DataFrame = apply_filters(raw_df, config)
-    filtered_df = filter_terminal_deal_stage_rows(filtered_df, config)
+    audit_filters: bool = bool(config.get("processing", {}).get("audit_row_counts", True))
+    after_inclusion: pd.DataFrame = apply_filters(raw_df, config, audit_each_filter=audit_filters)
+    filtered_df: pd.DataFrame = filter_terminal_deal_stage_rows(
+        after_inclusion,
+        config,
+        audit_each_filter=audit_filters,
+    )
     filters_active: bool = any(
         f.get("enabled") for f in config.get("filters", {}).values() if isinstance(f, dict)
     )
     audit_rows(
-        "фильтрация v2",
+        "фильтрация v2 (итого)",
         rows_loaded,
         len(filtered_df),
         config,
@@ -101,6 +106,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         shared_config,
     )
     snapshot = enrich_snapshot_with_team_dfs(snapshot, lead_team_df, deal_team_df, config)
+    audit_snapshot_coverage(filtered_df, snapshot, config)
     progress.done(f"Уникальных ID: {len(snapshot):,}, записей стадий: {len(records):,}")
 
     del lead_team_df

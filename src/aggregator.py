@@ -14,6 +14,7 @@ from src.percentile_stats import (
     to_integer_days,
 )
 from src.settings import aggregation_group_columns, col
+from src.statistics_config import active_percentiles
 
 logger: logging.Logger = logging.getLogger("kanban.aggregator")
 
@@ -105,7 +106,7 @@ def build_all_statistics(
     config: dict[str, Any],
 ) -> dict[str, pd.DataFrame]:
     """Формирует общую сводку, сводку по ТБ и разрез по каждому ТБ."""
-    percentiles: list[float] = [float(p) for p in config.get("percentiles", [20, 50, 80])]
+    percentiles: list[float] = active_percentiles(config)
     tb_col: str = col(config, "tb")
 
     by_tb: pd.DataFrame = aggregate_statistics(records, config, percentiles, include_tb=True)

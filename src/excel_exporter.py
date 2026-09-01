@@ -17,7 +17,9 @@ from src.export_overflow import (
     split_sheets_by_row_limit,
 )
 from src.manager_analytics import manager_analytics_to_excel_frame
-from src.settings import build_percentile_column_mapping, col
+from src.settings import col
+from src.statistics_config import build_statistics_export_mapping, filter_and_order_statistics_frame
+from src.tab_number import format_tab_number_columns, tab_number_column_labels
 
 logger: logging.Logger = logging.getLogger("kanban.excel_exporter")
 
@@ -33,20 +35,20 @@ def _build_export_mapping(config: dict[str, Any]) -> dict[str, str]:
         "deal_stage": labels.get("deal_stage", "Стадия сделки"),
         "stage_key": labels.get("stage_key", "Ключ стадии"),
         "analysis_level": labels.get("analysis_level", "Уровень анализа"),
-        "days_on_stage_min": labels.get("days_on_stage_min", "Мин дней на стадии"),
-        "days_on_stage_max": labels.get("days_on_stage_max", "Макс дней на стадии"),
-        "days_on_stage_count": labels.get("days_on_stage_count", "Число лидов"),
-        "days_since_deal_min": labels.get("days_since_deal_min", "Мин дней с создания сделки"),
-        "days_since_deal_max": labels.get("days_since_deal_max", "Макс дней с создания сделки"),
-        "days_since_deal_count": labels.get("days_since_deal_count", "Число лидов (сделка)"),
     }
-    mapping.update(build_percentile_column_mapping(config))
+    mapping.update(build_statistics_export_mapping(config))
     return mapping
 
 
+def _prepare_excel_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """Санитизация и нормализация табельных номеров перед записью в Excel."""
+    return sanitize_dataframe(format_tab_number_columns(frame, config))
+
+
 def _rename_columns_for_export(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Переименовывает колонки для читаемого Excel."""
-    return df.rename(columns=_build_export_mapping(config))
+    """Переименовывает и упорядочивает колонки для читаемого Excel."""
+    trimmed: pd.DataFrame = filter_and_order_statistics_frame(df, config)
+    return trimmed.rename(columns=_build_export_mapping(config))
 
 
 def _cell_text_width(value: Any) -> int:
@@ -114,18 +116,34 @@ def _format_sheet(ws, config: dict[str, Any]) -> None:
         ws.column_dimensions[letter].width = width
 
     header_font: Font = Font(bold=True)
+    header_align: Alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    data_align: Alignment = Alignment(vertical="center")
+
     for cell in ws[1]:
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.alignment = header_align
 
     float_fmt: str = fmt_cfg.get("float_format", "0.00")
     int_fmt: str = fmt_cfg.get("int_format", "0")
+    tab_cols: set[str] = set(tab_number_column_labels(config))
+    headers_map: dict[int, str] = {idx: str(header or "") for idx, header in enumerate(headers, start=1)}
+
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
+        for col_idx, cell in enumerate(row, start=1):
             if isinstance(cell.value, float):
                 cell.number_format = float_fmt
             elif isinstance(cell.value, int):
                 cell.number_format = int_fmt
+            header_name: str = headers_map.get(col_idx, "")
+            if header_name in tab_cols and cell.value is not None:
+                cell.number_format = "@"
+            wrap: bool = bool(cell.alignment.wrap_text) if cell.alignment else False
+            horizontal: str | None = cell.alignment.horizontal if cell.alignment else None
+            cell.alignment = Alignment(
+                horizontal=horizontal,
+                vertical="center",
+                wrap_text=wrap,
+            )
 
 
 def _format_multiline_columns(
@@ -140,7 +158,7 @@ def _format_multiline_columns(
     headers: list[Any] = [cell.value for cell in ws[1]]
     fmt_cfg: dict[str, Any] = config.get("output", {}).get("excel_format", {})
     max_width: int = int(fmt_cfg.get("hotspots_column_width", 55))
-    wrap_align: Alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    wrap_align: Alignment = Alignment(wrap_text=True, vertical="center", horizontal="left")
 
     for marker in header_markers:
         col_idx: int | None = None
@@ -181,16 +199,18 @@ def export_excel(
 
     used_sheet_names: set[str] = set()
     sheets: dict[str, pd.DataFrame] = {
-        sanitize_sheet_name(sheet_names["summary"], used_sheet_names, max_len): sanitize_dataframe(
-            _rename_columns_for_export(stats["by_tb"], config)
+        sanitize_sheet_name(sheet_names["summary"], used_sheet_names, max_len): _prepare_excel_frame(
+            _rename_columns_for_export(stats["by_tb"], config),
+            config,
         ),
-        sanitize_sheet_name(sheet_names["overall"], used_sheet_names, max_len): sanitize_dataframe(
-            _rename_columns_for_export(stats["overall"], config)
+        sanitize_sheet_name(sheet_names["overall"], used_sheet_names, max_len): _prepare_excel_frame(
+            _rename_columns_for_export(stats["overall"], config),
+            config,
         ),
     }
     for tb_name, tb_df in stats.get("tb_sheets", {}).items():
         safe_name: str = sanitize_sheet_name(str(tb_name), used_sheet_names, max_len)
-        sheets[safe_name] = sanitize_dataframe(_rename_columns_for_export(tb_df, config))
+        sheets[safe_name] = _prepare_excel_frame(_rename_columns_for_export(tb_df, config), config)
 
     managers_sheet: str | None = None
     if manager_payload:
@@ -199,7 +219,7 @@ def export_excel(
         )
         mgr_frame: pd.DataFrame = manager_analytics_to_excel_frame(manager_payload, config)
         if not mgr_frame.empty:
-            sheets[managers_sheet] = sanitize_dataframe(mgr_frame)
+            sheets[managers_sheet] = _prepare_excel_frame(mgr_frame, config)
         else:
             managers_sheet = None
 

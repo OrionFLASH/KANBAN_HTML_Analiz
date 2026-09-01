@@ -157,6 +157,60 @@
         "gt_count": "П{p} лид. > сд."
       }
     },
+    "statistics": {
+      "attach_counts_left": true,
+      "min": {
+        "compute": true,
+        "export": false,
+        "export_le_count": false,
+        "export_gt_count": false
+      },
+      "max": {
+        "compute": true,
+        "export": false,
+        "export_le_count": false,
+        "export_gt_count": false
+      },
+      "total_count": {
+        "compute": true,
+        "export": true
+      },
+      "percentiles": [
+        {
+          "p": 20,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": false,
+          "export_gt_count": false,
+          "export_min": false,
+          "export_max": false,
+          "export_km_count": false
+        },
+        {
+          "p": 50,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": false,
+          "export_gt_count": false,
+          "export_min": false,
+          "export_max": false,
+          "export_km_count": false
+        },
+        {
+          "p": 80,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": true,
+          "export_gt_count": true,
+          "export_min": true,
+          "export_max": true,
+          "export_km_count": true
+        }
+      ]
+    },
     "excel_format": {
       "freeze_panes": "A2",
       "float_format": "0.00",

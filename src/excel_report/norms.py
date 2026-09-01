@@ -9,7 +9,8 @@ import pandas as pd
 
 from src.aggregator import build_all_statistics
 from src.percentile_stats import percentile_label
-from src.settings import build_percentile_column_mapping, col
+from src.settings import col
+from src.statistics_config import build_statistics_export_mapping, filter_and_order_statistics_frame
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.norms")
 
@@ -104,48 +105,26 @@ def build_p80_lookup(
 
 
 def norms_to_export_frame(combined: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Переименовывает колонки нормативов — те же правила, что в export_excel."""
+    """Переименовывает и упорядочивает колонки нормативов для Excel."""
     if combined.empty:
         return combined
 
-    labels: dict[str, str] = config.get("output", {}).get("column_labels", {})
     product_group_col: str = col(config, "product_group")
     product_col: str = col(config, "product")
     tb_col: str = col(config, "tb")
 
+    frame: pd.DataFrame = filter_and_order_statistics_frame(combined, config)
+
     rename: dict[str, str] = {
-        product_group_col: labels.get("product_group", "Группа продукта"),
-        product_col: labels.get("product", "Продукт"),
-        "current_status": labels.get("current_status", "Стадия работы с лидом"),
-        "days_on_stage_min": labels.get("days_on_stage_min", "Мин срок дней"),
-        "days_on_stage_max": labels.get("days_on_stage_max", "Макс срок дней"),
-        "days_on_stage_count": labels.get("days_on_stage_count", "Число лидов"),
+        product_group_col: config.get("output", {}).get("column_labels", {}).get(
+            "product_group", "Группа продукта"
+        ),
+        product_col: config.get("output", {}).get("column_labels", {}).get("product", "Продукт"),
+        "current_status": config.get("output", {}).get("column_labels", {}).get(
+            "current_status", "Стадия работы с лидом"
+        ),
+        tb_col: config.get("output", {}).get("column_labels", {}).get("tb", "ТБ"),
     }
-    rename.update(build_percentile_column_mapping(config))
+    rename.update(build_statistics_export_mapping(config))
 
-    renamed: pd.DataFrame = combined.rename(columns=rename)
-    preferred: list[str] = [
-        tb_col,
-        rename.get(product_group_col, "Группа продукта"),
-        rename.get(product_col, "Продукт"),
-        rename.get("current_status", "Стадия работы с лидом"),
-        rename.get("days_on_stage_min", "Мин срок дней"),
-        rename.get("days_on_stage_max", "Макс срок дней"),
-        rename.get("days_on_stage_count", "Число лидов"),
-    ]
-    for p in config.get("percentiles", [20, 50, 80]):
-        label: str = percentile_label(float(p))
-        for suffix, header in (
-            ("days", f"P{int(p)} дней"),
-            ("le_count", f"P{int(p)} лидов ≤"),
-            ("gt_count", f"P{int(p)} лидов >"),
-        ):
-            src: str = f"days_on_stage_{label}_{suffix}"
-            if src in rename:
-                preferred.append(rename[src])
-            elif header in renamed.columns:
-                preferred.append(header)
-
-    present: list[str] = [c for c in preferred if c in renamed.columns]
-    extra: list[str] = [c for c in renamed.columns if c not in present]
-    return renamed[present + extra].copy()
+    return frame.rename(columns=rename)

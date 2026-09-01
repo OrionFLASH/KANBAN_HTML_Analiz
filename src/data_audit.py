@@ -98,6 +98,66 @@ def audit_lead_coverage(
         )
 
 
+def audit_snapshot_coverage(
+    filtered_df: pd.DataFrame,
+    snapshot: pd.DataFrame,
+    config: dict[str, Any],
+) -> None:
+    """Проверяет, что каждый ID ПрПр после фильтров есть в снимке лидов."""
+    if not _audit_enabled(config) or filtered_df.empty:
+        return
+
+    lead_col: str = col(config, "lead_id")
+    in_leads: set[str] = {
+        str(v).strip()
+        for v in filtered_df[lead_col].dropna().astype(str)
+        if str(v).strip()
+    }
+    if not in_leads:
+        return
+
+    if snapshot.empty:
+        logger.error(
+            "Аудит [снимок]: 0 строк, ожидалось %s уникальных ID ПрПр после фильтров",
+            f"{len(in_leads):,}",
+        )
+        return
+
+    snap_key: str = lead_col if lead_col in snapshot.columns else "lead_id"
+    if snap_key not in snapshot.columns and "lead_id" in snapshot.columns:
+        snap_key = "lead_id"
+
+    out_leads: set[str] = {
+        str(v).strip()
+        for v in snapshot[snap_key].dropna().astype(str)
+        if str(v).strip()
+    }
+    missing: set[str] = in_leads - out_leads
+    if missing:
+        sample: list[str] = sorted(missing)[:5]
+        logger.error(
+            "Аудит [снимок]: %d из %d ID ПрПр после фильтров НЕ попали в снимок! Примеры: %s",
+            len(missing),
+            len(in_leads),
+            sample,
+        )
+    else:
+        logger.info(
+            "Аудит [снимок]: все %s уникальных ID ПрПр после фильтров в листе уникальных ID",
+            f"{len(in_leads):,}",
+        )
+
+    dropped_empty: int = int(
+        filtered_df[lead_col].isna().sum()
+        + (filtered_df[lead_col].astype(str).str.strip() == "").sum()
+    )
+    if dropped_empty:
+        logger.warning(
+            "Аудит [снимок]: %s строк Kanban без ID ПрПр — не попадают в лист уникальных ID",
+            f"{dropped_empty:,}",
+        )
+
+
 def log_missing_metrics(records: pd.DataFrame, config: dict[str, Any]) -> None:
     """Сообщает о записях без сроков — они остаются в анализе, не удаляются."""
     if records.empty:

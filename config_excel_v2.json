@@ -1,5 +1,5 @@
 {
-  "mode": "prod",
+  "mode": "test",
   "paths": {
     "input_test": "IN/TEST",
     "input_prod": "IN/PROD",
@@ -135,63 +135,66 @@
     "efs_flag": {
       "enabled": true,
       "column_key": "efs_flag",
-      "value": 1,
-      "html_slice": false
+      "value": 1
     },
     "change_conditions": {
       "enabled": true,
       "column_key": "change_conditions",
-      "value": 0,
-      "html_slice": false
+      "value": 0
     },
     "data_entry": {
       "enabled": false,
       "column_key": "data_entry",
-      "value": 0,
-      "html_slice": false
+      "value": 0
     },
     "strategy_label_2026": {
       "enabled": true,
       "column_key": "label",
-      "contains_all": ["Стратегия", "2026"],
-      "case_sensitive": false,
-      "html_slice": false
+      "contains_any": [
+        "Стратегия 2 квартал 2026",
+        "Стратегия 2 квартал 2026"
+      ],
+      "case_sensitive": false
     },
     "exclude_current_otkaz": {
       "enabled": true,
       "column_key": "current_status",
       "filter_mode": "exclude",
       "exclude_contains": "отказ",
-      "case_sensitive": false,
-      "html_slice": false
+      "case_sensitive": false
+    },
+    "exclude_current_for_sale": {
+      "enabled": true,
+      "column_key": "current_status",
+      "filter_mode": "exclude",
+      "exclude_equals": "К ПРОДАЖЕ",
+      "case_sensitive": false
     },
     "exclude_deal_otkaz": {
       "enabled": true,
       "column_key": "deal_stage",
       "filter_mode": "exclude",
       "exclude_contains": "отказ",
-      "case_sensitive": false,
-      "html_slice": false
+      "case_sensitive": false
     },
     "exclude_deal_zakryta": {
       "enabled": true,
       "column_key": "deal_stage",
       "filter_mode": "exclude",
       "exclude_contains": "закрыта",
-      "case_sensitive": false,
-      "html_slice": false
+      "case_sensitive": false
     },
     "exclude_deal_zaklyuchen": {
       "enabled": true,
       "column_key": "deal_stage",
       "filter_mode": "exclude",
       "exclude_contains": "заключен",
-      "case_sensitive": false,
-      "html_slice": false
+      "case_sensitive": false
     }
   },
-  "team_files": {
+    "team_files": {
     "enabled": true,
+    "pick_report_date": "latest",
     "lead_team": {
       "test": ["тест Команда л 2Т2Г на 31-08-2026.xlsx"],
       "prod": [
@@ -311,6 +314,60 @@
         "gt_count": "П{p} лидов >"
       }
     },
+    "statistics": {
+      "attach_counts_left": true,
+      "min": {
+        "compute": true,
+        "export": true,
+        "export_le_count": false,
+        "export_gt_count": false
+      },
+      "max": {
+        "compute": true,
+        "export": true,
+        "export_le_count": false,
+        "export_gt_count": false
+      },
+      "total_count": {
+        "compute": true,
+        "export": true
+      },
+      "percentiles": [
+        {
+          "p": 20,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": false,
+          "export_gt_count": false,
+          "export_min": false,
+          "export_max": false,
+          "export_km_count": false
+        },
+        {
+          "p": 50,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": false,
+          "export_gt_count": false,
+          "export_min": false,
+          "export_max": false,
+          "export_km_count": false
+        },
+        {
+          "p": 80,
+          "compute": true,
+          "export_days": true,
+          "export_count": false,
+          "export_le_count": true,
+          "export_gt_count": true,
+          "export_min": true,
+          "export_max": true,
+          "export_km_count": false
+        }
+      ]
+    },
     "excel_format": {
       "freeze_panes": "A2",
       "float_format": "0.00",
@@ -352,7 +409,7 @@
   "excel_theme": "green_red",
   "parallel_workers": 0,
   "performance": {
-    "max_parallel_workers": 4,
+    "max_parallel_workers": 8,
     "reserve_cpu_cores": 1,
     "read_only_required_columns": true,
     "downcast_numeric": true,
@@ -360,7 +417,8 @@
     "compact_distribution_series": true,
     "precompute_pivot_matrices": false,
     "parallel_pipeline_stages": true,
-    "parallel_stage_workers": 0
+    "parallel_stage_workers": 0,
+    "parallel_team_files": true
   },
   "progress": {
     "enabled": true,

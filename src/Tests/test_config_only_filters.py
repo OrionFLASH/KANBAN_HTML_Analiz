@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.filters import apply_config_only_filters, apply_filters
+from src.filters import apply_config_only_filters, apply_filters, row_keep_mask
 
 
 def _config(*, efs_enabled: bool) -> dict:
@@ -43,7 +43,28 @@ def test_config_only_efs_enabled_filters_value_one() -> None:
     assert len(result) == 2
 
 
-def test_apply_filters_includes_html_slice_when_enabled() -> None:
+def test_strategy_label_2026_contains_any() -> None:
+    """Метка: оставляем строки с «Стратегия 2 квартал/кватал 2026»."""
+    df = pd.DataFrame(
+        {
+            "Метка": [
+                "Стратегия 2 квартал 2026",
+                "стратегия 2 кватал 2026",
+                "Стратегия 2026",
+                "",
+            ]
+        }
+    )
+    flt: dict = {
+        "contains_any": [
+            "Стратегия 2 квартал 2026",
+            "Стратегия 2 кватал 2026",
+        ],
+        "case_sensitive": False,
+    }
+    mask = row_keep_mask(df, "Метка", flt)
+    assert mask.tolist() == [True, True, False, False]
+
     """Excel-путь: enabled применяется и к html_slice-фильтрам."""
     df = pd.DataFrame(
         {
