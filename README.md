@@ -4,7 +4,7 @@
 
 ## Задача
 
-- Загрузка 22 prod-файлов (11 ТБ × «К ПРОДАЖЕ» / «В РАБОТЕ») или test-файлов из `Docs/FileIN`
+- Загрузка 22 prod-файлов Kanban (остаток / К продаже и Отказ / ВСЕ / Реализация) из `IN/PROD` или test из `IN/TEST`
 - Трекинг каждого `ID ПрПр` по стадиям «Текущий статус» (и опционально «Стадия сделки»)
 - Агрегация сроков: min, max, эмпирические перцентили (целые дни; для каждого P — срок, число лидов, min/max нижней доли)
 - Экспорт в Excel (форматирование) и JSON (для будущего HTML-дашборда)
@@ -28,6 +28,11 @@ python run.py
 ```bash
 python -m src.main config.json
 ```
+
+| Режим | Каталог входа | Выход |
+|-------|---------------|-------|
+| `test` | `IN/TEST` | `OUT/kanban_report_*.xlsx` + JSON |
+| `prod` | `IN/PROD` | то же |
 
 ### Excel-only pipeline v2
 
@@ -59,9 +64,8 @@ src/                 # исходный код
   excel_report/      # pipeline v2 (snapshot, norms, exceedance, …)
 Docs/CONFIG.md       # справочник config.json
 Docs/CONFIG_EXCEL_V2.md  # справочник config_excel_v2.json
-Docs/FileIN/         # test-данные (legacy; v2 — IN/TEST)
-IN/TEST/             # test-данные для run_excel.py
-IN/PROD/             # prod-данные для run_excel.py
+IN/TEST/             # test Kanban + команды (run.py и run_excel.py)
+IN/PROD/             # prod Kanban + команды
 OUT/                 # результаты run.py
 OUT/excel_v2/        # результаты run_excel.py
 log/                 # логи INFO/DEBUG

@@ -62,10 +62,8 @@ KANBAN_HTML_Analiz/
 
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
-| test (run.py) | `Docs/FileIN/` | test xlsx из `config.json` |
-| prod (run.py) | `IN/` | 22 файла из `config.json` → `prod_files` |
-| test (run_excel.py) | `IN/TEST/` | Kanban + команды из `config_excel_v2.json` |
-| prod (run_excel.py) | `IN/PROD/` | Kanban + команды из `config_excel_v2.json` |
+| test (run.py / run_excel.py) | `IN/TEST/` | Kanban + команды из config |
+| prod (run.py / run_excel.py) | `IN/PROD/` | 22 Kanban + команды из config |
 
 ## Настройка на новом ПК
 

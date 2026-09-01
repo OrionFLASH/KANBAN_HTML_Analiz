@@ -148,8 +148,8 @@
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
-| `input_test` | `Docs/FileIN` | Test Excel |
-| `input_prod` | `IN` | Prod Excel (22 файла) |
+| `input_test` | `IN/TEST` | Test Excel (Kanban + команды) |
+| `input_prod` | `IN/PROD` | Prod Excel (22 Kanban-файла) |
 | `output` | `OUT` | Excel + JSON с timestamp |
 | `log` | `log` | INFO/DEBUG логи |
 
@@ -157,8 +157,8 @@
 
 ```json
 "paths": {
-  "input_test": "Docs/FileIN",
-  "input_prod": "D:/Data/Kanban/IN",
+  "input_test": "IN/TEST",
+  "input_prod": "IN/PROD",
   "output": "OUT",
   "log": "log"
 }
@@ -184,7 +184,7 @@
 
 ### `prod_files`
 
-22 имени Kanban-файлов (11 ТБ × 2 категории). Полный список — в корневом `config.json`.
+22 имени Kanban-файлов (остаток, «К продаже и Отказ», «ВСЕ», «Реализация сделки» по ТБ). Полный список — в `config.json` / `config_excel_v2.json` → `prod_files`.
 
 ---
 

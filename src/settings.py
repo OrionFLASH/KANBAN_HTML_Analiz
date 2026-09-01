@@ -26,8 +26,8 @@ DEFAULT_RANK_PRODUCTS: list[str] = [
 # Значения по умолчанию — подставляются, если ключ отсутствует в config.json
 DEFAULT_CONFIG: dict[str, Any] = {
     "paths": {
-        "input_test": "Docs/FileIN",
-        "input_prod": "IN",
+        "input_test": "IN/TEST",
+        "input_prod": "IN/PROD",
         "output": "OUT",
         "log": "log",
     },
