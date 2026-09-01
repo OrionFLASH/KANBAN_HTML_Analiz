@@ -49,7 +49,7 @@ python run_excel.py
 | `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_*.xlsx` |
 | `prod` | `IN/PROD` | то же |
 
-В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config).
+В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config). Перед запуском проверяется наличие **всех** файлов для выбранного `mode`; при prod — **38 файлов** (22 Kanban + 16 команд).
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 

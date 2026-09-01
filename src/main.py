@@ -17,6 +17,7 @@ from src.excel_exporter import export_excel
 from src.excel_loader import load_all_files
 from src.filter_slices import build_all_filter_slices, default_filter_slice_key, filter_slice_key
 from src.filters import apply_filters
+from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
 from src.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
 from src.manager_analytics import (
@@ -55,6 +56,12 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     input_dir: Path = get_input_dir(config)
     filenames: list[str] = get_file_list(config)
     output_dir: Path = get_output_dir(config)
+
+    try:
+        ensure_input_files_exist(config, logger)
+    except InputFilesMissingError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from exc
 
     out_cfg: dict = config["output"]
     timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))

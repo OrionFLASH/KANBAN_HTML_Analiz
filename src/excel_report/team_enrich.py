@@ -126,35 +126,51 @@ def enrich_snapshot_with_team_dfs(
         lead_team_df, config, id_key="lead_id", source="lead"
     )
     deal_lookup: pd.DataFrame = build_leaders_lookup_df(
-        deal_team_df, config, id_key="lead_id", source="deal"
+        deal_team_df, config, id_key="deal_id", source="deal"
     )
 
     out_cfg: dict[str, Any] = config.get("team_files", {}).get("output_columns") or {}
     lead_labels: dict[str, str] = dict(out_cfg.get("lead") or {})
     deal_labels: dict[str, str] = dict(out_cfg.get("deal") or {})
     lead_col: str = col(config, "lead_id")
+    deal_col: str | None = col(config, "deal_id") if "deal_id" in config.get("columns", {}) else None
 
     result: pd.DataFrame = snapshot.copy()
-    result["_merge_id"] = result[lead_col].astype(str)
 
-    for labels, lookup in ((lead_labels, lead_lookup), (deal_labels, deal_lookup)):
-        if lookup.empty:
-            for excel_label in labels.values():
-                result[excel_label] = None
-            continue
-        merged: pd.DataFrame = result[["_merge_id"]].merge(
-            lookup,
-            left_on="_merge_id",
+    if not lead_lookup.empty:
+        lead_merge: pd.DataFrame = result[[lead_col]].astype(str).merge(
+            lead_lookup,
+            left_on=lead_col,
             right_index=True,
             how="left",
         )
-        for field_key, excel_label in labels.items():
-            if field_key in lookup.columns:
-                result[excel_label] = merged[field_key].values
+        for field_key, excel_label in lead_labels.items():
+            if field_key in lead_lookup.columns:
+                result[excel_label] = lead_merge[field_key].values
             else:
                 result[excel_label] = None
+    else:
+        for excel_label in lead_labels.values():
+            result[excel_label] = None
 
-    return result.drop(columns=["_merge_id"])
+    if deal_col and deal_col in result.columns and not deal_lookup.empty:
+        deal_key: pd.Series = result[deal_col].astype(str).str.strip()
+        deal_merge: pd.DataFrame = deal_key.to_frame("_deal_id").merge(
+            deal_lookup,
+            left_on="_deal_id",
+            right_index=True,
+            how="left",
+        )
+        for field_key, excel_label in deal_labels.items():
+            if field_key in deal_lookup.columns:
+                result[excel_label] = deal_merge[field_key].values
+            else:
+                result[excel_label] = None
+    else:
+        for excel_label in deal_labels.values():
+            result[excel_label] = None
+
+    return result
 
 
 def enrich_snapshot_with_teams(snapshot: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:

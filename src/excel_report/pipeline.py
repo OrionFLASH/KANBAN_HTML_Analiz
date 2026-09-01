@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from src.excel_report.parallel_utils import run_snapshot_records_teams_parallel
 from src.excel_report.snapshot import snapshot_to_export_frame
 from src.excel_report.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
+from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
 from src.logger_setup import setup_logger
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
@@ -55,6 +57,12 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     input_dir: Path = get_excel_v2_input_dir(config)
     filenames: list[str] = get_excel_v2_file_list(config)
     output_dir: Path = get_excel_v2_output_dir(config)
+
+    try:
+        ensure_input_files_exist(shared_config, log)
+    except InputFilesMissingError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from exc
 
     out_cfg: dict[str, Any] = config["output"]
     timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))

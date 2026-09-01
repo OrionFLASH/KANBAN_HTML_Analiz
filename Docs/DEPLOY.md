@@ -63,7 +63,9 @@ KANBAN_HTML_Analiz/
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
 | test (run.py / run_excel.py) | `IN/TEST/` | Kanban + команды из config |
-| prod (run.py / run_excel.py) | `IN/PROD/` | 22 Kanban + команды из config |
+| prod (run.py / run_excel.py) | `IN/PROD/` | 22 Kanban + 8 «Команда лида» + 8 «Команда сделки» (см. config) |
+
+Перед запуском pipeline проверяет наличие всех файлов для `mode`; при отсутствии — остановка с перечнем недостающих.
 
 ## Настройка на новом ПК
 

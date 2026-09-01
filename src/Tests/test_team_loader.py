@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from src.team_loader import (
     build_leader_lookup,
     compose_lead_team,
+    load_team_kind_frames,
     merge_person_roles,
     normalize_person_name,
     SOURCE_DEAL_TEAM,
@@ -113,3 +116,41 @@ def test_merge_person_roles_order() -> None:
     )
     assert [m["name"] for m in merged] == ["A", "B"]
     assert merged[0]["roles"] == ["КМ", "Команда лида · ПС"]
+
+
+def test_load_team_kind_frames_concat_multiple(tmp_path: Path) -> None:
+    """Несколько prod-файлов команды склеиваются в один DataFrame."""
+    import pandas as pd
+
+    input_dir: Path = tmp_path / "IN" / "PROD"
+    input_dir.mkdir(parents=True)
+
+    config: dict = _team_config()
+    config["mode"] = "prod"
+    config["paths"]["input_prod"] = str(input_dir)
+    config["manager_analytics"]["team_files"]["lead_team"] = {
+        "prod": ["team_ub.xlsx", "team_yuzb.xlsx"]
+    }
+    config["manager_analytics"]["team_files"]["deal_team"] = {"prod": []}
+
+    for name, lead_id in [("team_ub.xlsx", "L1"), ("team_yuzb.xlsx", "L2")]:
+        frame: pd.DataFrame = pd.DataFrame(
+            {
+                "Дата отчета": pd.to_datetime(["2026-09-01"]),
+                "ID ПрПр": [lead_id],
+                "ID сделки": ["D1"],
+                "Участник команды": [f"Лидер {lead_id}"],
+                "Роль участника команды": ["ПС"],
+                "Лидер": ["Да"],
+                "ТБ": ["ТБ"],
+            }
+        )
+        frame.to_excel(input_dir / name, index=False)
+
+    combined: pd.DataFrame = load_team_kind_frames(config, "lead_team")
+    assert len(combined) == 2
+    assert set(combined["source_file"]) == {"team_ub.xlsx", "team_yuzb.xlsx"}
+    lookup = build_leader_lookup(
+        combined, config, id_key="lead_id", source=SOURCE_LEAD_TEAM
+    )
+    assert set(lookup.keys()) == {"L1", "L2"}

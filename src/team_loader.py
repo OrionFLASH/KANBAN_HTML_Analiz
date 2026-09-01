@@ -95,6 +95,11 @@ def _role_label(source: str, role: str) -> str:
     return role_clean or source
 
 
+def team_filenames_for_mode(config: dict[str, Any], kind: str) -> list[str]:
+    """Публичная обёртка: имена файлов команды lead_team / deal_team для текущего mode."""
+    return _resolve_team_filenames(config, kind)
+
+
 def _resolve_team_filenames(config: dict[str, Any], kind: str) -> list[str]:
     """Список имён файлов команды для текущего mode (test/prod)."""
     cfg: dict[str, Any] = team_files_config(config)
@@ -144,27 +149,41 @@ def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame
 
 
 def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
-    """Загружает и склеивает файлы одного типа команды (lead_team | deal_team)."""
+    """Загружает и склеивает все файлы одного типа команды (lead_team | deal_team)."""
     if not is_team_files_enabled(config):
         return pd.DataFrame()
     if kind not in {"lead_team", "deal_team"}:
         raise ValueError("kind должен быть 'lead_team' или 'deal_team'")
 
     input_dir: Path = _input_dir(config)
+    filenames: list[str] = _resolve_team_filenames(config, kind)
+    if not filenames:
+        return pd.DataFrame()
+
     frames: list[pd.DataFrame] = []
     label: str = "лида" if kind == "lead_team" else "сделки"
+    mode: str = str(config.get("mode", "test"))
 
-    for name in _resolve_team_filenames(config, kind):
+    for name in filenames:
         path: Path = input_dir / name
-        if not path.exists():
-            logger.warning("Файл команды %s не найден: %s", label, path)
-            continue
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Файл команды {label} не найден: {path} "
+                f"(режим: {mode}, каталог: {input_dir})"
+            )
         frame: pd.DataFrame = _read_team_file(path, config)
         frame["source_file"] = name
         frames.append(frame)
         logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
 
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
+    logger.info(
+        "Команда %s: загружено %d файлов, всего %s строк",
+        label,
+        len(frames),
+        f"{len(combined):,}",
+    )
+    return combined
 
 
 def build_leader_lookup(
