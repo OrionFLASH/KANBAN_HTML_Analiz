@@ -725,6 +725,8 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 | `excel_sheets.managers` | Лист «Менеджеры» (топ КМ + зоны превышения; колонка «Топ зон» — перенос строк) |
 | `excel_sheets.matrix` / `charts` | Устаревшие ключи; листы **не создаются** (графики и матрица — только в HTML) |
 | `excel_max_sheet_name_length` | Лимит Excel 31 символ |
+| `excel_max_rows_per_sheet` | Порог строк на лист (по умолчанию 900 000); сверх — CSV вместо вкладки |
+| `csv_overflow` | `enabled`, `delimiter` (`;`), `encoding` (`utf-8-sig`) — выгрузка больших листов |
 | `column_labels` | Заголовки колонок в Excel |
 | `excel_format` | freeze, ширина, форматы чисел, цвета |
 

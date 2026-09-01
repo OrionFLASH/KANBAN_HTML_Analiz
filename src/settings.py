@@ -138,6 +138,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "managers": "Менеджеры",
         },
         "excel_max_sheet_name_length": 31,
+        "excel_max_rows_per_sheet": 900_000,
+        "csv_overflow": {
+            "enabled": True,
+            "delimiter": ";",
+            "encoding": "utf-8-sig",
+        },
         "column_labels": {
             "product_group": "ГРУППА",
             "product": "ПРОДУКТ",

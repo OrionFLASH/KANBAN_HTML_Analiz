@@ -11,6 +11,11 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from src.excel_sanitize import sanitize_dataframe, sanitize_sheet_name
+from src.export_overflow import (
+    build_csv_redirect_sheet,
+    export_overflow_csv_sheets,
+    split_sheets_by_row_limit,
+)
 from src.manager_analytics import manager_analytics_to_excel_frame
 from src.settings import build_percentile_column_mapping, col
 
@@ -198,8 +203,20 @@ def export_excel(
         else:
             managers_sheet = None
 
+    # Листы > excel_max_rows_per_sheet — в CSV (;), не во вкладку Excel
+    excel_sheets, csv_sheets = split_sheets_by_row_limit(sheets, config)
+    csv_titles: dict[str, str] = {name: name for name in csv_sheets}
+    csv_paths: list[Path] = export_overflow_csv_sheets(
+        output_path, csv_sheets, csv_titles, config
+    )
+
+    if not excel_sheets and csv_paths:
+        redirect_used: set[str] = set()
+        redirect_title: str = sanitize_sheet_name("Экспорт CSV", redirect_used, max_len)
+        excel_sheets = {redirect_title: build_csv_redirect_sheet(csv_paths)}
+
     with pd.ExcelWriter(output_path, engine=config["excel"].get("engine", "openpyxl")) as writer:
-        for sheet_name, frame in sheets.items():
+        for sheet_name, frame in excel_sheets.items():
             if frame.empty:
                 continue
             frame.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -216,4 +233,7 @@ def export_excel(
 
         wb.save(output_path)
 
-    logger.info("Excel сохранён: %s", output_path)
+    if csv_paths:
+        logger.info("Excel сохранён: %s (%s листов в xlsx, %s CSV)", output_path, len(excel_sheets), len(csv_paths))
+    else:
+        logger.info("Excel сохранён: %s", output_path)

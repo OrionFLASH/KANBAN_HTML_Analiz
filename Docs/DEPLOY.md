@@ -1,6 +1,6 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия копии POST:** 1.0.8 (2026-08-31)
+**Версия копии POST:** 2.0.0 (2026-09-01)
 
 Инструкция для работы после пересылки по почте или копированием каталога.
 
@@ -8,7 +8,7 @@
 
 Актуальная копия проекта: **`POST/KANBAN_HTML_Analiz/`** (обновляется при релизах).
 
-Содержит **Python pipeline + HTML-дашборд** (каталог `HTML/`). Архив `.zip` **не** формируется — только зеркало структуры с файлами.
+Содержит **Python pipeline + HTML-дашборд** (`HTML/`) и **Excel-only pipeline v2** (`run_excel.py`). Архив `.zip` **не** формируется — только зеркало структуры с файлами.
 
 **Не входит в POST:** `src/Tests/` (тесты только в Git-репозитории).
 
@@ -17,12 +17,15 @@
 ```
 KANBAN_HTML_Analiz/
 ├── config.json
-├── run.py
+├── config_excel_v2.json          # Excel-only v2 (см. Docs/CONFIG_EXCEL_V2.md)
+├── run.py                        # HTML + JSON
+├── run_excel.py                  # Excel v2 (без JSON)
 ├── README.md
 ├── ROADMAP.md
 ├── .env.example
 ├── src/                           # без каталога Tests/
 │   ├── main.py
+│   ├── excel_report/              # pipeline v2
 │   ├── excel_loader.py
 │   ├── lead_tracker.py
 │   ├── aggregator.py
@@ -48,6 +51,7 @@ KANBAN_HTML_Analiz/
 │       └── app.js
 └── Docs/
     ├── CONFIG.md
+    ├── CONFIG_EXCEL_V2.md
     ├── DEPLOY.md
     └── BT_KANBAN.md
 ```
@@ -58,17 +62,19 @@ KANBAN_HTML_Analiz/
 
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
-| test | `Docs/FileIN/` | `2ГОСБ1ТБ.xlsx` |
-| prod | `IN/` | 22 файла из `config.json` → `prod_files` |
+| test (run.py) | `Docs/FileIN/` | test xlsx из `config.json` |
+| prod (run.py) | `IN/` | 22 файла из `config.json` → `prod_files` |
+| test (run_excel.py) | `IN/TEST/` | Kanban + команды из `config_excel_v2.json` |
+| prod (run_excel.py) | `IN/PROD/` | Kanban + команды из `config_excel_v2.json` |
 
 ## Настройка на новом ПК
 
 1. Python 3.12 + `pandas`, `openpyxl`
 2. Распаковать архив
-3. Создать пустые: `IN/`, `OUT/`, `log/`, `Docs/FileIN/`
+3. Создать пустые: `IN/`, `IN/TEST/`, `IN/PROD/`, `OUT/`, `OUT/excel_v2/`, `log/`, `Docs/FileIN/`
 4. Положить xlsx
-5. Настроить `config.json` — см. [CONFIG.md](CONFIG.md)
-6. `python run.py` → файлы в `OUT/`
+5. Настроить `config.json` / `config_excel_v2.json` — см. [CONFIG.md](CONFIG.md), [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md)
+6. `python run.py` → `OUT/`; `python run_excel.py` → `OUT/excel_v2/`
 7. Дашборд: открыть `HTML/index.html` в браузере (file://), загрузить `OUT/kanban_report_*.json`. Сервер не нужен.
 
 ## HTML-дашборд
@@ -121,6 +127,7 @@ Excel и начальный TOP в UI — по этим настройкам. В
 ```bash
 python -c "import pandas, openpyxl; print('OK')"
 python run.py
+python run_excel.py
 ```
 
 > `pytest src/Tests/` — только в Git-репозитории разработки; в копии POST каталог `src/Tests/` отсутствует.
