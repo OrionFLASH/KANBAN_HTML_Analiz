@@ -26,7 +26,7 @@ python run.py
 Или с явным config:
 
 ```bash
-python -m src.main config.json
+python -m src.v1.main config.json
 ```
 
 | Режим | Каталог входа | Выход |
@@ -58,10 +58,12 @@ python run_excel.py
 ```
 config.json          # HTML+JSON pipeline (см. Docs/CONFIG.md)
 config_excel_v2.json # Excel-only v2 (см. Docs/CONFIG_EXCEL_V2.md)
-run.py               # запуск HTML+JSON
+run.py               # запуск HTML+JSON (v1)
 run_excel.py         # запуск Excel v2
-src/                 # исходный код
-  excel_report/      # pipeline v2 (snapshot, norms, exceedance, …)
+src/                 # общие модули + пакеты pipeline
+  v1/                # HTML + JSON + Excel (run.py / config.json)
+  v2/                # Excel-only (run_excel.py / config_excel_v2.json)
+  Tests/             # pytest
 Docs/CONFIG.md       # справочник config.json
 Docs/CONFIG_EXCEL_V2.md  # справочник config_excel_v2.json
 IN/TEST/             # test Kanban + команды (run.py и run_excel.py)
@@ -243,4 +245,4 @@ cd HTML && python -m http.server 8080
 | 1.0.6 | 2026-08-31 | Исключение терминальных стадий сделки (построчно, UI + JSON); Excel: колонки «П80 КМ ≥» — число уникальных КМ с сроком ≥ P80 |
 | 1.0.7 | 2026-08-31 | Config-only «К ПРОДАЖЕ»; команда лида/сделки + ВКС → TOP; матрица ↑/↓ порога; locked уровень `status`; сброс JSON; вкладка «Менеджеры» опциональна, без отдельной загрузки JSON |
 | 1.0.8 | 2026-08-31 | HTML: гистограмма + ECDF + ранговая шкала; перцентили на графиках; разворот по клику (график / карточка) |
-| 2.0.0 | 2026-09-01 | **Excel v2:** `run_excel.py`, `config_excel_v2.json`, `src/excel_report/`; 4 листа (нормативы, уникальные ID, свод менеджер, отклонения); параллель этапов; [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) |
+| 2.0.0 | 2026-09-01 | **Excel v2:** `run_excel.py`, `config_excel_v2.json`, `src/v2/` (ранее `excel_report/`); 4 листа; [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) |

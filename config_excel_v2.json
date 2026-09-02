@@ -131,64 +131,141 @@
     ],
     "metrics": ["days_on_stage"]
   },
+  "outlier_clipping": {
+    "enabled": true,
+    "metric": "days_on_stage",
+    "export_audit": true,
+    "min_group_size": 5,
+    "min_remaining": 3,
+    "rules": [
+      {
+        "name": "global_max_500",
+        "enabled": true,
+        "scope": {},
+        "mode": "range",
+        "max_days": 500,
+        "min_days": null
+      },
+      {
+        "name": "example_range_2_500",
+        "enabled": false,
+        "scope": {
+          "product_group": "Пример группы",
+          "current_status": "В РАБОТЕ"
+        },
+        "mode": "range",
+        "min_days": 2,
+        "max_days": 500
+      },
+      {
+        "name": "example_trim_5pct",
+        "enabled": false,
+        "scope": {},
+        "mode": "percentile_trim",
+        "trim_lower_pct": 5,
+        "trim_upper_pct": 5
+      },
+      {
+        "name": "example_iqr",
+        "enabled": false,
+        "scope": {},
+        "mode": "iqr",
+        "iqr_k": 1.5
+      }
+    ]
+  },
   "filters": {
     "efs_flag": {
       "enabled": true,
       "column_key": "efs_flag",
-      "value": 1
+      "action": "include",
+      "match": "equals",
+      "values": [1],
+      "values_mode": "any",
+      "value_type": "number",
+      "case_sensitive": false
     },
     "change_conditions": {
       "enabled": true,
       "column_key": "change_conditions",
-      "value": 0
+      "action": "include",
+      "match": "equals",
+      "values": [0],
+      "values_mode": "any",
+      "value_type": "number",
+      "case_sensitive": false
     },
     "data_entry": {
       "enabled": false,
       "column_key": "data_entry",
-      "value": 0
+      "action": "include",
+      "match": "equals",
+      "values": [0],
+      "values_mode": "any",
+      "value_type": "number",
+      "case_sensitive": false
     },
     "strategy_label_2026": {
       "enabled": true,
       "column_key": "label",
-      "contains_any": [
+      "action": "include",
+      "match": "contains",
+      "values": [
         "Стратегия 2 квартал 2026",
-        "Стратегия 2 квартал 2026"
+        "Стратегия 2 кватал 2026"
       ],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     },
     "exclude_current_otkaz": {
       "enabled": true,
       "column_key": "current_status",
-      "filter_mode": "exclude",
-      "exclude_contains": "отказ",
+      "action": "exclude",
+      "match": "contains",
+      "values": ["отказ"],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     },
     "exclude_current_for_sale": {
       "enabled": true,
       "column_key": "current_status",
-      "filter_mode": "exclude",
-      "exclude_equals": "К ПРОДАЖЕ",
+      "action": "exclude",
+      "match": "equals",
+      "values": ["К ПРОДАЖЕ"],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     },
     "exclude_deal_otkaz": {
       "enabled": true,
       "column_key": "deal_stage",
-      "filter_mode": "exclude",
-      "exclude_contains": "отказ",
+      "action": "exclude",
+      "match": "contains",
+      "values": ["отказ"],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     },
     "exclude_deal_zakryta": {
       "enabled": true,
       "column_key": "deal_stage",
-      "filter_mode": "exclude",
-      "exclude_contains": "закрыта",
+      "action": "exclude",
+      "match": "contains",
+      "values": ["закрыта"],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     },
     "exclude_deal_zaklyuchen": {
       "enabled": true,
       "column_key": "deal_stage",
-      "filter_mode": "exclude",
-      "exclude_contains": "заключен",
+      "action": "exclude",
+      "match": "contains",
+      "values": ["заключен"],
+      "values_mode": "any",
+      "value_type": "string",
       "case_sensitive": false
     }
   },
@@ -301,6 +378,13 @@
       "days_on_stage_min": "Мин срок дней",
       "days_on_stage_max": "Макс срок дней",
       "days_on_stage_count": "Число лидов",
+      "outlier_before": "До отсечения",
+      "outlier_after": "После отсечения",
+      "outlier_clipped_total": "Отсечено (всего)",
+      "outlier_rule_global_max_500": "Отсечено: global_max_500",
+      "outlier_rule_example_range_2_500": "Отсечено: example_range_2_500",
+      "outlier_rule_example_trim_5pct": "Отсечено: example_trim_5pct",
+      "outlier_rule_example_iqr": "Отсечено: example_iqr",
       "min_header_marker": "Мин",
       "max_header_marker": "Макс"
     },

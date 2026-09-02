@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.excel_report.config_loader import config_for_shared_modules
+from src.v2.config_loader import config_for_shared_modules
 from src.settings import col
 from src.team_loader import (
     _leader_value_set,

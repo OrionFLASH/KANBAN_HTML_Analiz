@@ -11,20 +11,20 @@ from typing import Any
 from src.data_audit import audit_rows
 from src.aggregator import build_all_statistics
 from src.config_loader import get_file_list, get_input_dir, get_output_dir, load_config
-from src.dictionaries import build_dimensions
-from src.excel_exporter import export_excel
+from src.v1.dictionaries import build_dimensions
+from src.v1.excel_exporter import export_excel
 from src.excel_loader import load_all_files
-from src.filter_slices import build_all_filter_slices, default_filter_slice_key, filter_slice_key
+from src.v1.filter_slices import build_all_filter_slices, default_filter_slice_key, filter_slice_key
 from src.filters import apply_filters
 from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
-from src.json_exporter import export_json
+from src.v1.json_exporter import export_json
 from src.lead_tracker import build_lead_stage_records
-from src.manager_analytics import (
+from src.v1.manager_analytics import (
     build_manager_analytics,
     build_manager_records,
     export_manager_json,
 )
-from src.visualization_data import (
+from src.v1.visualization_data import (
     build_json_visualization_payload,
     json_aggregation_modes,
 )
@@ -123,7 +123,7 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
                 stats_by_mode_json[mode] = build_all_statistics(
                     records, with_product_analysis_mode(config, mode)
                 )
-        from src.filter_slices import build_slice_aggregations, build_filter_catalog
+        from src.v1.filter_slices import build_slice_aggregations, build_filter_catalog
 
         filter_catalog = build_filter_catalog(config)
         filter_slices = {

@@ -9,13 +9,13 @@ from typing import Any
 
 import pandas as pd
 
-from src.html_json_export import (
+from src.v1.html_json_export import (
     build_manager_html_payload,
     export_split_html_bundle,
     html_json_settings,
     public_slice_payload,
 )
-from src.json_sanitize import dump_json_file
+from src.v1.json_sanitize import dump_json_file
 from src.statistics_config import extract_metric_json, statistics_config
 from src.settings import (
     analysis_row_key,
@@ -24,7 +24,7 @@ from src.settings import (
     is_group_only_analysis,
     with_product_analysis_mode,
 )
-from src.visualization_data import json_aggregation_modes
+from src.v1.visualization_data import json_aggregation_modes
 
 logger: logging.Logger = logging.getLogger("kanban.json_exporter")
 
@@ -38,26 +38,33 @@ PERCENTILE_METHOD_DESCRIPTION: str = (
 
 def _active_pipeline_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Список включённых фильтров config.filters для meta JSON."""
+    from src.filters import is_exclude_filter, normalize_filter
+
     active: list[dict[str, Any]] = []
     for name, flt in config.get("filters", {}).items():
         if not isinstance(flt, dict) or not flt.get("enabled"):
             continue
-        entry: dict[str, Any] = {"name": name, "column_key": flt.get("column_key")}
-        if "contains_all" in flt:
-            entry["contains_all"] = list(flt.get("contains_all") or [])
-            entry["case_sensitive"] = flt.get("case_sensitive", False)
-        elif "contains" in flt:
-            entry["contains"] = flt.get("contains")
-            entry["case_sensitive"] = flt.get("case_sensitive", False)
-        else:
-            entry["value"] = flt.get("value", 1)
-        active.append(entry)
+        if is_exclude_filter(flt):
+            continue
+        uni: dict[str, Any] = normalize_filter(flt)
+        active.append(
+            {
+                "name": name,
+                "column_key": uni.get("column_key"),
+                "action": uni.get("action"),
+                "match": uni.get("match"),
+                "values": list(uni.get("values") or []),
+                "values_mode": uni.get("values_mode"),
+                "value_type": uni.get("value_type"),
+                "case_sensitive": uni.get("case_sensitive", False),
+            }
+        )
     return active
 
 
 def _config_locked_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Фильтры только из config (html_slice: false) — инфо для UI, без переключателей."""
-    from src.filters import is_exclude_filter, is_html_slice_filter
+    from src.filters import is_exclude_filter, is_html_slice_filter, normalize_filter
 
     locked: list[dict[str, Any]] = []
     columns: dict[str, str] = config.get("columns", {})
@@ -73,20 +80,20 @@ def _config_locked_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
     for name, flt in config.get("filters", {}).items():
         if not isinstance(flt, dict) or is_html_slice_filter(flt):
             continue
-        column_key: str = str(flt.get("column_key", ""))
+        uni: dict[str, Any] = normalize_filter(flt)
+        column_key: str = str(uni.get("column_key", ""))
         enabled: bool = bool(flt.get("enabled", False))
-        is_exclude: bool = is_exclude_filter(flt)
-        value = flt.get("value", 1) if not is_exclude else None
-        token: str = ""
-        if is_exclude:
-            token = str(flt.get("exclude_equals") or flt.get("exclude_contains") or "").strip()
+        is_exclude: bool = is_exclude_filter(uni)
+        values: list[Any] = list(uni.get("values") or [])
+        value = values[0] if values and not is_exclude else None
+        token: str = ", ".join(str(v) for v in values) if is_exclude else ""
 
         if is_exclude:
             ui_state: str = "on" if enabled else "off"
-            match_kind: str = "равно" if flt.get("exclude_equals") else "содержит"
+            match_kind: str = "равно" if uni.get("match") == "equals" else "содержит"
             tooltip: str = (
                 f"Исключать «{token}» ({match_kind}) в {columns.get(column_key, column_key)}"
-                + (" / доп. колонках" if flt.get("also_column_keys") else "")
+                + (" / доп. колонках" if (uni.get("column_keys") or uni.get("also_column_keys")) else "")
                 + (": да" if enabled else ": нет (фильтр выкл)")
             )
         elif not enabled:
@@ -107,6 +114,9 @@ def _config_locked_filters(config: dict[str, Any]) -> list[dict[str, Any]]:
                 "short_label": short_titles.get(name, name),
                 "enabled": enabled,
                 "value": value,
+                "values": values,
+                "match": uni.get("match"),
+                "action": uni.get("action"),
                 "filter_mode": "exclude" if is_exclude else "include",
                 "exclude_contains": token or None,
                 "html_slice": False,
@@ -191,7 +201,7 @@ def _build_meta(
 ) -> dict[str, Any]:
     """Блок meta для JSON."""
     from src.filters import excluded_analysis_stages
-    from src.visualization_data import stage_order as resolve_stage_order
+    from src.v1.visualization_data import stage_order as resolve_stage_order
 
     excel_mode: str = str(config.get("product_analysis_mode", "group_product"))
     html_cfg: dict[str, Any] = html_json_settings(config)

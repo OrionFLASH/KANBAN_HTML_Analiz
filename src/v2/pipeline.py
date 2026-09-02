@@ -13,26 +13,32 @@ import pandas as pd
 
 from src.data_audit import audit_rows, audit_snapshot_coverage
 from src.excel_loader import load_all_files
-from src.excel_report.config_loader import (
+from src.filter_funnel import (
+    append_funnel_step,
+    build_filter_funnel_frame,
+    build_outlier_audit_summary,
+)
+from src.v2.config_loader import (
     config_for_shared_modules,
     get_excel_v2_file_list,
     get_excel_v2_input_dir,
     get_excel_v2_output_dir,
     load_excel_v2_config,
 )
-from src.excel_report.exceedance import attach_p80_exceedance
-from src.excel_report.exporter import export_excel_v2
-from src.excel_report.manager_summary import build_manager_reports
-from src.excel_report.norms import build_norms_tables, build_p80_lookup_frames, norms_to_export_frame
-from src.excel_report.parallel_utils import run_snapshot_records_teams_parallel
-from src.excel_report.snapshot import snapshot_to_export_frame
-from src.excel_report.team_enrich import enrich_snapshot_with_team_dfs
+from src.v2.exceedance import attach_p80_exceedance
+from src.v2.exporter import export_excel_v2
+from src.v2.manager_summary import build_manager_reports
+from src.v2.norms import build_norms_tables, build_p80_lookup_frames, norms_to_export_frame
+from src.v2.parallel_utils import run_snapshot_records_teams_parallel
+from src.v2.snapshot import snapshot_to_export_frame
+from src.v2.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
 from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
 from src.resource_guard import apply_adaptive_resources, maybe_free_memory_between_stages
 from src.logger_setup import setup_logger
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
+from src.statistics_config import filter_and_order_statistics_frame
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.pipeline")
 
@@ -78,11 +84,26 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
 
     progress.stage("Фильтрация", f"{rows_loaded:,} строк")
     audit_filters: bool = bool(config.get("processing", {}).get("audit_row_counts", True))
-    after_inclusion: pd.DataFrame = apply_filters(raw_df, config, audit_each_filter=audit_filters)
+    funnel_steps: list[dict[str, Any]] = []
+    append_funnel_step(
+        funnel_steps,
+        stage="Загрузка Kanban",
+        before_df=raw_df,
+        after_df=raw_df,
+        config=config,
+        kind="load",
+    )
+    after_inclusion: pd.DataFrame = apply_filters(
+        raw_df,
+        config,
+        audit_each_filter=audit_filters,
+        funnel=funnel_steps,
+    )
     filtered_df: pd.DataFrame = filter_terminal_deal_stage_rows(
         after_inclusion,
         config,
         audit_each_filter=audit_filters,
+        funnel=funnel_steps,
     )
     filters_active: bool = any(
         f.get("enabled") for f in config.get("filters", {}).values() if isinstance(f, dict)
@@ -136,7 +157,11 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     )
 
     leads_export: pd.DataFrame = snapshot_to_export_frame(snapshot, config)
+    # Внутренний кадр с outlier_* до rename — для свода выбросов
+    norms_internal: pd.DataFrame = filter_and_order_statistics_frame(combined_norms, config)
     norms_export: pd.DataFrame = norms_to_export_frame(combined_norms, config)
+    funnel_frame: pd.DataFrame = build_filter_funnel_frame(funnel_steps)
+    outlier_summary: pd.DataFrame = build_outlier_audit_summary(norms_internal, config)
 
     del filtered_df
     del combined_norms
@@ -153,6 +178,8 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
             "violations": violations_detail,
         },
         config,
+        funnel_frame=funnel_frame,
+        outlier_summary=outlier_summary,
     )
     if csv_paths:
         progress.done(

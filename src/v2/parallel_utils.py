@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.excel_report.snapshot import build_lead_snapshot
+from src.v2.snapshot import build_lead_snapshot
 from src.lead_tracker import build_lead_stage_records
 from src.performance import resolve_parallel_workers
 from src.team_loader import load_team_kind_frames

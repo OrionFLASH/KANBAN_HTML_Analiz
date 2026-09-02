@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from src.json_sanitize import dump_json_file
+from src.v1.json_sanitize import dump_json_file
 
 logger: logging.Logger = logging.getLogger("kanban.html_json_export")
 

@@ -16,7 +16,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 from src.excel_sanitize import sanitize_cell_value, sanitize_sheet_name
 from src.settings import analysis_row_key, is_group_only_analysis
-from src.visualization_data import build_pivot_matrix, indicator_keys, series_chart_points
+from src.v1.visualization_data import build_pivot_matrix, indicator_keys, series_chart_points
 
 logger: logging.Logger = logging.getLogger("kanban.pivot_excel")
 

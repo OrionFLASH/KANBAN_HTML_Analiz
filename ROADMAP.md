@@ -230,7 +230,7 @@ src/
 | 11.1 | ROADMAP и `config_excel_v2.json` | `config_excel_v2.json` | `[v]` |
 | 11.2 | Отдельный launcher `run_excel.py` (без JSON/HTML) | `run_excel.py` | `[v]` |
 | 11.3 | Каталоги `IN/TEST`, `IN/PROD` | `IN/` | `[v]` |
-| 11.4 | Пакет `src/excel_report/` | `config_loader`, `snapshot`, `team_enrich`, `norms`, `exceedance`, `manager_summary`, `exporter`, `pipeline` | `[v]` |
+| 11.4 | Пакет `src/v2/` (ранее `excel_report/`) | `config_loader`, `snapshot`, `team_enrich`, `norms`, `exceedance`, `manager_summary`, `exporter`, `pipeline` | `[v]` |
 | 11.5 | Фильтры v2 (ЕФС, стратегия, терминальные стадии) | `config_excel_v2.json`, `filters.py` (reuse) | `[v]` |
 | 11.6 | Снимок уникальных ID + fill-forward по дате | `snapshot.py` | `[v]` |
 | 11.7 | Лидеры команд (TN, многострочные ячейки) | `team_enrich.py` | `[v]` |
@@ -239,7 +239,10 @@ src/
 | 11.10 | Листы: нормативы, уникальные ID, свод менеджер, свод ПрПр | `exporter.py` | `[v]` |
 | 11.11 | Сокращение «Клиент» (+ СЗ в config) | `client_names.py` (reuse) | `[v]` |
 | 11.12 | Тесты snapshot / pipeline | `src/Tests/test_excel_report.py` | `[v]` |
-| 11.13 | Перенос `run.py` pipeline в подпапку `src/` | — | `[ ]` |
+| 11.13 | Разделение `src` на `v1/` / `v2/` / общие модули | `src/v1/`, `src/v2/` | `[v]` |
+| 11.14 | Универсальные фильтры (action/match/values/value_type) | `filters.py`, `config_excel_v2.json` | `[v]` |
+| 11.15 | Отсечение выбросов срока дней перед нормативами | `outlier_clipping.py`, `aggregator.py`, config | `[v]` |
+| 11.16 | На листе «Нормативы»: воронка фильтров + свод/колонки выбросов | `filter_funnel.py`, `exporter.py`, `pipeline.py` | `[v]` |
 
 ---
 
@@ -247,4 +250,3 @@ src/
 
 - **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD`
 - **10.8** — согласовать и внедрить пункты сжатия JSON (см. чат)
-- **11.13** — опционально: перенос `run.py` pipeline в подпапку `src/`

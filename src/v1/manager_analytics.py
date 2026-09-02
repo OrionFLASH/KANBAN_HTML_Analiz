@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 
 from src.client_names import abbreviate_client_name, abbreviations_for_meta
-from src.json_sanitize import dump_json_file
+from src.v1.json_sanitize import dump_json_file
 from src.lead_tracker import build_lead_stage_records
 from src.percentile_stats import percentile_label, to_integer_days
 from src.progress import ProgressReporter
@@ -129,29 +129,29 @@ def _label_column(config: dict[str, Any]) -> str | None:
 
 def strategy_filter_mask(series: pd.Series, mode: str, config: dict[str, Any]) -> pd.Series:
     """Маска строк по режиму strategy_filter (метка лида)."""
+    from src.filters import build_match_mask, normalize_filter
+
     if mode == STRATEGY_FILTER_ALL:
         return pd.Series(True, index=series.index)
-    text: pd.Series = series.fillna("").astype(str)
-    case: bool = False
     filters_cfg: dict[str, Any] = config.get("filters", {})
     if mode == STRATEGY_FILTER_STRATEGY:
-        flt: dict[str, Any] = filters_cfg.get("strategy_label") or {}
-        token: str = str(flt.get("contains", "Стратегия"))
-        case = bool(flt.get("case_sensitive", False))
-        return text.str.contains(token, case=case, na=False)
+        flt: dict[str, Any] = filters_cfg.get("strategy_label") or {
+            "contains": "Стратегия",
+            "case_sensitive": False,
+        }
+        return build_match_mask(series, normalize_filter(flt), config)
     if mode == STRATEGY_FILTER_STRATEGY_2026:
-        flt = filters_cfg.get("strategy_label_2026") or {}
-        tokens: list[str] = [str(t) for t in flt.get("contains_all", ["Стратегия", "2026"]) if str(t)]
-        case = bool(flt.get("case_sensitive", False))
-        mask: pd.Series = pd.Series(True, index=series.index)
-        for token in tokens:
-            mask &= text.str.contains(token, case=case, na=False)
-        return mask
+        flt = filters_cfg.get("strategy_label_2026") or {
+            "contains_all": ["Стратегия", "2026"],
+            "case_sensitive": False,
+        }
+        return build_match_mask(series, normalize_filter(flt), config)
     if mode == STRATEGY_FILTER_NON_STRATEGY:
-        flt = filters_cfg.get("strategy_label") or {}
-        token = str(flt.get("contains", "Стратегия"))
-        case = bool(flt.get("case_sensitive", False))
-        return ~text.str.contains(token, case=case, na=False)
+        flt = filters_cfg.get("strategy_label") or {
+            "contains": "Стратегия",
+            "case_sensitive": False,
+        }
+        return ~build_match_mask(series, normalize_filter(flt), config)
     return pd.Series(True, index=series.index)
 
 

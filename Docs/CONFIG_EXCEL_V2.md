@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.0.0 (2026-09-01)
+**Версия документа:** 2.1.0 (2026-09-02)
 
 ---
 
@@ -12,6 +12,7 @@
 1. [Запуск и пути](#1-запуск-и-пути)
 2. [Карта корневых ключей](#2-карта-корневых-ключей)
 3. [Фильтры v2](#3-фильтры-v2)
+3.1. [Отсечение выбросов](#31-отсечение-выбросов-outlier_clipping)
 4. [team_files](#4-team_files)
 5. [output — листы и колонки](#5-output--листы-и-колонки)
 6. [client_display](#6-client_display)
@@ -25,7 +26,7 @@
 ```bash
 python run_excel.py
 # или
-python -m src.excel_report.pipeline
+python -m src.v2.pipeline
 ```
 
 | Ключ | Значение по умолчанию | Описание |
@@ -44,7 +45,7 @@ python -m src.excel_report.pipeline
 
 | Ключ config | Имя листа | Содержание |
 |-------------|-----------|------------|
-| `norms` | Нормативы | P20/P50/P80 по группе+продукт+стадия; колонка ТБ + строки «все тб» |
+| `norms` | Нормативы | Сверху: воронка фильтров + свод выбросов; ниже: P20/P50/P80 по группе+продукт+стадия (+ колонки аудита выбросов) |
 | `leads` | Уникальные ID | Снимок лидов, лидеры, норматив P80, превышение |
 | `managers` | Свод по менеджеру | Уникальные ФИО/ТН, число нарушений P80, разрез «Группа + Продукт» |
 | `violations` | Свод ПрПр с отклонениями | Строка на каждое превышение с деталями лида |
@@ -65,6 +66,7 @@ python -m src.excel_report.pipeline
 | `percentiles` | `[20, 50, 80]` |
 | `aggregation.metrics` | `["days_on_stage"]` — только срок на стадии |
 | `filters` | См. §3 |
+| `outlier_clipping` | Отсечение выбросов срока перед нормативами, см. §3.1 |
 | `team_files` | Файлы команд лида/сделки, см. §4 |
 | `client_display` | Сокращение юрформ в «Клиент», см. §6 |
 | `output` | Префикс, листы, подписи колонок, оформление Excel |
@@ -87,23 +89,126 @@ python -m src.excel_report.pipeline
 
 ## 3. Фильтры v2
 
-Все фильтры с `enabled: true` объединяются по **AND**. Текстовые сравнения — **без учёта регистра** (`case_sensitive: false`).
+Все фильтры с `enabled: true` объединяются по **AND**.  
+Формат — **универсальный** (см. ниже). Старые ключи (`value`, `contains*`, `exclude_*`) по-прежнему понимаются адаптером в `src/filters.py`.
 
-> **Нет HTML/JSON:** в `config_excel_v2.json` **не используется** поле `html_slice` из `config.json`. Оно нужно только для дашборда (`filter_slices`, переключатели в UI). В v2 действует только `enabled: true/false` — фильтр либо применяется к Excel, либо нет.
+> **Нет HTML/JSON:** в `config_excel_v2.json` **не используется** поле `html_slice` из `config.json`. В v2 действует только `enabled: true/false`.
 
-| Имя фильтра | Тип | Действие |
-|-------------|-----|----------|
-| `efs_flag` | value | Оставить `ЕФС флаг` = 1 |
-| `change_conditions` | value | Оставить `_Изменение условий` = 0 |
-| `strategy_label_2026` | contains_any | Метка содержит «Стратегия 2 квартал 2026» или «Стратегия 2 кватал 2026» (без учёта регистра) |
-| `exclude_current_otkaz` | exclude | Убрать «Текущий статус» с «отказ» |
-| `exclude_current_for_sale` | exclude | Убрать «Текущий статус» = «К продаже» (без учёта регистра) |
-| `exclude_deal_otkaz` | exclude | Убрать «Стадия сделки» с «отказ» |
-| `exclude_deal_zakryta` | exclude | Убрать стадию с «закрыта» |
-| `exclude_deal_zaklyuchen` | exclude | Убрать стадию с «заключен» |
-| `data_entry` | value | **Выключен** (`enabled: false`) — не фильтрует v2 |
+### Универсальная схема
 
-Терминальные exclude применяются после inclusion-фильтров (`filter_terminal_deal_stage_rows`).
+```json
+"имя_фильтра": {
+  "enabled": true,
+  "column_key": "label",
+  "column_keys": [],
+  "action": "include",
+  "match": "contains",
+  "values": ["Стратегия 2 квартал 2026", "Стратегия 2 кватал 2026"],
+  "values_mode": "any",
+  "value_type": "string",
+  "case_sensitive": false
+}
+```
+
+| Поле | Значения | Смысл |
+|------|----------|--------|
+| `column_key` | ключ из `columns` | основная колонка |
+| `column_keys` | массив ключей | доп. колонки; совпадение по **OR** |
+| `action` | `include` \| `exclude` | оставить / убрать совпавшие строки |
+| `match` | `equals` \| `contains` | целое поле / подстрока |
+| `values` | массив | эталоны сравнения |
+| `values_mode` | `any` \| `all` | достаточно одного / нужны все |
+| `value_type` | `string` \| `number` \| `date` \| `auto` | приведение типа |
+| `case_sensitive` | bool | для string |
+
+Терминальные `action: exclude` применяются после inclusion (`filter_terminal_deal_stage_rows`).  
+Пустые стадии (`processing.empty_stage_values`) **не** попадают под exclude.
+
+### Текущий набор v2
+
+| Имя | action | match | values | values_mode | value_type |
+|-----|--------|-------|--------|-------------|------------|
+| `efs_flag` | include | equals | `[1]` | any | number |
+| `change_conditions` | include | equals | `[0]` | any | number |
+| `strategy_label_2026` | include | contains | оба варианта «Стратегия 2 квар*тал* 2026» | any | string |
+| `exclude_current_otkaz` | exclude | contains | `["отказ"]` | any | string |
+| `exclude_current_for_sale` | exclude | equals | `["К ПРОДАЖЕ"]` | any | string |
+| `exclude_deal_otkaz` | exclude | contains | `["отказ"]` | any | string |
+| `exclude_deal_zakryta` | exclude | contains | `["закрыта"]` | any | string |
+| `exclude_deal_zaklyuchen` | exclude | contains | `["заключен"]` | any | string |
+| `data_entry` | include | equals | `[0]` | any | number (`enabled: false`) |
+
+---
+
+## 3.1. Отсечение выбросов (`outlier_clipping`)
+
+Перед расчётом min/max/перцентилей в **каждой группе** агрегации (группа продукта + продукт + стадия [+ ТБ]) из выборки убираются нетипичные сроки. Снимок лидов и лист «Уникальные ID» **не** режутся — только нормативы / статистика.
+
+```json
+"outlier_clipping": {
+  "enabled": true,
+  "metric": "days_on_stage",
+  "export_audit": true,
+  "min_group_size": 5,
+  "min_remaining": 3,
+  "rules": [
+    {
+      "name": "global_max_500",
+      "enabled": true,
+      "scope": {},
+      "mode": "range",
+      "max_days": 500
+    },
+    {
+      "name": "band_credits",
+      "enabled": true,
+      "scope": { "product_group": "Кредиты", "current_status": "В РАБОТЕ" },
+      "mode": "range",
+      "min_days": 2,
+      "max_days": 500
+    },
+    {
+      "name": "trim5",
+      "enabled": true,
+      "scope": {},
+      "mode": "percentile_trim",
+      "trim_lower_pct": 5,
+      "trim_upper_pct": 5
+    },
+    {
+      "name": "auto_iqr",
+      "enabled": true,
+      "scope": {},
+      "mode": "iqr",
+      "iqr_k": 1.5
+    }
+  ]
+}
+```
+
+| Поле | Описание |
+|------|----------|
+| `enabled` | Вкл/выкл всего блока |
+| `metric` | Колонка срока (`days_on_stage`) |
+| `export_audit` | Колонки аудита на листе «Нормативы» |
+| `min_group_size` | Минимум строк в группе для расчёта порогов `iqr` / `percentile_trim` |
+| `min_remaining` | Минимум лидов после правила: если осталось бы меньше — правило **не применяется** (можно переопределить в `rules[].min_remaining`) |
+| `rules[].name` | Имя для колонки «Отсечено: …» |
+| `rules[].scope` | `{}` = все группы; иначе фильтр по `product_group` / `product` / `current_status` / `tb` (строка или массив) |
+| `rules[].mode` | `range` \| `percentile_trim` \| `iqr` |
+| `min_days` / `max_days` | Для `range`: отсечь срок `< min` или `> max` |
+| `trim_lower_pct` / `trim_upper_pct` | Для `percentile_trim`: % снизу / сверху внутри группы |
+| `iqr_k` | Для `iqr`: множитель (обычно 1.5) |
+
+Правила применяются **по порядку**; на листе **«Нормативы»**:
+
+1. **Сверху — воронка фильтров**: по каждому активному фильтру / исключению — «До/После/Отсечено» для **строк** и **уникальных лидов**.
+2. **Свод выбросов**: суммы колонок аудита по всем группам (и статус, если `outlier_clipping` выключен).
+3. **Таблица нормативов по группам** с колонками аудита: `До отсечения`, `После отсечения`, `Отсечено (всего)`, `Отсечено: <name>` по каждому правилу (`export_audit: true`).
+
+Чтобы колонки выбросов появились, нужно **`outlier_clipping.enabled: true`** и хотя бы одно правило с **`enabled: true`**.
+
+По умолчанию в `config_excel_v2.json` блок **выключен** (`enabled: false`), примеры правил — с `enabled: false`.
 
 ---
 

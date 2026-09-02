@@ -24,16 +24,12 @@ KANBAN_HTML_Analiz/
 ├── ROADMAP.md
 ├── .env.example
 ├── src/                           # без каталога Tests/
-│   ├── main.py
-│   ├── excel_report/              # pipeline v2
+│   ├── v1/                        # HTML + JSON + Excel (run.py)
+│   ├── v2/                        # Excel-only pipeline (run_excel.py)
+│   ├── filters.py                 # общие модули
 │   ├── excel_loader.py
 │   ├── lead_tracker.py
 │   ├── aggregator.py
-│   ├── filter_slices.py
-│   ├── manager_analytics.py
-│   ├── visualization_data.py
-│   ├── json_exporter.py
-│   ├── excel_exporter.py
 │   └── …
 ├── HTML/                          # ← дашборд (обязательно)
 │   ├── index.html

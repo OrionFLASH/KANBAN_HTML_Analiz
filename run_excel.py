@@ -7,7 +7,7 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from src.excel_report.pipeline import run_excel_pipeline
+from src.v2.pipeline import run_excel_pipeline
 
 if __name__ == "__main__":
     run_excel_pipeline()

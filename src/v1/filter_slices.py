@@ -19,7 +19,7 @@ from src.filters import (
     split_active_filter_names,
 )
 from src.settings import col, filter_column_name, with_product_analysis_mode
-from src.visualization_data import (
+from src.v1.visualization_data import (
     build_aggregation_visualization,
     json_aggregation_modes,
 )
@@ -135,13 +135,17 @@ def apply_filter_subset(
 
 def build_filter_catalog(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Каталог фильтров для meta JSON и HTML."""
+    from src.filters import normalize_filter
+
     catalog: list[dict[str, Any]] = []
     filters_cfg: dict[str, Any] = config.get("filters", {})
     columns: dict[str, str] = config.get("columns", {})
 
     for name in html_filter_names(config):
         flt: dict[str, Any] = filters_cfg[name]
-        column_key: str = str(flt.get("column_key", ""))
+        uni: dict[str, Any] = normalize_filter(flt)
+        column_key: str = str(uni.get("column_key", ""))
+        values: list[Any] = list(uni.get("values") or [])
         entry: dict[str, Any] = {
             "name": name,
             "column_key": column_key,
@@ -150,19 +154,24 @@ def build_filter_catalog(config: dict[str, Any]) -> list[dict[str, Any]]:
             "toggle_label": TOGGLE_LABELS.get(name, FILTER_DISPLAY_NAMES.get(name, name)),
             "ui_mode": "toggle",
             "default_active": bool(flt.get("default_active", False)),
+            "action": uni.get("action"),
+            "match": uni.get("match"),
+            "values": values,
+            "values_mode": uni.get("values_mode"),
+            "value_type": uni.get("value_type"),
         }
         exclusive: str | None = flt.get("exclusive_group")
         if exclusive:
             entry["exclusive_group"] = str(exclusive)
-        if is_exclude_filter(flt):
+        if is_exclude_filter(uni):
             entry["type"] = "exclude_contains"
             entry["filter_mode"] = "exclude"
-            token: str = str(flt.get("exclude_contains", ""))
+            token: str = ", ".join(str(v) for v in values)
             entry["exclude_contains"] = token
-            entry["case_sensitive"] = flt.get("case_sensitive", False)
+            entry["case_sensitive"] = uni.get("case_sensitive", False)
             entry["html_label"] = f"Исключить стадии с «{token}»"
             entry["ui_group"] = flt.get("ui_group", "terminal_deal_stages")
-            also_keys = [str(k) for k in (flt.get("also_column_keys") or [])]
+            also_keys = [str(k) for k in (uni.get("column_keys") or uni.get("also_column_keys") or [])]
             if also_keys:
                 entry["also_column_keys"] = also_keys
                 also_labels = [columns.get(k, k) for k in also_keys]
@@ -170,21 +179,25 @@ def build_filter_catalog(config: dict[str, Any]) -> list[dict[str, Any]]:
                     f"Исключить «{token}» "
                     f"({entry['column_label']} / {' / '.join(also_labels)})"
                 )
-        elif "contains_all" in flt:
+        elif uni.get("match") == "contains" and uni.get("values_mode") == "all":
             entry["type"] = "contains_all"
-            entry["contains_all"] = list(flt.get("contains_all") or [])
-            entry["case_sensitive"] = flt.get("case_sensitive", False)
-            parts = " и ".join(f"«{t}»" for t in entry["contains_all"])
+            entry["contains_all"] = values
+            entry["case_sensitive"] = uni.get("case_sensitive", False)
+            parts = " и ".join(f"«{t}»" for t in values)
             entry["html_label"] = f"Метка: {parts}"
-        elif "contains" in flt:
+        elif uni.get("match") == "contains":
             entry["type"] = "contains"
-            entry["contains"] = flt.get("contains")
-            entry["case_sensitive"] = flt.get("case_sensitive", False)
-            entry["html_label"] = f"Метка содержит «{flt.get('contains')}»"
+            entry["contains"] = values[0] if len(values) == 1 else values
+            entry["case_sensitive"] = uni.get("case_sensitive", False)
+            if len(values) == 1:
+                entry["html_label"] = f"Метка содержит «{values[0]}»"
+            else:
+                parts_any = " или ".join(f"«{t}»" for t in values)
+                entry["html_label"] = f"Метка содержит {parts_any}"
         else:
             entry["type"] = "eq"
-            entry["value"] = flt.get("value", 1)
-            entry["html_label"] = f"{entry['display_name']} = {flt.get('value', 1)}"
+            entry["value"] = values[0] if values else 1
+            entry["html_label"] = f"{entry['display_name']} = {entry['value']}"
         catalog.append(entry)
     return catalog
 
