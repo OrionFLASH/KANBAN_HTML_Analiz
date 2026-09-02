@@ -39,14 +39,28 @@ MULTILINE_BY_SHEET: dict[str, list[str]] = {
 }
 
 
-def _write_dataframe_block(ws: Any, frame: pd.DataFrame, start_row: int) -> int:
+def _write_dataframe_block(
+    ws: Any,
+    frame: pd.DataFrame,
+    start_row: int,
+    *,
+    thousands_format: str | None = None,
+) -> int:
     """Пишет DataFrame с заголовком начиная со start_row; возвращает следующую свободную строку."""
     if frame is None or frame.empty:
         return start_row
     n_header_rows: int = 0
     for r_idx, row in enumerate(dataframe_to_rows(frame, index=False, header=True)):
         for c_idx, value in enumerate(row, start=1):
-            ws.cell(row=start_row + r_idx, column=c_idx, value=value)
+            cell = ws.cell(row=start_row + r_idx, column=c_idx, value=value)
+            # Заголовок (r_idx==0) не форматируем; числа — с разделителем разрядов
+            if (
+                thousands_format
+                and r_idx > 0
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+            ):
+                cell.number_format = thousands_format
         n_header_rows = r_idx + 1
     return start_row + n_header_rows
 
@@ -73,7 +87,9 @@ def _autosize_columns(ws: Any, max_col: int, max_row: int, config: dict[str, Any
             value = ws.cell(row=row_idx, column=col_idx).value
             if value is None:
                 continue
-            width = max(width, min(len(str(value)) + 2, max_width))
+            # С разделителем разрядов число визуально длиннее
+            text: str = f"{value:,}".replace(",", " ") if isinstance(value, (int, float)) and not isinstance(value, bool) else str(value)
+            width = max(width, min(len(text) + 2, max_width))
         ws.column_dimensions[letter].width = width
 
 
@@ -86,16 +102,22 @@ def _write_statistics_sheet(
     """
     Лист «Статистика»: воронка фильтров + свод выбросов.
     Не использует format_sheet (несколько блоков) — своё оформление.
+    Числа — формат с разделителем разрядов (# ##0).
     """
     row: int = 1
     title_font: Font = Font(bold=True, size=12)
+    fmt_cfg: dict[str, Any] = config.get("output", {}).get("excel_format", {})
+    # Пробел как разделитель тысяч (Excel: # ##0)
+    thousands_format: str = str(fmt_cfg.get("thousands_format", "# ##0"))
 
     ws.cell(row=row, column=1, value="Воронка отсечения по фильтрам (строки Kanban / уникальные лиды)")
     ws.cell(row=row, column=1).font = title_font
     row += 1
     funnel_header_row: int = row
     if funnel_frame is not None and not funnel_frame.empty:
-        row = _write_dataframe_block(ws, funnel_frame, row)
+        row = _write_dataframe_block(
+            ws, funnel_frame, row, thousands_format=thousands_format
+        )
         _style_block_header(ws, funnel_header_row, len(funnel_frame.columns))
         # Автофильтр только на таблицу воронки
         end_col: str = get_column_letter(len(funnel_frame.columns))
@@ -116,7 +138,9 @@ def _write_statistics_sheet(
     row += 1
     summary_header_row: int = row
     if outlier_summary is not None and not outlier_summary.empty:
-        row = _write_dataframe_block(ws, outlier_summary, row)
+        row = _write_dataframe_block(
+            ws, outlier_summary, row, thousands_format=thousands_format
+        )
         _style_block_header(ws, summary_header_row, len(outlier_summary.columns))
     else:
         ws.cell(row=row, column=1, value="(нет данных по выбросам)")

@@ -143,7 +143,7 @@
         "enabled": true,
         "scope": {},
         "mode": "range",
-        "max_days": 500,
+        "max_days": 200,
         "min_days": null
       },
       {
@@ -205,8 +205,18 @@
       "value_type": "number",
       "case_sensitive": false
     },
-    "strategy_label_2026": {
+    "strategy_label": {
       "enabled": true,
+      "column_key": "label",
+      "action": "include",
+      "match": "contains",
+      "values": ["Стратегия"],
+      "values_mode": "any",
+      "value_type": "string",
+      "case_sensitive": false
+    },
+    "strategy_label_2026": {
+      "enabled": false,
       "column_key": "label",
       "action": "include",
       "match": "contains",
@@ -214,6 +224,26 @@
         "Стратегия 2 квартал 2026",
         "Стратегия 2 кватал 2026"
       ],
+      "values_mode": "any",
+      "value_type": "string",
+      "case_sensitive": false
+    },
+    "strategy_label_and_2026": {
+      "enabled": false,
+      "column_key": "label",
+      "action": "include",
+      "match": "contains",
+      "values": ["Стратегия", "2026"],
+      "values_mode": "all",
+      "value_type": "string",
+      "case_sensitive": false
+    },
+    "current_status_activation": {
+      "enabled": false,
+      "column_key": "current_status",
+      "action": "include",
+      "match": "contains",
+      "values": ["АКТИВАЦИЯ ПРОДУКТА"],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -457,6 +487,7 @@
       "freeze_panes": "A2",
       "float_format": "0.00",
       "int_format": "0",
+      "thousands_format": "# ##0",
       "max_column_width": 45,
       "min_column_width": 12,
       "sample_rows_for_width": 200,

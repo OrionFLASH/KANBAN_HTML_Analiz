@@ -92,3 +92,16 @@ def test_norms_is_plain_table_statistics_has_funnel(tmp_path: Path) -> None:
     norms_ws = wb["Нормативы"]
     assert norms_ws.freeze_panes == "A2"
     assert norms_ws.auto_filter.ref is not None
+
+    stats_ws = wb["Статистика"]
+    # Числовая ячейка воронки (после заголовка блока и шапки таблицы) — формат с разрядами
+    found_thousands: bool = False
+    for row in stats_ws.iter_rows(min_row=1, max_row=20, max_col=10):
+        for cell in row:
+            if isinstance(cell.value, int) and cell.value >= 10:
+                assert "# ##0" in str(cell.number_format).replace(",", " ") or cell.number_format == "# ##0"
+                found_thousands = True
+                break
+        if found_thousands:
+            break
+    assert found_thousands

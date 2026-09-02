@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.2.1 (2026-09-02)
+**Версия документа:** 2.2.2 (2026-09-02)
 
 ---
 
@@ -131,13 +131,18 @@ python -m src.v2.pipeline
 |-----|--------|-------|--------|-------------|------------|
 | `efs_flag` | include | equals | `[1]` | any | number |
 | `change_conditions` | include | equals | `[0]` | any | number |
-| `strategy_label_2026` | include | contains | оба варианта «Стратегия 2 квар*тал* 2026» | any | string |
+| `strategy_label` | include | contains | `["Стратегия"]` | any | string (**вкл.**) |
+| `strategy_label_2026` | include | contains | оба варианта «Стратегия 2 квар*тал* 2026» | any | string (`enabled: false`) |
+| `strategy_label_and_2026` | include | contains | `["Стратегия", "2026"]` | **all** | string (`enabled: false`) |
+| `current_status_activation` | include | contains | `["АКТИВАЦИЯ ПРОДУКТА"]` | any | string (`enabled: false`) |
 | `exclude_current_otkaz` | exclude | contains | `["отказ"]` | any | string |
 | `exclude_current_for_sale` | exclude | equals | `["К ПРОДАЖЕ"]` | any | string |
 | `exclude_deal_otkaz` | exclude | contains | `["отказ"]` | any | string |
 | `exclude_deal_zakryta` | exclude | contains | `["закрыта"]` | any | string |
 | `exclude_deal_zaklyuchen` | exclude | contains | `["заключен"]` | any | string |
 | `data_entry` | include | equals | `[0]` | any | number (`enabled: false`) |
+
+По умолчанию из меток активен только `strategy_label` (подстрока «Стратегия»). Варианты `*_2026` и фильтр стадии «АКТИВАЦИЯ ПРОДУКТА» выключены — включаются в config при необходимости.
 
 ---
 
