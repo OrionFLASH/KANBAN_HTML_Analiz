@@ -44,6 +44,8 @@ python run_excel.py
 
 Конфиг: `config_excel_v2.json` — полный справочник: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md)
 
+Ключевые блоки v2: `filters` (универсальная схема), `outlier_clipping` (выбросы срока перед нормативами, `min_remaining`), `team_files`, `output.statistics`.
+
 | Режим | Каталог входа | Выход |
 |-------|---------------|-------|
 | `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_*.xlsx` |
@@ -246,3 +248,5 @@ cd HTML && python -m http.server 8080
 | 1.0.7 | 2026-08-31 | Config-only «К ПРОДАЖЕ»; команда лида/сделки + ВКС → TOP; матрица ↑/↓ порога; locked уровень `status`; сброс JSON; вкладка «Менеджеры» опциональна, без отдельной загрузки JSON |
 | 1.0.8 | 2026-08-31 | HTML: гистограмма + ECDF + ранговая шкала; перцентили на графиках; разворот по клику (график / карточка) |
 | 2.0.0 | 2026-09-01 | **Excel v2:** `run_excel.py`, `config_excel_v2.json`, `src/v2/` (ранее `excel_report/`); 4 листа; [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) |
+| 2.1.0 | 2026-09-02 | Универсальные `filters` (`action`/`match`/`values`); разделение `src/v1` и `src/v2`; POST 2.1.0 |
+| 2.2.0 | 2026-09-02 | `outlier_clipping` в config v2 (range / percentile_trim / iqr, `min_remaining`); аудит и воронка на листе «Нормативы» |

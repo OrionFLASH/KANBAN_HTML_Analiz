@@ -6,7 +6,7 @@ import json
 import math
 from pathlib import Path
 
-from src.json_sanitize import dump_json_file, sanitize_for_json
+from src.v1.json_sanitize import dump_json_file, sanitize_for_json
 
 
 def test_sanitize_nan_inf_to_none() -> None:

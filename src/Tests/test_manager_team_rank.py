@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.manager_analytics import (
+from src.v1.manager_analytics import (
     attach_teams_to_detail,
     explode_detail_by_team_member,
     aggregate_manager_counts,

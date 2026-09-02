@@ -518,15 +518,20 @@ def filter_column_name(config: dict[str, Any], flt: dict[str, Any]) -> str | Non
 
 def filter_column_names(config: dict[str, Any], flt: dict[str, Any]) -> list[str]:
     """
-    Все колонки exclude-фильтра: основная + also_column_keys.
-    Дубликаты и пустые имена отбрасываются.
+    Все колонки фильтра: основная + column_keys (или legacy also_column_keys).
+    Дубликаты и пустые имена отбрасываются. Совпадение по колонкам — OR.
     """
     names: list[str] = []
     primary: str | None = filter_column_name(config, flt)
     if primary:
         names.append(primary)
-    for key in flt.get("also_column_keys") or []:
-        resolved: str = col(config, str(key))
+    extra_keys: list[Any] = list(flt.get("column_keys") or flt.get("also_column_keys") or [])
+    for key in extra_keys:
+        # column_keys может дублировать column_key — пропускаем дубли имён
+        key_str: str = str(key)
+        if key_str == str(flt.get("column_key", "")):
+            continue
+        resolved: str = col(config, key_str)
         if resolved and resolved not in names:
             names.append(resolved)
     return names

@@ -7,18 +7,18 @@ import tracemalloc
 from typing import Any, Callable
 
 from src.excel_loader import load_all_files
-from src.excel_report.config_loader import (
+from src.v2.config_loader import (
     config_for_shared_modules,
     get_excel_v2_file_list,
     get_excel_v2_input_dir,
     load_excel_v2_config,
 )
-from src.excel_report.exceedance import attach_p80_exceedance
-from src.excel_report.manager_summary import build_manager_reports
-from src.excel_report.norms import build_norms_tables, build_p80_lookup_frames, norms_to_export_frame
-from src.excel_report.parallel_utils import run_snapshot_records_teams_parallel
-from src.excel_report.snapshot import build_lead_snapshot, snapshot_to_export_frame
-from src.excel_report.team_enrich import enrich_snapshot_with_team_dfs
+from src.v2.exceedance import attach_p80_exceedance
+from src.v2.manager_summary import build_manager_reports
+from src.v2.norms import build_norms_tables, build_p80_lookup_frames, norms_to_export_frame
+from src.v2.parallel_utils import run_snapshot_records_teams_parallel
+from src.v2.snapshot import build_lead_snapshot, snapshot_to_export_frame
+from src.v2.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
 from src.lead_tracker import build_lead_stage_records
 

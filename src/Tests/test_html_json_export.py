@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.html_json_export import (
+from src.v1.html_json_export import (
     downsample_days_sorted,
     export_split_html_bundle,
     optimize_aggregation_for_html,
@@ -85,7 +85,7 @@ def test_export_monolith_embeds_managers_no_html_dir(tmp_path: Path) -> None:
     """Monolith: один JSON со срезами и managers, без каталога *_html."""
     import json
 
-    from src.json_exporter import export_json
+    from src.v1.json_exporter import export_json
 
     config: dict = {
         "mode": "test",

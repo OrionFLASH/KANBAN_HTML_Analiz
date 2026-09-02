@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.filter_slices import (
+from src.v1.filter_slices import (
     apply_filter_subset,
     build_filter_catalog,
     default_filter_slice_key,

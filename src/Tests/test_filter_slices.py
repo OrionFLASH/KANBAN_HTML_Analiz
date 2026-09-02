@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.filter_slices import (
+from src.v1.filter_slices import (
     apply_filter_subset,
     build_filter_catalog,
     filter_slice_key,
@@ -89,7 +89,7 @@ def test_efs_excluded_from_html_filters() -> None:
             },
         },
     }
-    from src.filter_slices import html_filter_names
+    from src.v1.filter_slices import html_filter_names
 
     assert "efs_flag" not in html_filter_names(config)
     assert len(list(iter_filter_combinations(config))) == 2

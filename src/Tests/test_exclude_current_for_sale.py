@@ -10,7 +10,7 @@ from src.filters import (
     is_exclude_filter,
 )
 from src.lead_tracker import build_lead_stage_records
-from src.visualization_data import stage_order
+from src.v1.visualization_data import stage_order
 
 
 def _base_config(*, enabled: bool = True) -> dict:

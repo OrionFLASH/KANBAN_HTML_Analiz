@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.visualization_data import (
+from src.v1.visualization_data import (
     build_distribution_series,
     build_json_visualization_payload,
     build_pivot_flat,
@@ -13,7 +13,7 @@ from src.visualization_data import (
     json_aggregation_modes,
     series_chart_points,
 )
-from src.filter_slices import (
+from src.v1.filter_slices import (
     apply_filter_subset,
     build_filter_catalog,
     build_slice_aggregations,

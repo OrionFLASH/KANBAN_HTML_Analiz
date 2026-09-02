@@ -1,8 +1,10 @@
 # Справочник config.json
 
-Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.8**).
+Полное описание параметров конфигурации сервиса KANBAN HTML Analiz (версия **1.0.8** / универсальные фильтры как в Excel v2 **2.2.0**).
 
 Отсутствующие ключи автоматически дополняются значениями по умолчанию из `src/settings.py`.
+
+Для **Excel-only v2** (`config_excel_v2.json`, `run_excel.py`) см. отдельный справочник: [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md) (фильтры, `outlier_clipping`, листы отчёта).
 
 ---
 
@@ -56,7 +58,8 @@
 | `parallel_workers` | int | 0 = авто, 1 = последовательно |
 | `excel_theme` | `"green_red"` \| `"minimal"` | Оформление Excel |
 | `html_json` | object | По умолчанию monolith (один JSON для file://); split — опционально |
-| `filters` | object | Pipeline-фильтры; см. §13 (`html_slice`, `enabled`) |
+| `filters` | object | Pipeline-фильтры; см. §13 (универсальная схема `action`/`match`/`values` или legacy; `html_slice`, `enabled`) |
+| `outlier_clipping` | — | Только в **Excel v2** (`config_excel_v2.json`): отсечение выбросов срока перед нормативами — [CONFIG_EXCEL_V2.md §3.1](CONFIG_EXCEL_V2.md#31-отсечение-выбросов-outlier_clipping) |
 
 ### Excel vs JSON vs HTML — три контекста одного `config.json`
 
@@ -836,6 +839,21 @@ HEX без `#`: min — зелёный, max — красный.
 
 Каждый фильтр — объект в `config.filters`. Имена ключей (`change_conditions`, `strategy_label` …) используются как идентификаторы в `filter_catalog` и ключах `filter_slices` (только для `html_slice: true`).
 
+### Универсальная схема (рекомендуется)
+
+Полное описание — в [CONFIG_EXCEL_V2.md §3](CONFIG_EXCEL_V2.md#3-фильтры-v2). Кратко:
+
+| Поле | Значения |
+|------|----------|
+| `action` | `include` \| `exclude` |
+| `match` | `equals` \| `contains` |
+| `values` | массив эталонов |
+| `values_mode` | `any` \| `all` |
+| `value_type` | `string` \| `number` \| `date` \| `auto` |
+| `column_keys` | доп. колонки (OR), вместо `also_column_keys` |
+
+Legacy-ключи (`value`, `contains`, `contains_all`, `contains_any`, `exclude_contains`, `exclude_equals`, `filter_mode`) по-прежнему принимаются и нормализуются в `src/filters.normalize_filter`.
+
 ### Общие поля фильтра
 
 | Поле | Тип | По умолчанию | Описание |
@@ -843,15 +861,15 @@ HEX без `#`: min — зелёный, max — красный.
 | `enabled` | bool | `false` | Применять фильтр в Excel (AND с другими `enabled: true`) |
 | `column_key` | string | — | Ключ из `columns` |
 | `html_slice` | bool | `true` | `false` — только config (без UI и без комбинаций в JSON); база данных для срезов фильтруется до комбинаций |
-| `value` | int | `1` | Для бинарных фильтров: ожидаемое значение колонки |
-| `contains` | string | — | Подстрока в текстовой колонке |
-| `contains_all` | array | — | Все подстроки обязательны |
+| `value` | int | `1` | Legacy: бинарный фильтр (→ `values: [value]`, `match: equals`) |
+| `contains` | string | — | Legacy: подстрока |
+| `contains_all` | array | — | Legacy: все подстроки |
 | `case_sensitive` | bool | `false` | Учёт регистра для текстовых фильтров |
 | `exclusive_group` | string | — | Группа взаимоисключения в HTML (варианты метки) |
-| `filter_mode` | string | `"include"` | `"exclude"` — исключить строки |
-| `exclude_contains` | string | — | Подстрока для исключения |
-| `exclude_equals` | string | — | Точное равенство (напр. «К ПРОДАЖЕ» в текущем статусе) |
-| `also_column_keys` | array | — | Доп. колонки для OR-проверки exclude |
+| `filter_mode` | string | `"include"` | Legacy: `"exclude"` |
+| `exclude_contains` | string | — | Legacy: подстрока для исключения |
+| `exclude_equals` | string | — | Legacy: точное равенство |
+| `also_column_keys` | array | — | Legacy: доп. колонки OR (синоним `column_keys`) |
 | `default_active` | bool | `false` | В HTML включён по умолчанию |
 | `ui_group` | string | — | Группа переключателей в левой панели |
 

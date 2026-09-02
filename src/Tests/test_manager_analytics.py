@@ -6,7 +6,7 @@ import pandas as pd
 
 from src.aggregator import build_all_statistics
 from src.lead_tracker import build_lead_stage_records
-from src.manager_analytics import (
+from src.v1.manager_analytics import (
     apply_rank_selection,
     build_manager_analytics,
     build_manager_records,
@@ -141,7 +141,7 @@ def test_manager_payload_includes_records_and_rank_selection() -> None:
 
 def test_rank_selection_strategy_2026() -> None:
     """apply_rank_selection оставляет только лиды с меткой «Стратегия» и «2026»."""
-    from src.manager_analytics import build_manager_exceedance_detail
+    from src.v1.manager_analytics import build_manager_exceedance_detail
 
     config = _config()
     config["filters"] = {
@@ -166,7 +166,7 @@ def test_rank_selection_strategy_2026() -> None:
 
 def test_rank_selection_efs_and_change_conditions() -> None:
     """rank_selection фильтрует по ЕФС и изменению условий."""
-    from src.manager_analytics import build_manager_exceedance_detail
+    from src.v1.manager_analytics import build_manager_exceedance_detail
 
     config = _config()
     config["columns"]["deal_id"] = "ID сделки"
@@ -202,7 +202,7 @@ def test_rank_selection_efs_and_change_conditions() -> None:
 
 def test_exceedances_include_lead_deal_inn() -> None:
     """exceedances содержит ID ПрПр, ID сделки, ИНН и Клиент только для превышений."""
-    from src.manager_analytics import exceedances_to_json, build_manager_exceedance_detail, lead_records_to_json
+    from src.v1.manager_analytics import exceedances_to_json, build_manager_exceedance_detail, lead_records_to_json
 
     config = _config()
     config["columns"]["deal_id"] = "ID сделки"

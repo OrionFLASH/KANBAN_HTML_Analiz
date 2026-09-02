@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.1.0 (2026-09-02)
+**Версия документа:** 2.2.0 (2026-09-02)
 
 ---
 
@@ -157,7 +157,8 @@ python -m src.v2.pipeline
       "enabled": true,
       "scope": {},
       "mode": "range",
-      "max_days": 500
+      "max_days": 500,
+      "min_remaining": 3
     },
     {
       "name": "band_credits",
@@ -173,7 +174,8 @@ python -m src.v2.pipeline
       "scope": {},
       "mode": "percentile_trim",
       "trim_lower_pct": 5,
-      "trim_upper_pct": 5
+      "trim_upper_pct": 5,
+      "min_remaining": 5
     },
     {
       "name": "auto_iqr",
@@ -196,6 +198,7 @@ python -m src.v2.pipeline
 | `rules[].name` | Имя для колонки «Отсечено: …» |
 | `rules[].scope` | `{}` = все группы; иначе фильтр по `product_group` / `product` / `current_status` / `tb` (строка или массив) |
 | `rules[].mode` | `range` \| `percentile_trim` \| `iqr` |
+| `rules[].min_remaining` | Опционально: порог «минимум лидов после» только для этого правила |
 | `min_days` / `max_days` | Для `range`: отсечь срок `< min` или `> max` |
 | `trim_lower_pct` / `trim_upper_pct` | Для `percentile_trim`: % снизу / сверху внутри группы |
 | `iqr_k` | Для `iqr`: множитель (обычно 1.5) |

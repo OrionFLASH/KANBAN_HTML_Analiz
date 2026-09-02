@@ -5,8 +5,8 @@ from __future__ import annotations
 import pandas as pd
 
 from src.data_audit import audit_snapshot_coverage
-from src.excel_report.config_loader import load_excel_v2_config
-from src.excel_report.snapshot import build_lead_snapshot
+from src.v2.config_loader import load_excel_v2_config
+from src.v2.snapshot import build_lead_snapshot
 from src.filters import filter_terminal_deal_stage_rows
 from src.lead_tracker import build_lead_stage_records
 from src.settings import col
