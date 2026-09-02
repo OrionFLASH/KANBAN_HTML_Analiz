@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from src.date_utils import parse_date_column
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
+from src.resource_guard import release_memory_if_needed
 from src.settings import col, load_column_names, required_column_names
 
 logger: logging.Logger = logging.getLogger("kanban.excel_loader")
@@ -226,6 +227,7 @@ def load_all_files(
             logger.info(msg)
             if progress:
                 progress.step(msg)
+            release_memory_if_needed(config, logger, checkpoint=path.name)
     else:
         args_list: list[tuple[str, dict[str, Any]]] = [(str(p), config) for p in paths]
         done: int = 0
@@ -249,6 +251,7 @@ def load_all_files(
                     logger.info(msg)
                     if progress:
                         progress.step(msg)
+                    release_memory_if_needed(config, logger, checkpoint=Path(path_str).name)
                 except Exception as exc:
                     logger.error("Ошибка загрузки %s: %s", path_str, exc)
                     raise

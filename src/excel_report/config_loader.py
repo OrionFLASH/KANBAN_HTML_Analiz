@@ -24,6 +24,7 @@ def load_excel_v2_config(config_path: str | Path = "config_excel_v2.json") -> di
 
     config: dict[str, Any] = normalize_config(raw)
     _validate_excel_v2_config(config)
+    config["_parallel_workers_explicit"] = int(config.get("parallel_workers", 0))
     config["parallel_workers"] = resolve_parallel_workers(config)
     return config
 

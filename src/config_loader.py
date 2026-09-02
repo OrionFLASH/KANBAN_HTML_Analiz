@@ -33,6 +33,7 @@ def load_config(config_path: str | Path = "config.json") -> dict[str, Any]:
 
 def _apply_defaults(config: dict[str, Any]) -> None:
     """Заполняет вычисляемые значения по умолчанию."""
+    config["_parallel_workers_explicit"] = int(config.get("parallel_workers", 0))
     config["parallel_workers"] = resolve_parallel_workers(config)
 
 

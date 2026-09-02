@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import logging
 import sys
 import time
@@ -30,6 +29,7 @@ from src.excel_report.snapshot import snapshot_to_export_frame
 from src.excel_report.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
 from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
+from src.resource_guard import apply_adaptive_resources, maybe_free_memory_between_stages
 from src.logger_setup import setup_logger
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
@@ -39,8 +39,7 @@ logger: logging.Logger = logging.getLogger("kanban.excel_v2.pipeline")
 
 def _maybe_free_memory(config: dict[str, Any]) -> None:
     """Освобождает память между этапами при больших объёмах."""
-    if config.get("performance", {}).get("free_memory_between_stages", True):
-        gc.collect()
+    maybe_free_memory_between_stages(config)
 
 
 def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path:
@@ -51,9 +50,6 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     log = setup_logger(config)
     progress = ProgressReporter(config, log)
 
-    workers: int = resolve_parallel_workers(config)
-    log.info("Старт Excel v2 pipeline (режим=%s, workers=%d)", config["mode"], workers)
-
     input_dir: Path = get_excel_v2_input_dir(config)
     filenames: list[str] = get_excel_v2_file_list(config)
     output_dir: Path = get_excel_v2_output_dir(config)
@@ -63,6 +59,10 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     except InputFilesMissingError as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from exc
+
+    apply_adaptive_resources(config, input_dir, filenames, log)
+    workers: int = resolve_parallel_workers(config)
+    log.info("Старт Excel v2 pipeline (режим=%s, workers=%d)", config["mode"], workers)
 
     out_cfg: dict[str, Any] = config["output"]
     timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))
