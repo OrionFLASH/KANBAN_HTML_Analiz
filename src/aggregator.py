@@ -7,6 +7,10 @@ from typing import Any
 
 import pandas as pd
 
+from src.outlier_clipping import (
+    audit_column_keys,
+    clip_group_frame,
+)
 from src.percentile_stats import (
     compute_metric_percentiles,
     count_unique_km_at_or_above_p80,
@@ -25,7 +29,7 @@ def _aggregate_group(
     percentiles: list[float],
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Считает метрики для одной группы."""
+    """Считает метрики для одной группы (уже после отсечения выбросов)."""
     row: dict[str, Any] = {}
     has_p80: bool = any(abs(float(p) - 80.0) < 1e-9 for p in percentiles)
     km_col: str | None = None
@@ -73,14 +77,28 @@ def aggregate_statistics(
     if not metrics:
         return pd.DataFrame()
 
+    write_audit: bool = bool(audit_column_keys(config))
     rows: list[dict[str, Any]] = []
     grouped = records.groupby(base_cols, dropna=False, observed=True, sort=False)
 
     for keys, group in grouped:
         if not isinstance(keys, tuple):
             keys = (keys,)
-        row: dict[str, Any] = dict(zip(base_cols, keys))
-        row.update(_aggregate_group(group, metrics, percentiles, config))
+        group_keys: dict[str, Any] = dict(zip(base_cols, keys))
+        clipped_group, audit = clip_group_frame(group, group_keys, config)
+
+        row: dict[str, Any] = dict(group_keys)
+        if clipped_group.empty:
+            for metric in metrics:
+                row[f"{metric}_count"] = 0
+            if write_audit:
+                row.update(audit)
+            rows.append(row)
+            continue
+
+        row.update(_aggregate_group(clipped_group, metrics, percentiles, config))
+        if write_audit:
+            row.update(audit)
         rows.append(row)
 
     result: pd.DataFrame = pd.DataFrame(rows)

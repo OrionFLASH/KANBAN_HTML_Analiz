@@ -244,9 +244,12 @@ def build_min_max_count_column_mapping(config: dict[str, Any]) -> dict[str, str]
 
 def build_statistics_export_mapping(config: dict[str, Any]) -> dict[str, str]:
     """Полный mapping статистических колонок для Excel."""
+    from src.outlier_clipping import build_outlier_audit_mapping
+
     result: dict[str, str] = {}
     result.update(build_min_max_count_column_mapping(config))
     result.update(build_percentile_column_mapping(config))
+    result.update(build_outlier_audit_mapping(config))
     return result
 
 
@@ -258,8 +261,17 @@ def _is_statistics_column(name: str, metrics: list[str]) -> bool:
     return False
 
 
+def _is_outlier_audit_column(name: str) -> bool:
+    """True — колонка аудита отсечения выбросов."""
+    return name in {"outlier_before", "outlier_after", "outlier_clipped_total"} or name.startswith(
+        "outlier_rule_"
+    )
+
+
 def filter_and_order_statistics_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Оставляет измерения + экспортируемые стат-колонки в нужном порядке."""
+    """Оставляет измерения + стат-колонки + аудит выбросов в нужном порядке."""
+    from src.outlier_clipping import audit_column_keys
+
     if frame.empty:
         return frame
     metrics: list[str] = list(config.get("aggregation", {}).get("metrics", ["days_on_stage", "days_since_deal"]))
@@ -269,10 +281,18 @@ def filter_and_order_statistics_frame(frame: pd.DataFrame, config: dict[str, Any
             if col_name in frame.columns and col_name not in export_cols:
                 export_cols.append(col_name)
 
+    audit_cols: list[str] = [c for c in audit_column_keys(config) if c in frame.columns]
+    # На случай неизвестных outlier_* колонок
+    for c in frame.columns:
+        if _is_outlier_audit_column(str(c)) and c not in audit_cols:
+            audit_cols.append(str(c))
+
     dim_cols: list[str] = [
-        c for c in frame.columns if not _is_statistics_column(str(c), metrics)
+        c
+        for c in frame.columns
+        if not _is_statistics_column(str(c), metrics) and not _is_outlier_audit_column(str(c))
     ]
-    ordered: list[str] = dim_cols + export_cols
+    ordered: list[str] = dim_cols + export_cols + audit_cols
     return frame[ordered].copy()
 
 
