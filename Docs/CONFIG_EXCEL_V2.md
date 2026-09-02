@@ -245,6 +245,17 @@ python -m src.excel_report.pipeline
 | `performance.parallel_pipeline_stages` | `true` | Параллельно: снимок + трекинг стадий + загрузка команд |
 | `performance.parallel_stage_workers` | `0` | Workers для параллельных этапов (`0` = как `parallel_workers`) |
 
+### `performance.adaptive_resources`
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `enabled` | `true` | Мониторинг RAM и автоснижение workers (см. `CONFIG.md` §8) |
+| `min_available_ram_gb` | `3.0` | Порог warn (ГБ свободной RAM) |
+| `critical_available_ram_gb` | `1.5` | Порог critical |
+| `sequential_load_below_total_ram_gb` | `20.0` | При RAM < порога — загрузка файлов последовательно |
+| `gc_on_pressure` | `true` | `gc.collect()` между файлами при warn/critical |
+| `override_explicit_workers_on_critical` | `true` | Сброс явного `parallel_workers` при critical |
+
 При `parallel_pipeline_stages: true` одновременно выполняются:
 
 1. `build_lead_snapshot` (CPU)
