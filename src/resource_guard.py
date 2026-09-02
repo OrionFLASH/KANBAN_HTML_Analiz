@@ -78,9 +78,11 @@ def adaptive_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_system_memory() -> SystemMemory:
-    """Возвращает объём RAM через stdlib (Windows ctypes / Linux /proc)."""
+    """Возвращает объём RAM через stdlib (Windows / Linux / macOS)."""
     if sys.platform == "win32":
         return _memory_windows()
+    if sys.platform == "darwin":
+        return _memory_macos()
     return _memory_linux()
 
 
@@ -105,6 +107,70 @@ def _memory_linux() -> SystemMemory:
         total_bytes=total_kb * 1024,
         available_bytes=avail_kb * 1024,
     )
+
+
+def _memory_macos() -> SystemMemory:
+    """
+    macOS без pip: total через sysconf/sysctl, available через vm_stat
+    (free + inactive + speculative) × page_size.
+    """
+    import subprocess
+
+    total: int = 0
+    page_size: int = 4096
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        phys_pages: int = int(os.sysconf("SC_PHYS_PAGES"))
+        if page_size > 0 and phys_pages > 0:
+            total = page_size * phys_pages
+    except (ValueError, OSError, AttributeError):
+        pass
+
+    if total <= 0:
+        try:
+            out: str = subprocess.check_output(
+                ["sysctl", "-n", "hw.memsize"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            total = int(out)
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return SystemMemory(total_bytes=0, available_bytes=0)
+
+    available: int = max(total // 4, 0)
+    try:
+        vm_out: str = subprocess.check_output(
+            ["vm_stat"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        free_pages: int = 0
+        inactive_pages: int = 0
+        speculative_pages: int = 0
+        for line in vm_out.splitlines():
+            lower: str = line.lower()
+            if "page size of" in lower:
+                # «… page size of 16384 bytes»
+                parts: list[str] = line.replace("(", " ").replace(")", " ").split()
+                for idx, token in enumerate(parts):
+                    if token.isdigit() and idx + 1 < len(parts) and "byte" in parts[idx + 1]:
+                        page_size = int(token)
+                        break
+            elif line.startswith("Pages free:"):
+                free_pages = int(line.split(":")[1].strip().rstrip(".").replace(",", ""))
+            elif line.startswith("Pages inactive:"):
+                inactive_pages = int(line.split(":")[1].strip().rstrip(".").replace(",", ""))
+            elif line.startswith("Pages speculative:"):
+                speculative_pages = int(line.split(":")[1].strip().rstrip(".").replace(",", ""))
+        pages: int = free_pages + inactive_pages + speculative_pages
+        if pages > 0 and page_size > 0:
+            available = pages * page_size
+    except (OSError, ValueError, subprocess.CalledProcessError, IndexError):
+        pass
+
+    if available > total:
+        available = total
+    return SystemMemory(total_bytes=total, available_bytes=available)
 
 
 def _memory_windows() -> SystemMemory:
@@ -139,6 +205,8 @@ def get_process_rss_bytes() -> int:
     """RSS текущего процесса (байты)."""
     if sys.platform == "win32":
         return _process_rss_windows()
+    if sys.platform == "darwin":
+        return _process_rss_macos()
     return _process_rss_linux()
 
 
@@ -151,6 +219,21 @@ def _process_rss_linux() -> int:
     except OSError:
         return 0
     return 0
+
+
+def _process_rss_macos() -> int:
+    """RSS через ps -o rss= (КиБ)."""
+    import subprocess
+
+    try:
+        out: str = subprocess.check_output(
+            ["ps", "-o", "rss=", "-p", str(os.getpid())],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        return int(out.split()[0]) * 1024
+    except (OSError, ValueError, subprocess.CalledProcessError, IndexError):
+        return 0
 
 
 def _process_rss_windows() -> int:
@@ -337,13 +420,18 @@ def apply_adaptive_resources(
 
     sink: logging.Logger = log or logger
     rss_mb: float = get_process_rss_bytes() / (1024**2)
+    input_gb: float = input_bytes / (1024**3)
+    input_mb: float = input_bytes / (1024**2)
+    input_label: str = (
+        f"{input_mb:.1f} МБ" if input_gb < 0.1 else f"{input_gb:.2f} ГБ"
+    )
     sink.info(
-        "Адаптивные ресурсы: RAM %.1f/%.1f ГБ (%.0f%%), вход %.1f ГБ, "
+        "Адаптивные ресурсы: RAM %.1f/%.1f ГБ (занято %.0f%%), вход %s, "
         "давление=%s, workers=%d, parallel_stages=%s, html_slices=%s",
         mem.available_gb,
         mem.total_gb,
         mem.used_percent,
-        input_bytes / (1024**3),
+        input_label,
         plan.pressure,
         plan.parallel_workers,
         plan.parallel_pipeline_stages,

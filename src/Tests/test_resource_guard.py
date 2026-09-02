@@ -87,13 +87,19 @@ def test_apply_adaptive_mutates_config(tmp_path: Path) -> None:
 def test_sum_input_bytes(tmp_path: Path) -> None:
     f1 = tmp_path / "a.xlsx"
     f2 = tmp_path / "b.xlsx"
-    f1.write_bytes(b"12345")
-    f2.write_bytes(b"67")
+    f1.write_bytes(b"12345")  # 5 байт
+    f2.write_bytes(b"67")  # 2 байта
 
-    assert sum_input_bytes(tmp_path, ["a.xlsx", "b.xlsx", "missing.xlsx"]) == 12
+    assert sum_input_bytes(tmp_path, ["a.xlsx", "b.xlsx", "missing.xlsx"]) == 7
 
 
 def test_get_system_memory_smoke() -> None:
     mem = get_system_memory()
     assert mem.total_bytes >= 0
     assert mem.available_bytes >= 0
+    # На реальной ОС (не CI без /proc и без darwin API) ожидаем ненулевой total
+    import sys
+
+    if sys.platform in {"darwin", "win32", "linux"}:
+        assert mem.total_bytes > 0, f"RAM не определена на {sys.platform}"
+        assert mem.available_bytes > 0
