@@ -418,7 +418,19 @@
     "precompute_pivot_matrices": false,
     "parallel_pipeline_stages": true,
     "parallel_stage_workers": 0,
-    "parallel_team_files": true
+    "parallel_team_files": true,
+    "adaptive_resources": {
+      "enabled": true,
+      "min_available_ram_gb": 3.0,
+      "critical_available_ram_gb": 1.5,
+      "warn_used_ram_percent": 80.0,
+      "critical_used_ram_percent": 92.0,
+      "sequential_load_below_total_ram_gb": 20.0,
+      "input_size_per_worker_gb": 1.2,
+      "gc_on_pressure": true,
+      "override_explicit_workers_on_critical": true,
+      "disable_html_slices_on_critical": true
+    }
   },
   "progress": {
     "enabled": true,

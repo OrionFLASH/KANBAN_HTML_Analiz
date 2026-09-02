@@ -654,6 +654,35 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 | `compact_distribution_series` | `true` | В JSON серии как `days_sorted` вместо `{lead_index, days}` — меньше размер, те же данные |
 | `precompute_pivot_matrices` | `false` | Не дублировать матрицы в JSON (HTML строит из `pivot_flat`) |
 
+### `performance.adaptive_resources`
+
+Автоподстройка workers и параллелизма по доступной RAM (stdlib, без pip). См. `src/resource_guard.py`.
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `enabled` | `true` | Включить мониторинг RAM и адаптацию перед загрузкой |
+| `min_available_ram_gb` | `3.0` | Уровень **warn**, если свободно меньше (ГБ) |
+| `critical_available_ram_gb` | `1.5` | Уровень **critical**, если свободно меньше (ГБ) |
+| `warn_used_ram_percent` | `80.0` | **warn**, если занято RAM ≥ этого процента |
+| `critical_used_ram_percent` | `92.0` | **critical**, если занято RAM ≥ этого процента |
+| `sequential_load_below_total_ram_gb` | `20.0` | При общей RAM меньше — `parallel_workers = 1` |
+| `input_size_per_worker_gb` | `1.2` | Оценка RAM на один worker при расчёте workers |
+| `gc_on_pressure` | `true` | `gc.collect()` между файлами при warn/critical |
+| `override_explicit_workers_on_critical` | `true` | При critical сбросить даже явный `parallel_workers` |
+| `disable_html_slices_on_critical` | `true` | При critical выключить `precompute_html_filter_slices` |
+
+```json
+"performance": {
+  "adaptive_resources": {
+    "enabled": true,
+    "min_available_ram_gb": 3.0,
+    "critical_available_ram_gb": 1.5,
+    "sequential_load_below_total_ram_gb": 20.0,
+    "gc_on_pressure": true
+  }
+}
+```
+
 **Слабый ПК / работа параллельно с другими задачами:**
 
 ```json
