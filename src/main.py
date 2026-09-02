@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import sys
 import time
 from datetime import datetime
@@ -31,6 +30,7 @@ from src.visualization_data import (
 )
 from src.settings import with_product_analysis_mode
 from src.logger_setup import setup_logger
+from src.resource_guard import apply_adaptive_resources, maybe_free_memory_between_stages
 from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
 from src.project_paths import resolve_path
@@ -38,8 +38,7 @@ from src.project_paths import resolve_path
 
 def _maybe_free_memory(config: dict) -> None:
     """Освобождает память между этапами при больших объёмах."""
-    if config.get("performance", {}).get("free_memory_between_stages", True):
-        gc.collect()
+    maybe_free_memory_between_stages(config)
 
 
 def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
@@ -50,9 +49,6 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     logger = setup_logger(config)
     progress = ProgressReporter(config, logger)
 
-    workers: int = resolve_parallel_workers(config)
-    logger.info("Старт pipeline Kanban Analiz (режим=%s, workers=%d)", config["mode"], workers)
-
     input_dir: Path = get_input_dir(config)
     filenames: list[str] = get_file_list(config)
     output_dir: Path = get_output_dir(config)
@@ -62,6 +58,10 @@ def run(config_path: str | Path = "config.json") -> tuple[Path, Path]:
     except InputFilesMissingError as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from exc
+
+    apply_adaptive_resources(config, input_dir, filenames, logger)
+    workers: int = resolve_parallel_workers(config)
+    logger.info("Старт pipeline Kanban Analiz (режим=%s, workers=%d)", config["mode"], workers)
 
     out_cfg: dict = config["output"]
     timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))

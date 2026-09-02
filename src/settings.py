@@ -105,6 +105,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "free_memory_between_stages": True,
         "compact_distribution_series": True,
         "precompute_pivot_matrices": False,
+        "adaptive_resources": {
+            "enabled": True,
+            "min_available_ram_gb": 3.0,
+            "critical_available_ram_gb": 1.5,
+            "warn_used_ram_percent": 80.0,
+            "critical_used_ram_percent": 92.0,
+            "sequential_load_below_total_ram_gb": 20.0,
+            "input_size_per_worker_gb": 1.2,
+            "gc_on_pressure": True,
+            "override_explicit_workers_on_critical": True,
+            "disable_html_slices_on_critical": True,
+        },
     },
     "progress": {
         "enabled": True,
