@@ -169,10 +169,13 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     _maybe_free_memory(config)
 
     progress.stage("Экспорт Excel", str(excel_path.name))
+    # Пустой кадр-плейсхолдер: содержимое листа «Статистика» пишется из funnel/summary
+    statistics_placeholder: pd.DataFrame = pd.DataFrame()
     _, csv_paths = export_excel_v2(
         excel_path,
         {
             "norms": norms_export,
+            "statistics": statistics_placeholder,
             "leads": leads_export,
             "managers": manager_summary,
             "violations": violations_detail,

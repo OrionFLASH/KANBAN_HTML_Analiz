@@ -1,6 +1,6 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия копии POST:** 2.2.0 (2026-09-02)
+**Версия копии POST:** 2.2.1 (2026-09-02)
 
 Инструкция для работы после пересылки по почте или копированием каталога.
 
@@ -28,6 +28,7 @@ KANBAN_HTML_Analiz/
 │   ├── v2/                        # Excel-only pipeline (run_excel.py)
 │   ├── filters.py                 # общие модули
 │   ├── outlier_clipping.py        # выбросы срока (v2 нормативы)
+│   ├── filter_funnel.py           # воронка фильтров → лист «Статистика»
 │   ├── excel_loader.py
 │   ├── lead_tracker.py
 │   ├── aggregator.py
