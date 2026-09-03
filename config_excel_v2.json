@@ -525,21 +525,21 @@
           "compute": true,
           "export_days": true,
           "export_count": false,
-          "export_le_count": false,
-          "export_gt_count": false,
+          "export_le_count": true,
+          "export_gt_count": true,
           "export_min": false,
           "export_max": false,
-          "export_km_count": false
+          "export_km_count": true
         },
         {
           "p": 80,
           "compute": true,
           "export_days": true,
           "export_count": false,
-          "export_le_count": true,
-          "export_gt_count": true,
-          "export_min": true,
-          "export_max": true,
+          "export_le_count": false,
+          "export_gt_count": false,
+          "export_min": false,
+          "export_max": false,
           "export_km_count": false
         }
       ]
