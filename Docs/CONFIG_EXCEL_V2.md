@@ -428,9 +428,12 @@ python -m src.v2.pipeline
 | `enabled` | `true` | Мониторинг RAM и автоснижение workers (см. `CONFIG.md` §8) |
 | `min_available_ram_gb` | `3.0` | Порог warn (ГБ свободной RAM) |
 | `critical_available_ram_gb` | `1.5` | Порог critical |
-| `sequential_load_below_total_ram_gb` | `20.0` | При RAM < порога — загрузка файлов последовательно |
+| `sequential_load_below_total_ram_gb` | `16.0` | При общей RAM &lt; порога — осторожный режим |
+| `low_ram_max_workers` | `2` | Потолок workers в осторожном режиме |
+| `warn_max_workers` | `2` | Потолок workers при warn |
+| `critical_max_workers` | `1` | Потолок workers при critical |
 | `gc_on_pressure` | `true` | `gc.collect()` между файлами при warn/critical |
-| `override_explicit_workers_on_critical` | `true` | Сброс явного `parallel_workers` при critical |
+| `override_explicit_workers_on_critical` | `true` | Ограничение явного `parallel_workers` при critical |
 
 При `parallel_pipeline_stages: true` одновременно выполняются:
 
