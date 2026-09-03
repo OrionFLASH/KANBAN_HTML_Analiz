@@ -9,6 +9,7 @@ import pandas as pd
 
 from src.client_names import abbreviate_client_name
 from src.settings import col
+from src.v2.exceedance_config import resolve_exceedance_columns
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.snapshot")
 
@@ -112,11 +113,12 @@ def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
 
     export_cols: list[str] = [lead_col] + [mapping[k] for k in mapping if k in snapshot.columns]
     renamed: pd.DataFrame = snapshot.rename(columns=rename)
+    exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     extra_cols: list[str] = [
-        config["output"]["exceedance_columns"]["p80_norm"],
-        config["output"]["exceedance_columns"]["current_days"],
-        config["output"]["exceedance_columns"]["exceedance_flag"],
-        config["output"]["exceedance_columns"]["exceedance_days"],
+        exc_cfg["p80_norm"],
+        exc_cfg["current_days"],
+        exc_cfg["exceedance_flag"],
+        exc_cfg["exceedance_days"],
     ]
     for col_name in extra_cols:
         if col_name in renamed.columns:

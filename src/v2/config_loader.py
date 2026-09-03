@@ -38,6 +38,19 @@ def _validate_excel_v2_config(config: dict[str, Any]) -> None:
             raise ValueError(f"paths.{key} обязателен")
     if not config.get("percentiles"):
         raise ValueError("percentiles не может быть пустым")
+    exc: dict[str, Any] = dict(config.get("exceedance") or {})
+    if "percentile" in exc:
+        try:
+            p_val: float = float(exc["percentile"])
+        except (TypeError, ValueError) as err:
+            raise ValueError("exceedance.percentile должен быть числом") from err
+        if not (0 < p_val <= 100):
+            raise ValueError("exceedance.percentile должен быть в диапазоне (0, 100]")
+        percentiles: list[float] = [float(x) for x in config["percentiles"]]
+        if not any(abs(p_val - x) < 1e-9 for x in percentiles):
+            raise ValueError(
+                f"exceedance.percentile={p_val} должен входить в percentiles={percentiles}"
+            )
 
 
 def config_for_shared_modules(config: dict[str, Any]) -> dict[str, Any]:

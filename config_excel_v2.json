@@ -121,6 +121,9 @@
   "stage_analysis_mode": "status",
   "product_analysis_mode": "group_product",
   "percentiles": [20, 50, 80],
+  "exceedance": {
+    "percentile": 80
+  },
   "aggregation": {
     "group_keys": [
       "product_group",
@@ -409,9 +412,11 @@
       "days_on_stage_min": "Мин срок дней",
       "days_on_stage_max": "Макс срок дней",
       "days_on_stage_count": "Число лидов",
-      "outlier_before": "До отсечения",
+      "outlier_before": "До выбросов",
       "outlier_after": "После отсечения",
-      "outlier_clipped_total": "Отсечено (всего)",
+      "outlier_clipped_total": "Отсечено выбросами (всего)",
+      "filter_before": "До отсечения",
+      "filter_after": "После фильтров",
       "outlier_rule_global_max_500": "Отсечено: global_max_500",
       "outlier_rule_example_range_2_500": "Отсечено: example_range_2_500",
       "outlier_rule_example_trim_5pct": "Отсечено: example_trim_5pct",
@@ -516,7 +521,7 @@
       "vks": "ВКС"
     },
     "exceedance_columns": {
-      "p80_norm": "Норматив P80",
+      "p80_norm": "Норматив P{p}",
       "current_days": "Текущий срок",
       "exceedance_flag": "превышение",
       "exceedance_days": "дней отклонения"

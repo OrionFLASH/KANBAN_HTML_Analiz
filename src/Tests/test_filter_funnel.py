@@ -67,4 +67,5 @@ def test_outlier_summary_when_disabled() -> None:
     cfg = _cfg()
     cfg["outlier_clipping"]["enabled"] = False
     summary = build_outlier_audit_summary(pd.DataFrame(), cfg)
-    assert "выключено" in str(summary.iloc[0]["Значение"]).lower()
+    text = " ".join(summary["Значение"].astype(str).tolist()).lower()
+    assert "выключено" in text

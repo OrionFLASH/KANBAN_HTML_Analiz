@@ -67,15 +67,19 @@ def audit_column_keys(config: dict[str, Any]) -> list[str]:
 
 def build_outlier_audit_mapping(config: dict[str, Any]) -> dict[str, str]:
     """Mapping внутренних колонок аудита → заголовки Excel."""
+    from src.filter_funnel import filter_audit_column_keys
+
     labels: dict[str, str] = config.get("output", {}).get("column_labels", {})
+    has_input_filters: bool = bool(filter_audit_column_keys(config))
     mapping: dict[str, str] = {}
     for key in audit_column_keys(config):
         if key == AUDIT_BEFORE:
-            mapping[key] = labels.get(key, "До отсечения")
+            default: str = "До выбросов" if has_input_filters else "До отсечения"
+            mapping[key] = labels.get(key, default)
         elif key == AUDIT_AFTER:
             mapping[key] = labels.get(key, "После отсечения")
         elif key == AUDIT_CLIPPED:
-            mapping[key] = labels.get(key, "Отсечено (всего)")
+            mapping[key] = labels.get(key, "Отсечено выбросами (всего)")
         elif key.startswith(AUDIT_RULE_PREFIX):
             rule_name: str = key[len(AUDIT_RULE_PREFIX) :]
             mapping[key] = labels.get(key, f"Отсечено: {rule_name}")

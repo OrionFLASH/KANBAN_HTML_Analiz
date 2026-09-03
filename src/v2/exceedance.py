@@ -1,4 +1,4 @@
-"""Превышение норматива P80 на уровне уникальных лидов."""
+"""Превышение настраиваемого перцентиля на уровне уникальных лидов."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from src.v2.exceedance_config import exceedance_percentile_display, resolve_exceedance_columns
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.exceedance")
 
@@ -18,17 +20,19 @@ def attach_p80_exceedance(
     config: dict[str, Any],
 ) -> pd.DataFrame:
     """
-    Добавляет норматив P80, текущий срок, флаг превышения и дней отклонения.
+    Добавляет норматив перцентиля, текущий срок, флаг превышения и дней отклонения.
     Векторизованный merge вместо iterrows.
+    Имя attach_p80_exceedance сохранено для совместимости; порог берётся из exceedance.percentile.
     """
     if snapshot.empty:
         return snapshot
 
-    exc_cfg: dict[str, str] = config["output"]["exceedance_columns"]
+    exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     p80_col: str = exc_cfg["p80_norm"]
     current_col: str = exc_cfg["current_days"]
     flag_col: str = exc_cfg["exceedance_flag"]
     days_col: str = exc_cfg["exceedance_days"]
+    p_disp: str = exceedance_percentile_display(config)
 
     merge_keys: list[str] = ["tb", "product_group", "product", "current_status"]
     work: pd.DataFrame = snapshot.copy()
@@ -67,5 +71,10 @@ def attach_p80_exceedance(
     work = work.drop(columns=["_p80_tb", "_p80_all"], errors="ignore")
 
     exceeded_count: int = int(exceeded.sum())
-    logger.info("Превышения P80: %s из %s лидов", f"{exceeded_count:,}", f"{len(work):,}")
+    logger.info(
+        "Превышения P%s: %s из %s лидов",
+        p_disp,
+        f"{exceeded_count:,}",
+        f"{len(work):,}",
+    )
     return work

@@ -11,6 +11,7 @@ import pandas as pd
 from src.settings import col
 from src.tab_number import normalize_tab_number, normalize_tab_number_multiline
 from src.team_loader import normalize_person_name
+from src.v2.exceedance_config import managers_exceedance_count_column, resolve_exceedance_columns
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.manager_summary")
 
@@ -46,7 +47,7 @@ def _collect_manager_entries(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
     out_cfg: dict[str, Any] = config.get("team_files", {}).get("output_columns") or {}
     lead_labels: dict[str, str] = dict(out_cfg.get("lead") or {})
     deal_labels: dict[str, str] = dict(out_cfg.get("deal") or {})
-    exc_flag: str = config["output"]["exceedance_columns"]["exceedance_flag"]
+    exc_flag: str = resolve_exceedance_columns(config)["exceedance_flag"]
 
     km_col: str = "km"
     vks_col: str | None = "vks" if config.get("columns", {}).get("vks") else None
@@ -160,6 +161,7 @@ def _manager_summary_from_entries(
     by_manager: dict[str, dict[str, Any]] = {}
     violations_by_gp: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     exceeded_leads_by_manager: dict[str, set[str]] = defaultdict(set)
+    exceed_count_col: str = managers_exceedance_count_column(config)
 
     lead_col: str = col(config, "lead_id")
 
@@ -171,7 +173,7 @@ def _manager_summary_from_entries(
                 "ФИО": entry["name"],
                 "Роль": entry["role"],
                 "ТБ": entry["tb"],
-                "Превышений P80": 0,
+                exceed_count_col: 0,
                 "Группа + Продукт": "",
             }
 
@@ -179,7 +181,7 @@ def _manager_summary_from_entries(
             lead_id: str = str(entry["lead_id"])
             if lead_id not in exceeded_leads_by_manager[key]:
                 exceeded_leads_by_manager[key].add(lead_id)
-                by_manager[key]["Превышений P80"] += 1
+                by_manager[key][exceed_count_col] += 1
                 gp: str = str(entry.get("group_product") or "")
                 if gp:
                     violations_by_gp[key][gp] += 1
@@ -194,7 +196,7 @@ def _manager_summary_from_entries(
 
     result: pd.DataFrame = pd.DataFrame(rows)
     if not result.empty:
-        result = result.sort_values("Превышений P80", ascending=False, kind="mergesort")
+        result = result.sort_values(exceed_count_col, ascending=False, kind="mergesort")
     logger.info("Свод по менеджеру: %s уникальных записей", f"{len(result):,}")
     return result.reset_index(drop=True)
 
@@ -214,7 +216,7 @@ def _violations_detail_from_entries(
         return pd.DataFrame()
 
     snap_cols: dict[str, str] = config.get("output", {}).get("snapshot_columns") or {}
-    exc_cfg: dict[str, str] = config["output"]["exceedance_columns"]
+    exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     lead_col: str = col(config, "lead_id")
 
     rows: list[dict[str, Any]] = []
