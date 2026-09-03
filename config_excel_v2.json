@@ -122,7 +122,7 @@
   "product_analysis_mode": "group_product",
   "percentiles": [20, 50, 80],
   "exceedance": {
-    "percentile": 80
+    "percentile": 50
   },
   "aggregation": {
     "group_keys": [
@@ -143,7 +143,7 @@
     "rules": [
       {
         "name": "global_max_500",
-        "enabled": true,
+        "enabled": false,
         "scope": {},
         "mode": "range",
         "max_days": 200,
@@ -170,7 +170,7 @@
       },
       {
         "name": "example_unique_days_trim_10pct",
-        "enabled": false,
+        "enabled": true,
         "scope": {},
         "mode": "unique_days_trim",
         "trim_lower_pct": 10,
@@ -233,7 +233,7 @@
       "match": "contains",
       "values": [
         "Стратегия 2 квартал 2026",
-        "Стратегия 2 кватал 2026"
+        "Стратегия 3 квартал 2026"
       ],
       "values_mode": "any",
       "value_type": "string",
@@ -365,6 +365,28 @@
       }
     }
   },
+  "manager_emails": {
+    "enabled": true,
+    "directory": "IN",
+    "filename": "PROM_ALPHA_gamification-statistics.csv",
+    "delimiter": ";",
+    "encoding": "utf-8-sig",
+    "columns": {
+      "tab_number": "Табельный номер",
+      "email_alpha": "Почта Альфа",
+      "email_sigma": "Почта Сигма"
+    },
+    "output_columns": {
+      "lead": {
+        "email_alpha": "Почта Альфа Лидера лида",
+        "email_sigma": "Почта Сигма Лидера лида"
+      },
+      "deal": {
+        "email_alpha": "Почта Альфа Лидера сделки",
+        "email_sigma": "Почта Сигма Лидера сделки"
+      }
+    }
+  },
   "client_display": {
     "enabled": true,
     "abbreviations": [
@@ -408,9 +430,34 @@
     "sheets": {
       "norms": "Нормативы",
       "statistics": "Статистика",
+      "duration_matrix": "Распределение сроков",
       "leads": "Уникальные ID",
       "managers": "Свод по менеджеру",
       "violations": "Свод ПрПр с отклонениями"
+    },
+    "duration_matrix": {
+      "enabled": true,
+      "sort_mode": "by_volume",
+      "freeze_panes": "D4",
+      "total_column_label": "Всего",
+      "day_column_width": 4.5,
+      "row_height": 28,
+      "header_row_height": 22,
+      "filter_row_height": 16,
+      "counts_font_size": 14,
+      "header_fill": "FFF2CC",
+      "filter_row_font_color": "D9D9D9",
+      "max_day_span": 3000,
+      "label_column_widths": {
+        "A": 28,
+        "B": 36,
+        "C": 10
+      },
+      "color_scale": {
+        "start": "63BE7B",
+        "mid": "FFEB84",
+        "end": "F8696B"
+      }
     },
     "column_labels": {
       "product_group": "Группа продукта",

@@ -247,6 +247,8 @@ src/
 | 11.18 | На «Нормативы»: до/после и отсечено по каждому вх. фильтру (по строке группы) | `filter_funnel.py`, `pipeline.py`, `statistics_config.py` | `[v]` |
 | 11.19 | Режим отсечения `unique_days_trim` (процент уникальных сроков слева/справа) | `outlier_clipping.py`, `config_excel_v2.json` | `[v]` |
 | 11.20 | Adaptive resources: лимиты workers/флаги из config; low-RAM 16 ГБ → 2 workers | `resource_guard.py`, configs | `[v]` |
+| 11.21 | Лист матрицы: группа/продукт × дни (число лидов), градиент, freeze D2 | `duration_matrix.py`, `exporter.py` | `[v]` |
+| 11.22 | Почты Альфа/Сигма по ТН лидеров из CSV в `IN/` | `manager_emails.py`, config | `[v]` |
 
 ---
 

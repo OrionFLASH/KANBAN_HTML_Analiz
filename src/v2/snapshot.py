@@ -125,11 +125,28 @@ def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
             export_cols.append(col_name)
 
     team_out: dict[str, Any] = config.get("team_files", {}).get("output_columns") or {}
-    for block in team_out.values():
-        if isinstance(block, dict):
-            for label in block.values():
-                if label in renamed.columns and label not in export_cols:
-                    export_cols.append(str(label))
+    email_out: dict[str, Any] = (
+        (config.get("manager_emails") or {}).get("output_columns") or {}
+    )
+    for block_name in ("lead", "deal"):
+        block = team_out.get(block_name)
+        if not isinstance(block, dict):
+            continue
+        # Стабильный порядок полей лидера
+        for field_key in ("member_tab_number", "member", "role", "tb"):
+            label = block.get(field_key)
+            if label and label in renamed.columns and label not in export_cols:
+                export_cols.append(str(label))
+            if field_key == "member_tab_number":
+                email_block = email_out.get(block_name)
+                if isinstance(email_block, dict):
+                    for ek in ("email_alpha", "email_sigma"):
+                        elabel = email_block.get(ek)
+                        if elabel and elabel in renamed.columns and elabel not in export_cols:
+                            export_cols.append(str(elabel))
+        for label in block.values():
+            if label in renamed.columns and label not in export_cols:
+                export_cols.append(str(label))
 
     present: list[str] = [c for c in export_cols if c in renamed.columns]
     return renamed[present].copy()
