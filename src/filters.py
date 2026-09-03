@@ -521,6 +521,7 @@ def filter_terminal_deal_stage_rows(
     *,
     audit_each_filter: bool = False,
     funnel: list[dict[str, Any]] | None = None,
+    group_auditor: Any = None,
 ) -> pd.DataFrame:
     """
     Убирает строки с терминальной стадией (конкретная дата отчёта).
@@ -556,6 +557,8 @@ def filter_terminal_deal_stage_rows(
             after_df=result,
             config=config,
             kind="exclude",
+            filter_name=name,
+            group_auditor=group_auditor,
         )
         if audit_each_filter:
             audit_rows(
@@ -577,6 +580,7 @@ def _apply_filter_subset(
     include_filter: Any,
     audit_each_filter: bool = False,
     funnel: list[dict[str, Any]] | None = None,
+    group_auditor: Any = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Общая логика AND-фильтрации с предикатом include_filter(name, flt)."""
     from src.filter_funnel import append_funnel_step
@@ -615,6 +619,8 @@ def _apply_filter_subset(
             after_df=result,
             config=config,
             kind="filter",
+            filter_name=name,
+            group_auditor=group_auditor,
         )
         if audit_each_filter:
             audit_rows(
@@ -634,6 +640,7 @@ def apply_filters(
     *,
     audit_each_filter: bool = False,
     funnel: list[dict[str, Any]] | None = None,
+    group_auditor: Any = None,
 ) -> pd.DataFrame:
     """Оставляет строки после включённых фильтров Excel (без exclude — см. lead_tracker)."""
     filters_cfg: dict[str, Any] = config.get("filters", {})
@@ -645,6 +652,7 @@ def apply_filters(
         and not is_exclude_filter(flt),
         audit_each_filter=audit_each_filter,
         funnel=funnel,
+        group_auditor=group_auditor,
     )
 
     if active:

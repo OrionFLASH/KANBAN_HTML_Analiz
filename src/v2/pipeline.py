@@ -14,9 +14,11 @@ import pandas as pd
 from src.data_audit import audit_rows, audit_snapshot_coverage
 from src.excel_loader import load_all_files
 from src.filter_funnel import (
+    GroupFilterAuditor,
     append_funnel_step,
     build_filter_funnel_frame,
     build_outlier_audit_summary,
+    merge_filter_audit_into_norms,
 )
 from src.v2.config_loader import (
     config_for_shared_modules,
@@ -85,6 +87,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     progress.stage("Фильтрация", f"{rows_loaded:,} строк")
     audit_filters: bool = bool(config.get("processing", {}).get("audit_row_counts", True))
     funnel_steps: list[dict[str, Any]] = []
+    group_auditor: GroupFilterAuditor = GroupFilterAuditor(config)
     append_funnel_step(
         funnel_steps,
         stage="Загрузка Kanban",
@@ -92,18 +95,21 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         after_df=raw_df,
         config=config,
         kind="load",
+        group_auditor=group_auditor,
     )
     after_inclusion: pd.DataFrame = apply_filters(
         raw_df,
         config,
         audit_each_filter=audit_filters,
         funnel=funnel_steps,
+        group_auditor=group_auditor,
     )
     filtered_df: pd.DataFrame = filter_terminal_deal_stage_rows(
         after_inclusion,
         config,
         audit_each_filter=audit_filters,
         funnel=funnel_steps,
+        group_auditor=group_auditor,
     )
     filters_active: bool = any(
         f.get("enabled") for f in config.get("filters", {}).values() if isinstance(f, dict)
@@ -141,6 +147,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         raise RuntimeError("Нет данных для агрегации после трекинга лидов")
 
     combined_norms, by_tb, overall = build_norms_tables(records, config)
+    combined_norms = merge_filter_audit_into_norms(combined_norms, group_auditor, config)
     tb_p80, all_p80 = build_p80_lookup_frames(by_tb, overall, config)
     snapshot = attach_p80_exceedance(snapshot, tb_p80, all_p80, config)
     progress.done(f"Нормативных групп: {len(combined_norms):,}")

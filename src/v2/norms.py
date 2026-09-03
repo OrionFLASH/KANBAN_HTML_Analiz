@@ -11,6 +11,7 @@ from src.aggregator import build_all_statistics
 from src.percentile_stats import percentile_label
 from src.settings import col
 from src.statistics_config import build_statistics_export_mapping, filter_and_order_statistics_frame
+from src.v2.exceedance_config import exceedance_percentile, exceedance_percentile_display
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.norms")
 
@@ -58,10 +59,12 @@ def build_p80_lookup_frames(
     config: dict[str, Any],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Два DataFrame для merge: норматив P80 по ТБ и fallback по всем ТБ.
-    Колонки: tb, product_group, product, current_status, p80.
+    Два DataFrame для merge: норматив перцентиля по ТБ и fallback по всем ТБ.
+    Колонки: tb, product_group, product, current_status, p80 (внутреннее имя порога).
+    Перцентиль берётся из exceedance.percentile (по умолчанию 80).
     """
-    p80_key: str = f"days_on_stage_{percentile_label(80.0)}_days"
+    percentile: float = exceedance_percentile(config)
+    p80_key: str = f"days_on_stage_{percentile_label(percentile)}_days"
     pg_col: str = col(config, "product_group")
     pr_col: str = col(config, "product")
     status_col: str = "current_status"
@@ -72,6 +75,11 @@ def build_p80_lookup_frames(
 
     if by_tb.empty or p80_key not in by_tb.columns:
         tb_frame: pd.DataFrame = empty.copy()
+        logger.warning(
+            "Нет колонки норматива %s (exceedance.percentile=%s) в by_tb",
+            p80_key,
+            exceedance_percentile_display(config),
+        )
     else:
         tb_frame = by_tb[[tb_col, pg_col, pr_col, status_col, p80_key]].copy()
         tb_frame.columns = ["tb", *merge_keys, "p80"]
@@ -92,7 +100,7 @@ def build_p80_lookup(
     config: dict[str, Any],
 ) -> dict[tuple[str, ...], int | None]:
     """
-    Ключ (tb, product_group, product, current_status) → порог P80 (дни).
+    Ключ (tb, product_group, product, current_status) → порог перцентиля (дни).
     Для overall ключ tb = __ALL__. Оставлен для совместимости; предпочтительнее merge через build_p80_lookup_frames.
     """
     lookup: dict[tuple[str, ...], int | None] = {}

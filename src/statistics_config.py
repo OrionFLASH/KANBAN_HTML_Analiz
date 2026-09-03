@@ -244,11 +244,13 @@ def build_min_max_count_column_mapping(config: dict[str, Any]) -> dict[str, str]
 
 def build_statistics_export_mapping(config: dict[str, Any]) -> dict[str, str]:
     """Полный mapping статистических колонок для Excel."""
+    from src.filter_funnel import build_filter_audit_mapping
     from src.outlier_clipping import build_outlier_audit_mapping
 
     result: dict[str, str] = {}
     result.update(build_min_max_count_column_mapping(config))
     result.update(build_percentile_column_mapping(config))
+    result.update(build_filter_audit_mapping(config))
     result.update(build_outlier_audit_mapping(config))
     return result
 
@@ -268,8 +270,14 @@ def _is_outlier_audit_column(name: str) -> bool:
     )
 
 
+def _is_filter_audit_column(name: str) -> bool:
+    """True — колонка аудита входных фильтров."""
+    return name in {"filter_before", "filter_after"} or name.startswith("filter_dropped_")
+
+
 def filter_and_order_statistics_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Оставляет измерения + стат-колонки + аудит выбросов в нужном порядке."""
+    """Оставляет измерения + стат-колонки + аудит фильтров/выбросов в нужном порядке."""
+    from src.filter_funnel import filter_audit_column_keys
     from src.outlier_clipping import audit_column_keys
 
     if frame.empty:
@@ -281,6 +289,11 @@ def filter_and_order_statistics_frame(frame: pd.DataFrame, config: dict[str, Any
             if col_name in frame.columns and col_name not in export_cols:
                 export_cols.append(col_name)
 
+    filter_cols: list[str] = [c for c in filter_audit_column_keys(config) if c in frame.columns]
+    for c in frame.columns:
+        if _is_filter_audit_column(str(c)) and c not in filter_cols:
+            filter_cols.append(str(c))
+
     audit_cols: list[str] = [c for c in audit_column_keys(config) if c in frame.columns]
     # На случай неизвестных outlier_* колонок
     for c in frame.columns:
@@ -290,9 +303,12 @@ def filter_and_order_statistics_frame(frame: pd.DataFrame, config: dict[str, Any
     dim_cols: list[str] = [
         c
         for c in frame.columns
-        if not _is_statistics_column(str(c), metrics) and not _is_outlier_audit_column(str(c))
+        if not _is_statistics_column(str(c), metrics)
+        and not _is_outlier_audit_column(str(c))
+        and not _is_filter_audit_column(str(c))
     ]
-    ordered: list[str] = dim_cols + export_cols + audit_cols
+    # Сначала входные фильтры (до/после + по каждому), затем выбросы
+    ordered: list[str] = dim_cols + export_cols + filter_cols + audit_cols
     return frame[ordered].copy()
 
 
