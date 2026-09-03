@@ -57,23 +57,45 @@ def adaptive_config(config: dict[str, Any]) -> dict[str, Any]:
     """Блок performance.adaptive_resources с дефолтами."""
     perf: dict[str, Any] = config.get("performance", {})
     raw: dict[str, Any] = dict(perf.get("adaptive_resources") or {})
+
+    def _int(key: str, default: int) -> int:
+        try:
+            return max(1, int(raw.get(key, default)))
+        except (TypeError, ValueError):
+            return default
+
+    def _float(key: str, default: float) -> float:
+        try:
+            return float(raw.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _bool(key: str, default: bool) -> bool:
+        return bool(raw.get(key, default))
+
     return {
-        "enabled": bool(raw.get("enabled", True)),
-        "min_available_ram_gb": float(raw.get("min_available_ram_gb", 3.0)),
-        "critical_available_ram_gb": float(raw.get("critical_available_ram_gb", 1.5)),
-        "warn_used_ram_percent": float(raw.get("warn_used_ram_percent", 80.0)),
-        "critical_used_ram_percent": float(raw.get("critical_used_ram_percent", 92.0)),
-        "sequential_load_below_total_ram_gb": float(
-            raw.get("sequential_load_below_total_ram_gb", 20.0)
+        "enabled": _bool("enabled", True),
+        "min_available_ram_gb": _float("min_available_ram_gb", 3.0),
+        "critical_available_ram_gb": _float("critical_available_ram_gb", 1.5),
+        "warn_used_ram_percent": _float("warn_used_ram_percent", 80.0),
+        "critical_used_ram_percent": _float("critical_used_ram_percent", 92.0),
+        # Осторожный режим при малой общей RAM
+        "sequential_load_below_total_ram_gb": _float("sequential_load_below_total_ram_gb", 16.0),
+        "low_ram_max_workers": _int("low_ram_max_workers", 2),
+        "low_ram_disable_parallel_stages": _bool("low_ram_disable_parallel_stages", True),
+        "low_ram_disable_parallel_teams": _bool("low_ram_disable_parallel_teams", True),
+        # Давление warn / critical
+        "warn_max_workers": _int("warn_max_workers", 2),
+        "warn_disable_parallel_stages": _bool("warn_disable_parallel_stages", True),
+        "critical_max_workers": _int("critical_max_workers", 1),
+        "critical_disable_parallel_stages": _bool("critical_disable_parallel_stages", True),
+        "critical_disable_parallel_teams": _bool("critical_disable_parallel_teams", True),
+        "input_size_per_worker_gb": _float("input_size_per_worker_gb", 1.2),
+        "gc_on_pressure": _bool("gc_on_pressure", True),
+        "override_explicit_workers_on_critical": _bool(
+            "override_explicit_workers_on_critical", True
         ),
-        "input_size_per_worker_gb": float(raw.get("input_size_per_worker_gb", 1.2)),
-        "gc_on_pressure": bool(raw.get("gc_on_pressure", True)),
-        "override_explicit_workers_on_critical": bool(
-            raw.get("override_explicit_workers_on_critical", True)
-        ),
-        "disable_html_slices_on_critical": bool(
-            raw.get("disable_html_slices_on_critical", True)
-        ),
+        "disable_html_slices_on_critical": _bool("disable_html_slices_on_critical", True),
     }
 
 
@@ -320,11 +342,16 @@ def build_adaptive_plan(
 
     input_gb: float = input_bytes / (1024**3)
     if mem.total_gb > 0 and mem.total_gb < cfg["sequential_load_below_total_ram_gb"]:
-        workers = 1
-        parallel_stages = False
-        parallel_teams = False
+        low_cap: int = int(cfg["low_ram_max_workers"])
+        workers = min(workers, low_cap)
+        max_workers = min(max_workers, low_cap)
+        if cfg["low_ram_disable_parallel_stages"]:
+            parallel_stages = False
+        if cfg["low_ram_disable_parallel_teams"]:
+            parallel_teams = False
         reasons.append(
-            f"RAM {mem.total_gb:.1f} ГБ < порога {cfg['sequential_load_below_total_ram_gb']:.0f} ГБ"
+            f"RAM {mem.total_gb:.1f} ГБ < порога {cfg['sequential_load_below_total_ram_gb']:.0f} ГБ "
+            f"(осторожный режим, workers≤{low_cap})"
         )
 
     if input_gb > 0 and workers > 1:
@@ -339,31 +366,39 @@ def build_adaptive_plan(
             )
 
     if pressure == "warn":
-        workers = min(workers, 2)
-        max_workers = min(max_workers, 2)
-        parallel_stages = False
+        warn_cap: int = int(cfg["warn_max_workers"])
+        workers = min(workers, warn_cap)
+        max_workers = min(max_workers, warn_cap)
+        if cfg["warn_disable_parallel_stages"]:
+            parallel_stages = False
         reasons.append(
-            f"RAM warn: занято {mem.used_percent:.0f}%, свободно {mem.available_gb:.1f} ГБ"
+            f"RAM warn: занято {mem.used_percent:.0f}%, свободно {mem.available_gb:.1f} ГБ "
+            f"(workers≤{warn_cap})"
         )
 
     if pressure == "critical":
-        workers = 1
-        max_workers = 1
-        parallel_stages = False
-        parallel_teams = False
+        crit_cap: int = int(cfg["critical_max_workers"])
+        workers = min(workers, crit_cap)
+        max_workers = min(max_workers, crit_cap)
+        if cfg["critical_disable_parallel_stages"]:
+            parallel_stages = False
+        if cfg["critical_disable_parallel_teams"]:
+            parallel_teams = False
         if cfg["disable_html_slices_on_critical"]:
             precompute_slices = False
         reasons.append(
-            f"RAM critical: занято {mem.used_percent:.0f}%, свободно {mem.available_gb:.1f} ГБ"
+            f"RAM critical: занято {mem.used_percent:.0f}%, свободно {mem.available_gb:.1f} ГБ "
+            f"(workers≤{crit_cap})"
         )
 
     if explicit_raw > 0:
         if pressure == "critical" and cfg["override_explicit_workers_on_critical"]:
-            if explicit_raw > 1:
+            crit_cap = int(cfg["critical_max_workers"])
+            if explicit_raw > crit_cap:
                 reasons.append(
-                    f"critical: parallel_workers {explicit_raw} → 1 (защита системы)"
+                    f"critical: parallel_workers {explicit_raw} → {crit_cap} (защита системы)"
                 )
-            workers = 1
+            workers = min(workers, crit_cap)
         elif pressure == "ok":
             workers = min(explicit_raw, max_workers)
             if explicit_raw != workers:

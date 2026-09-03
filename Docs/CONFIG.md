@@ -668,10 +668,18 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
 | `critical_available_ram_gb` | `1.5` | Уровень **critical**, если свободно меньше (ГБ) |
 | `warn_used_ram_percent` | `80.0` | **warn**, если занято RAM ≥ этого процента |
 | `critical_used_ram_percent` | `92.0` | **critical**, если занято RAM ≥ этого процента |
-| `sequential_load_below_total_ram_gb` | `20.0` | При общей RAM меньше — `parallel_workers = 1` |
+| `sequential_load_below_total_ram_gb` | `16.0` | При общей RAM **меньше** порога — осторожный режим |
+| `low_ram_max_workers` | `2` | Потолок workers в осторожном режиме |
+| `low_ram_disable_parallel_stages` | `true` | Выключить `parallel_pipeline_stages` в осторожном режиме |
+| `low_ram_disable_parallel_teams` | `true` | Выключить `parallel_team_files` в осторожном режиме |
+| `warn_max_workers` | `2` | Потолок workers при давлении warn |
+| `warn_disable_parallel_stages` | `true` | Выключить параллельные этапы при warn |
+| `critical_max_workers` | `1` | Потолок workers при critical |
+| `critical_disable_parallel_stages` | `true` | Выключить параллельные этапы при critical |
+| `critical_disable_parallel_teams` | `true` | Выключить параллельную загрузку команд при critical |
 | `input_size_per_worker_gb` | `1.2` | Оценка RAM на один worker при расчёте workers |
 | `gc_on_pressure` | `true` | `gc.collect()` между файлами при warn/critical |
-| `override_explicit_workers_on_critical` | `true` | При critical сбросить даже явный `parallel_workers` |
+| `override_explicit_workers_on_critical` | `true` | При critical ограничить даже явный `parallel_workers` |
 | `disable_html_slices_on_critical` | `true` | При critical выключить `precompute_html_filter_slices` |
 
 ```json
@@ -680,7 +688,10 @@ Split-bundle: manifest в `OUT/kanban_report_{timestamp}_html/`; срезы — 
     "enabled": true,
     "min_available_ram_gb": 3.0,
     "critical_available_ram_gb": 1.5,
-    "sequential_load_below_total_ram_gb": 20.0,
+    "sequential_load_below_total_ram_gb": 16.0,
+    "low_ram_max_workers": 2,
+    "warn_max_workers": 2,
+    "critical_max_workers": 1,
     "gc_on_pressure": true
   }
 }
