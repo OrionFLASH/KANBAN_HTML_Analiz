@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.cell import column_index_from_string
 
 from src.excel_sanitize import sanitize_dataframe
 from src.tab_number import format_tab_number_columns, tab_number_column_labels
@@ -27,7 +29,90 @@ def prepare_excel_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataF
     return sanitize_dataframe(format_tab_number_columns(frame, config))
 
 
-def format_sheet(ws: Any, config: dict[str, Any]) -> None:
+def _parse_last_col(value: Any) -> int:
+    """
+    Последний закреплённый столбец → номер (1=A).
+    0 / null / '' — столбцы не закреплять.
+    Допускается число или буква колонки («C»).
+    """
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, int(value))
+    if isinstance(value, float):
+        return max(0, int(value))
+    text: str = str(value).strip().upper()
+    if not text or text in {"0", "NONE", "NULL"}:
+        return 0
+    if text.isdigit():
+        return max(0, int(text))
+    if re.fullmatch(r"[A-Z]+", text):
+        return int(column_index_from_string(text))
+    return 0
+
+
+def freeze_panes_from_last(*, last_row: int, last_col: int) -> str | None:
+    """
+    Строит адрес ячейки freeze_panes Excel.
+
+    last_row / last_col — последние закреплённые строка и столбец (1-based; col 0 = нет).
+    Excel ставит freeze на первую незакреплённую ячейку.
+    Пример: last_row=1, last_col=0 → A2; last_row=3, last_col=3 → D4.
+    """
+    row: int = max(0, int(last_row))
+    col: int = max(0, int(last_col))
+    if row <= 0 and col <= 0:
+        return None
+    first_free_row: int = row + 1 if row > 0 else 1
+    first_free_col: int = col + 1 if col > 0 else 1
+    return f"{get_column_letter(first_free_col)}{first_free_row}"
+
+
+def resolve_freeze_panes(
+    config: dict[str, Any],
+    sheet_key: str | None = None,
+    *,
+    default: str | None = "A2",
+) -> str | None:
+    """
+    Закрепление для листа из output.sheet_freeze.
+
+    Формат блока листа: { "last_row": 1, "last_col": 0 } — последние закреплённые.
+    Fallback: sheet_freeze.default → excel_format.freeze_panes → default.
+    """
+    out_cfg: dict[str, Any] = config.get("output") or {}
+    freeze_map: dict[str, Any] = dict(out_cfg.get("sheet_freeze") or {})
+
+    block: Any = None
+    if sheet_key and sheet_key in freeze_map:
+        block = freeze_map[sheet_key]
+    elif "default" in freeze_map:
+        block = freeze_map["default"]
+
+    if isinstance(block, dict) and ("last_row" in block or "last_col" in block):
+        last_row: int = int(block.get("last_row") or 0)
+        last_col: int = _parse_last_col(block.get("last_col"))
+        return freeze_panes_from_last(last_row=last_row, last_col=last_col)
+
+    if isinstance(block, str) and block.strip():
+        # Совместимость: строка вида "A2" / "D4"
+        return block.strip()
+
+    fmt_cfg: dict[str, Any] = out_cfg.get("excel_format") or {}
+    legacy: Any = fmt_cfg.get("freeze_panes")
+    if isinstance(legacy, str) and legacy.strip():
+        return legacy.strip()
+    return default
+
+
+def format_sheet(
+    ws: Any,
+    config: dict[str, Any],
+    *,
+    sheet_key: str | None = None,
+) -> None:
     """Применяет автофильтр, закрепление, ширину и раскраску min/max."""
     if ws.max_row < 1 or ws.max_column < 1:
         return
@@ -44,7 +129,9 @@ def format_sheet(ws: Any, config: dict[str, Any]) -> None:
         start_color=colors["max"], end_color=colors["max"], fill_type="solid"
     )
 
-    ws.freeze_panes = fmt_cfg.get("freeze_panes", "A2")
+    freeze: str | None = resolve_freeze_panes(config, sheet_key)
+    if freeze:
+        ws.freeze_panes = freeze
     ws.auto_filter.ref = ws.dimensions
 
     min_marker: str = labels.get("min_header_marker", "Мин")

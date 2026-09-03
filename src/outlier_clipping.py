@@ -9,7 +9,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.percentile_stats import to_integer_days
 from src.settings import col
 
 logger: logging.Logger = logging.getLogger("kanban.outlier_clipping")
@@ -19,6 +18,18 @@ AUDIT_BEFORE: str = "outlier_before"
 AUDIT_AFTER: str = "outlier_after"
 AUDIT_CLIPPED: str = "outlier_clipped_total"
 AUDIT_RULE_PREFIX: str = "outlier_rule_"
+
+
+def _metric_days_aligned(series: pd.Series) -> pd.Series:
+    """
+    Целые дни с тем же индексом, что у исходной серии (NaN сохраняются).
+
+    Нельзя использовать to_integer_days() здесь: он возвращает ndarray без NaN
+    и ломает выравнивание маски с DataFrame группы (groupby → не-RangeIndex).
+    """
+    numeric: pd.Series = pd.to_numeric(series, errors="coerce")
+    rounded: pd.Series = pd.Series(np.round(numeric), index=series.index, dtype="float64")
+    return rounded
 
 
 def outlier_clipping_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -309,7 +320,7 @@ def clip_group_frame(
     for rule in rules:
         if not rule_applies_to_group(rule, group_keys, config):
             continue
-        days: pd.Series = to_integer_days(work[metric])
+        days: pd.Series = _metric_days_aligned(work[metric])
         mode: str = str(rule.get("mode", "range"))
         if mode == "range":
             drop = _drop_mask_range(days, rule)
@@ -322,6 +333,9 @@ def clip_group_frame(
         else:
             logger.warning("Правило '%s': неизвестный mode='%s'", rule.get("name"), mode)
             continue
+
+        # Гарантируем выравнивание с текущим work (после предыдущих правил индекс мог ужаться)
+        drop = drop.reindex(work.index, fill_value=False).astype(bool)
 
         clipped_n: int = int(drop.sum())
         if not clipped_n:

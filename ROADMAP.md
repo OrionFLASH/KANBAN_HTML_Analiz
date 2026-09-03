@@ -249,6 +249,8 @@ src/
 | 11.20 | Adaptive resources: лимиты workers/флаги из config; low-RAM 16 ГБ → 2 workers | `resource_guard.py`, configs | `[v]` |
 | 11.21 | Лист матрицы: группа/продукт × дни (число лидов), градиент, freeze D2 | `duration_matrix.py`, `exporter.py` | `[v]` |
 | 11.22 | Почты Альфа/Сигма по ТН лидеров из CSV в `IN/` | `manager_emails.py`, config | `[v]` |
+| 11.23 | Закрепление областей по листам: `sheet_freeze.last_row/last_col` | `excel_format.py`, config | `[v]` |
+| 11.24 | Fix `clip_group_frame`: маска выбросов с индексом группы (IndexingError) | `outlier_clipping.py` | `[v]` |
 
 ---
 

@@ -34,7 +34,6 @@ def _base_config(*, sort_mode: str = "alpha_days") -> dict:
             "duration_matrix": {
                 "enabled": True,
                 "sort_mode": sort_mode,
-                "freeze_panes": "D4",
                 "total_column_label": "Всего",
                 "day_column_width": 4.5,
                 "row_height": 28,
@@ -49,6 +48,10 @@ def _base_config(*, sort_mode: str = "alpha_days") -> dict:
                     "mid": "FFEB84",
                     "end": "F8696B",
                 },
+            },
+            "sheet_freeze": {
+                "duration_matrix": {"last_row": 3, "last_col": 3},
+                "default": {"last_row": 1, "last_col": 0},
             },
             "excel_format": {
                 "freeze_panes": "A2",

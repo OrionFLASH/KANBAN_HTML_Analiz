@@ -18,6 +18,10 @@ def test_norms_is_plain_table_statistics_has_funnel(tmp_path: Path) -> None:
                 "statistics": "Статистика",
                 "leads": "Уникальные ID",
             },
+            "sheet_freeze": {
+                "norms": {"last_row": 1, "last_col": 0},
+                "default": {"last_row": 1, "last_col": 0},
+            },
             "column_labels": {"min_header_marker": "Мин", "max_header_marker": "Макс"},
             "excel_format": {
                 "freeze_panes": "A2",
@@ -26,6 +30,7 @@ def test_norms_is_plain_table_statistics_has_funnel(tmp_path: Path) -> None:
                 "sample_rows_for_width": 50,
                 "float_format": "0.00",
                 "int_format": "0",
+                "thousands_format": "# ##0",
                 "colors": {"min": "C6EFCE", "max": "FFC7CE"},
             },
             "excel_max_rows_per_sheet": 900000,

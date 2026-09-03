@@ -128,7 +128,6 @@
     "group_keys": [
       "product_group",
       "product",
-      "analysis_level",
       "current_status",
       "stage_key"
     ],
@@ -217,7 +216,7 @@
       "case_sensitive": false
     },
     "strategy_label": {
-      "enabled": true,
+      "enabled": false,
       "column_key": "label",
       "action": "include",
       "match": "contains",
@@ -435,10 +434,18 @@
       "managers": "Свод по менеджеру",
       "violations": "Свод ПрПр с отклонениями"
     },
+    "sheet_freeze": {
+      "default": { "last_row": 1, "last_col": 0 },
+      "norms": { "last_row": 1, "last_col": 3 },
+      "statistics": { "last_row": 1, "last_col": 0 },
+      "duration_matrix": { "last_row": 3, "last_col": 3 },
+      "leads": { "last_row": 1, "last_col": 3 },
+      "managers": { "last_row": 1, "last_col": 2 },
+      "violations": { "last_row": 1, "last_col": 0 }
+    },
     "duration_matrix": {
       "enabled": true,
       "sort_mode": "by_volume",
-      "freeze_panes": "D4",
       "total_column_label": "Всего",
       "day_column_width": 4.5,
       "row_height": 28,

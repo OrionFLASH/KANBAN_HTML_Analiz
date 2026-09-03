@@ -208,6 +208,7 @@ def attach_emails_by_tab_column(
     config: dict[str, Any],
     *,
     tn_column: str = "Табельный номер",
+    after_column: str | None = "ФИО",
     alpha_label: str = "Почта Альфа",
     sigma_label: str = "Почта Сигма",
     lookup: EmailLookup | None = None,
@@ -231,10 +232,11 @@ def attach_emails_by_tab_column(
     out[sigma_label] = out[tn_column].map(
         lambda v: map_multiline_tn_to_email(v, email_lookup, which="sigma")
     )
-    # Вставить сразу после колонки ТН
+    # По умолчанию сразу после ФИО; иначе после ТН
     cols: list[str] = list(out.columns)
     cols.remove(alpha_label)
     cols.remove(sigma_label)
-    insert_at: int = cols.index(tn_column) + 1
+    anchor: str = after_column if after_column and after_column in cols else tn_column
+    insert_at: int = cols.index(anchor) + 1
     cols[insert_at:insert_at] = [alpha_label, sigma_label]
     return out[cols]

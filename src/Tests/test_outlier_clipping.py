@@ -179,6 +179,29 @@ def test_unique_days_trim_counts_distinct_not_leads() -> None:
     assert audit["outlier_rule_udays"] == 5
 
 
+def test_clip_group_frame_non_range_index() -> None:
+    """Регрессия: группа после groupby имеет «дырявый» индекс — маска должна совпадать."""
+    cfg = _base_config(
+        min_group_size=3,
+        min_remaining=1,
+        rules=[
+            {
+                "name": "udays",
+                "mode": "unique_days_trim",
+                "trim_lower_pct": 10,
+                "trim_upper_pct": 10,
+            }
+        ],
+    )
+    days: list[int] = list(range(1, 11))
+    group = _records(days)
+    group.index = pd.Index([100, 105, 110, 200, 201, 300, 301, 400, 500, 999])
+    clipped, audit = clip_group_frame(group, {"Группа продукта": "G"}, cfg)
+    assert len(clipped) == 8
+    assert audit["outlier_rule_udays"] == 2
+    assert sorted(clipped["days_on_stage"].tolist()) == list(range(2, 10))
+
+
 def test_iqr_clips_extreme() -> None:
     cfg = _base_config(
         min_group_size=5,

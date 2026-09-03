@@ -98,5 +98,10 @@ def test_enrich_snapshot_and_managers(tmp_path: Path) -> None:
 
     managers = pd.DataFrame({"Табельный номер": ["1933957"], "ФИО": ["X"]})
     with_mail = attach_emails_by_tab_column(managers, cfg)
-    assert list(with_mail.columns[:3]) == ["Табельный номер", "Почта Альфа", "Почта Сигма"]
+    assert list(with_mail.columns[:4]) == [
+        "Табельный номер",
+        "ФИО",
+        "Почта Альфа",
+        "Почта Сигма",
+    ]
     assert with_mail.loc[0, "Почта Альфа"] == "a1@omega"

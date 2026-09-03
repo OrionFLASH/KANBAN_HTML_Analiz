@@ -122,6 +122,13 @@ def norms_to_export_frame(combined: pd.DataFrame, config: dict[str, Any]) -> pd.
     tb_col: str = col(config, "tb")
 
     frame: pd.DataFrame = filter_and_order_statistics_frame(combined, config)
+    # Уровень анализа в v2 не выводим (всегда status)
+    drop_cols: list[str] = ["analysis_level", "Уровень анализа"]
+    labels: dict[str, Any] = config.get("output", {}).get("column_labels") or {}
+    extra_level: str = str(labels.get("analysis_level") or "").strip()
+    if extra_level:
+        drop_cols.append(extra_level)
+    frame = frame.drop(columns=[c for c in drop_cols if c in frame.columns], errors="ignore")
 
     rename: dict[str, str] = {
         product_group_col: config.get("output", {}).get("column_labels", {}).get(

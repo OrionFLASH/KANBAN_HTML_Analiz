@@ -44,7 +44,7 @@ python run_excel.py
 
 Конфиг: `config_excel_v2.json` — полный справочник: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md)
 
-Ключевые блоки v2: `filters` (универсальная схема), `exceedance.percentile` (порог превышения, по умолчанию 80), `outlier_clipping` (выбросы срока перед нормативами, `min_remaining`), `team_files`, `output.statistics`.
+Ключевые блоки v2: `filters` (универсальная схема), `exceedance.percentile` (порог превышения, по умолчанию 80), `outlier_clipping` (выбросы срока перед нормативами, `min_remaining`), `team_files`, `output.sheet_freeze`, `output.statistics`.
 
 | Режим | Каталог входа | Выход |
 |-------|---------------|-------|
@@ -259,3 +259,5 @@ cd HTML && python -m http.server 8080
 | 2.2.5 | 2026-09-03 | Adaptive: лимиты workers из config; осторожный режим при RAM &lt; 16 ГБ → 2 workers |
 | 2.2.6 | 2026-09-03 | Лист «Распределение сроков»: матрица группа/продукт × дни (число лидов), градиент, freeze D2 |
 | 2.2.7 | 2026-09-03 | Матрица: `sort_mode` by_volume, строка «Всего»/автофильтр, крупный шрифт; `manager_emails` (CSV почт по ТН) |
+| 2.2.8 | 2026-09-03 | `output.sheet_freeze`: last_row/last_col — закрепление по каждому листу Excel v2 |
+| 2.2.9 | 2026-09-03 | Fix `outlier_clipping` на больших группах (выравнивание индекса); почты на своде после ФИО; `group_keys` без `analysis_level` |

@@ -12,7 +12,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-from src.excel_format import format_multiline_columns, format_sheet, prepare_excel_frame
+from src.excel_format import format_multiline_columns, format_sheet, prepare_excel_frame, resolve_freeze_panes
 from src.excel_sanitize import sanitize_sheet_name
 from src.export_overflow import (
     build_csv_redirect_sheet,
@@ -129,10 +129,17 @@ def _write_statistics_sheet(
         end_col: str = get_column_letter(len(funnel_frame.columns))
         end_row: int = row - 1
         ws.auto_filter.ref = f"A{funnel_header_row}:{end_col}{end_row}"
-        ws.freeze_panes = f"A{funnel_header_row + 1}"
+        freeze_stats: str | None = resolve_freeze_panes(config, "statistics", default=None)
+        if freeze_stats:
+            ws.freeze_panes = freeze_stats
+        else:
+            ws.freeze_panes = f"A{funnel_header_row + 1}"
     else:
         ws.cell(row=row, column=1, value="(нет шагов фильтров)")
         row += 1
+        freeze_stats = resolve_freeze_panes(config, "statistics", default=None)
+        if freeze_stats:
+            ws.freeze_panes = freeze_stats
 
     row += 1
     ws.cell(
@@ -170,7 +177,10 @@ def _write_duration_matrix_sheet(
     pg_label: str = str(labels.get("product_group", "Группа продукта"))
     pr_label: str = str(labels.get("product", "Продукт"))
     total_label: str = str(mtx_cfg.get("total_column_label", "Всего"))
-    freeze: str = str(mtx_cfg.get("freeze_panes", "D4"))
+    # Приоритет: sheet_freeze.duration_matrix → duration_matrix.freeze_panes → D4
+    freeze: str | None = resolve_freeze_panes(config, "duration_matrix", default=None)
+    if freeze is None:
+        freeze = str(mtx_cfg.get("freeze_panes", "D4"))
     day_width: float = float(mtx_cfg.get("day_column_width", 4.5))
     row_height: float = float(mtx_cfg.get("row_height", 28))
     header_row_height: float = float(mtx_cfg.get("header_row_height", 22))
@@ -424,7 +434,7 @@ def export_excel_v2(
             if sheet_key in {"statistics", "duration_matrix"}:
                 # Уже оформлены своими writers
                 continue
-            format_sheet(ws, config)
+            format_sheet(ws, config, sheet_key=sheet_key)
             markers: list[str] = MULTILINE_BY_SHEET.get(sheet_key, [])
             if markers:
                 format_multiline_columns(ws, config, markers)
