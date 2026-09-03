@@ -169,6 +169,14 @@
         "trim_upper_pct": 5
       },
       {
+        "name": "example_unique_days_trim_10pct",
+        "enabled": false,
+        "scope": {},
+        "mode": "unique_days_trim",
+        "trim_lower_pct": 10,
+        "trim_upper_pct": 10
+      },
+      {
         "name": "example_iqr",
         "enabled": false,
         "scope": {},
@@ -420,6 +428,7 @@
       "outlier_rule_global_max_500": "Отсечено: global_max_500",
       "outlier_rule_example_range_2_500": "Отсечено: example_range_2_500",
       "outlier_rule_example_trim_5pct": "Отсечено: example_trim_5pct",
+      "outlier_rule_example_unique_days_trim_10pct": "Отсечено: example_unique_days_trim_10pct",
       "outlier_rule_example_iqr": "Отсечено: example_iqr",
       "min_header_marker": "Мин",
       "max_header_marker": "Макс"

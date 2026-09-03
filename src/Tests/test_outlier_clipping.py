@@ -132,6 +132,53 @@ def test_percentile_trim_upper() -> None:
     assert clipped["days_on_stage"].max() < 10 or audit[AUDIT_CLIPPED] > 0
 
 
+def test_unique_days_trim_cuts_edge_values() -> None:
+    """10% от 20 уникальных сроков → по 2 уникальных дня слева и справа."""
+    cfg = _base_config(
+        min_group_size=5,
+        min_remaining=1,
+        rules=[
+            {
+                "name": "udays",
+                "mode": "unique_days_trim",
+                "trim_lower_pct": 10,
+                "trim_upper_pct": 10,
+            }
+        ],
+    )
+    # 20 разных дней: 1..20
+    group = _records(list(range(1, 21)))
+    clipped, audit = clip_group_frame(group, {"Группа продукта": "G"}, cfg)
+    remaining = sorted(clipped["days_on_stage"].tolist())
+    assert remaining == list(range(3, 19))
+    assert audit["outlier_rule_udays"] == 4
+    assert audit[AUDIT_CLIPPED] == 4
+
+
+def test_unique_days_trim_counts_distinct_not_leads() -> None:
+    """Процент считается по числу уникальных дней, не по числу лидов."""
+    cfg = _base_config(
+        min_group_size=3,
+        min_remaining=1,
+        rules=[
+            {
+                "name": "udays",
+                "mode": "unique_days_trim",
+                "trim_lower_pct": 10,
+                "trim_upper_pct": 10,
+            }
+        ],
+    )
+    # 10 уникальных дней; у дня 1 — три лида, у дня 10 — два
+    days: list[int] = [1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10]
+    group = _records(days)
+    clipped, audit = clip_group_frame(group, {"Группа продукта": "G"}, cfg)
+    # 10% от 10 = 1 уникальный слева (1) и справа (10) → убрать 3+2=5 лидов
+    remaining = sorted(clipped["days_on_stage"].tolist())
+    assert remaining == [2, 3, 4, 5, 6, 7, 8, 9]
+    assert audit["outlier_rule_udays"] == 5
+
+
 def test_iqr_clips_extreme() -> None:
     cfg = _base_config(
         min_group_size=5,

@@ -195,6 +195,60 @@ def _drop_mask_percentile_trim(
     return drop
 
 
+def _drop_mask_unique_days_trim(
+    days: pd.Series,
+    rule: dict[str, Any],
+    *,
+    min_group_size: int,
+) -> pd.Series:
+    """
+    Отсечь крайние уникальные значения срока (дни, где есть лиды).
+
+    Пример: 20 разных сроков в группе, trim_lower_pct=trim_upper_pct=10
+    → убираем 2 самых маленьких и 2 самых больших уникальных дня
+    (10% от числа уникальных значений), вместе со всеми лидами этих дней.
+    """
+    valid: pd.Series = days.dropna()
+    if len(valid) < max(min_group_size, 3):
+        return pd.Series(False, index=days.index)
+
+    lower_pct: float = float(rule.get("trim_lower_pct") or 0.0)
+    upper_pct: float = float(rule.get("trim_upper_pct") or 0.0)
+    if lower_pct <= 0 and upper_pct <= 0:
+        return pd.Series(False, index=days.index)
+
+    # Уникальные сроки, по которым есть лиды (отсортированы)
+    unique_days: np.ndarray = np.sort(np.unique(valid.to_numpy(dtype=float)))
+    n_unique: int = int(unique_days.size)
+    if n_unique < 2:
+        return pd.Series(False, index=days.index)
+
+    # Доля от числа уникальных значений (вниз до целого)
+    lower_n: int = int(n_unique * lower_pct / 100.0) if lower_pct > 0 else 0
+    upper_n: int = int(n_unique * upper_pct / 100.0) if upper_pct > 0 else 0
+    if lower_n <= 0 and upper_n <= 0:
+        return pd.Series(False, index=days.index)
+
+    # Нельзя снять все уникальные значения
+    if lower_n + upper_n >= n_unique:
+        logger.debug(
+            "unique_days_trim: lower_n+upper_n=%d >= n_unique=%d — пропуск",
+            lower_n + upper_n,
+            n_unique,
+        )
+        return pd.Series(False, index=days.index)
+
+    drop_values: set[float] = set()
+    if lower_n > 0:
+        drop_values.update(float(v) for v in unique_days[:lower_n])
+    if upper_n > 0:
+        drop_values.update(float(v) for v in unique_days[-upper_n:])
+
+    drop: pd.Series = days.isin(list(drop_values))
+    drop &= days.notna()
+    return drop
+
+
 def _drop_mask_iqr(
     days: pd.Series,
     rule: dict[str, Any],
@@ -261,6 +315,8 @@ def clip_group_frame(
             drop = _drop_mask_range(days, rule)
         elif mode in {"percentile_trim", "trim", "percentile"}:
             drop = _drop_mask_percentile_trim(days, rule, min_group_size=min_group_size)
+        elif mode in {"unique_days_trim", "distinct_days_trim", "unique_value_trim"}:
+            drop = _drop_mask_unique_days_trim(days, rule, min_group_size=min_group_size)
         elif mode == "iqr":
             drop = _drop_mask_iqr(days, rule, min_group_size=min_group_size)
         else:

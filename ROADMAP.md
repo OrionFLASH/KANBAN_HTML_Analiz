@@ -245,6 +245,7 @@ src/
 | 11.16 | На листе «Нормативы»: воронка фильтров + свод/колонки выбросов | `filter_funnel.py`, `exporter.py`, `pipeline.py` | `[v]` |
 | 11.17 | Порог превышения v2 из config (`exceedance.percentile`) | `norms.py`, `exceedance.py`, `config_excel_v2.json` | `[v]` |
 | 11.18 | На «Нормативы»: до/после и отсечено по каждому вх. фильтру (по строке группы) | `filter_funnel.py`, `pipeline.py`, `statistics_config.py` | `[v]` |
+| 11.19 | Режим отсечения `unique_days_trim` (процент уникальных сроков слева/справа) | `outlier_clipping.py`, `config_excel_v2.json` | `[v]` |
 
 ---
 
