@@ -38,7 +38,7 @@
 | `paths` | object | Каталоги input/output/log |
 | `columns` | object | Внутренний ключ → имя колонки Excel |
 | `required_column_keys` | array | Обязательные колонки при загрузке (и список для `read_only_required_columns`) |
-| `excel` | object | Лист, таблица Base, движок |
+| `excel` | object | Лист Sheet1 с заголовком, движок openpyxl (`read_only`) |
 | `processing` | object | Дедупликация, аудит, fallback сроков |
 | `performance` | object | Workers, память, compact JSON |
 | `progress` | object | Консольный прогресс и тайминг |
@@ -324,10 +324,13 @@
 | Ключ | Тип | По умолчанию | Описание |
 |------|-----|--------------|----------|
 | `sheet_name` | string | `Sheet1` | Имя листа |
-| `table_name` | string | `Base` | Именованная таблица Excel |
-| `table_auto` | bool | `true` | Сначала таблица `table_name`, иначе весь лист |
 | `engine` | string | `openpyxl` | Движок pandas |
+| `read_only` | bool | `true` | Потоковое чтение openpyxl (без полной загрузки книги в память) |
+| `data_only` | bool | `true` | Брать значения ячеек, не формулы |
+| `keep_links` | bool | `false` | Не загружать внешние ссылки |
 | `na_values` | array | `[""]` | Что считать пустым |
+
+Именованные таблицы Excel (`Base` / `table_auto`) **не используются**: читается весь лист, первая строка — заголовок.
 
 ### `category_markers`
 
@@ -341,12 +344,14 @@
 }
 ```
 
-**Пример без именованной таблицы:**
+**Пример:**
 
 ```json
 "excel": {
   "sheet_name": "Sheet1",
-  "table_auto": false
+  "engine": "openpyxl",
+  "read_only": true,
+  "data_only": true
 }
 ```
 
