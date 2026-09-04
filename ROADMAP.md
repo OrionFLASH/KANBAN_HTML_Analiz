@@ -251,10 +251,12 @@ src/
 | 11.22 | Почты Альфа/Сигма по ТН лидеров из CSV в `IN/` | `manager_emails.py`, config | `[v]` |
 | 11.23 | Закрепление областей по листам: `sheet_freeze.last_row/last_col` | `excel_format.py`, config | `[v]` |
 | 11.24 | Fix `clip_group_frame`: маска выбросов с индексом группы (IndexingError) | `outlier_clipping.py` | `[v]` |
+| 11.25 | Fix подливки лидера сделки: join по ключу снимка `deal_id` (+ все лидеры на max дате) | `team_enrich.py` | `[v]` |
 
 ---
 
 ## Следующий шаг
 
+- **11.25** — починить пустые колонки «лидер сделки» в Excel v2 (prod)
 - **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD`
 - **10.8** — согласовать и внедрить пункты сжатия JSON (см. чат)

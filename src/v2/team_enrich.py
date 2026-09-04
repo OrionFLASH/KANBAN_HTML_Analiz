@@ -132,8 +132,9 @@ def build_leaders_lookup_df(
             pick_mode,
         )
 
-    idx_latest: pd.Series = work.groupby("_id", sort=False)["_date"].idxmax()
-    latest: pd.DataFrame = work.loc[idx_latest].copy()
+    # Все строки с max(Дата отчета) по id — несколько лидеров на одной дате сохраняем
+    max_dates: pd.Series = work.groupby("_id", sort=False)["_date"].transform("max")
+    latest: pd.DataFrame = work.loc[work["_date"] == max_dates].copy()
     latest["_name"] = latest[member_col].map(normalize_person_name)
     before_names: int = len(latest)
     latest = latest.loc[latest["_name"] != ""]
@@ -166,6 +167,31 @@ def build_leaders_lookup_df(
     return grouped
 
 
+def _snapshot_id_column(snapshot: pd.DataFrame, config: dict[str, Any], key: str) -> str | None:
+    """
+    Имя колонки id в снимке для join с lookup лидеров.
+
+    В build_lead_snapshot:
+    - lead_id остаётся под Excel-именем (например «ID ПрПр»);
+    - прочие поля snapshot_columns — под ключами config («deal_id», не «ID сделки»).
+    """
+    if key not in config.get("columns", {}):
+        return None
+    excel_name: str = col(config, key)
+    if key == "lead_id":
+        if excel_name in snapshot.columns:
+            return excel_name
+        if key in snapshot.columns:
+            return key
+        return None
+    # deal_id и аналоги: сначала ключ снимка, затем Excel-имя (если уже переименовано)
+    if key in snapshot.columns:
+        return key
+    if excel_name in snapshot.columns:
+        return excel_name
+    return None
+
+
 def enrich_snapshot_with_team_dfs(
     snapshot: pd.DataFrame,
     lead_team_df: pd.DataFrame,
@@ -186,15 +212,16 @@ def enrich_snapshot_with_team_dfs(
     out_cfg: dict[str, Any] = config.get("team_files", {}).get("output_columns") or {}
     lead_labels: dict[str, str] = dict(out_cfg.get("lead") or {})
     deal_labels: dict[str, str] = dict(out_cfg.get("deal") or {})
-    lead_col: str = col(config, "lead_id")
-    deal_col: str | None = col(config, "deal_id") if "deal_id" in config.get("columns", {}) else None
+    lead_col: str | None = _snapshot_id_column(snapshot, config, "lead_id")
+    deal_col: str | None = _snapshot_id_column(snapshot, config, "deal_id")
 
     result: pd.DataFrame = snapshot.copy()
 
-    if not lead_lookup.empty:
-        lead_merge: pd.DataFrame = result[[lead_col]].astype(str).merge(
+    if lead_col and not lead_lookup.empty:
+        lead_key: pd.Series = result[lead_col].astype(str).str.strip()
+        lead_merge: pd.DataFrame = lead_key.to_frame("_lead_id").merge(
             lead_lookup,
-            left_on=lead_col,
+            left_on="_lead_id",
             right_index=True,
             how="left",
         )
@@ -204,11 +231,20 @@ def enrich_snapshot_with_team_dfs(
             else:
                 result[excel_label] = None
     else:
+        if not lead_col:
+            logger.warning(
+                "Снимок: нет колонки ID лида для подливки лидеров "
+                "(ожидались «%s» или lead_id)",
+                col(config, "lead_id") if "lead_id" in config.get("columns", {}) else "ID ПрПр",
+            )
         for excel_label in lead_labels.values():
             result[excel_label] = None
 
-    if deal_col and deal_col in result.columns and not deal_lookup.empty:
+    if deal_col and not deal_lookup.empty:
         deal_key: pd.Series = result[deal_col].astype(str).str.strip()
+        # Пустые / NaN → не матчим на ключ «nan»
+        empty_deal: pd.Series = deal_key.isin({"", "nan", "none", "null", "nat", "-", "—"})
+        deal_key = deal_key.mask(empty_deal, other=pd.NA)
         deal_merge: pd.DataFrame = deal_key.to_frame("_deal_id").merge(
             deal_lookup,
             left_on="_deal_id",
@@ -221,6 +257,14 @@ def enrich_snapshot_with_team_dfs(
             else:
                 result[excel_label] = None
     else:
+        if deal_lookup.empty:
+            logger.info("Lookup лидеров сделки пуст — колонки лидера сделки остаются пустыми")
+        elif not deal_col:
+            logger.warning(
+                "Снимок: нет колонки ID сделки для подливки лидеров "
+                "(ожидались deal_id или «%s») — лидер сделки не подливается",
+                col(config, "deal_id") if "deal_id" in config.get("columns", {}) else "ID сделки",
+            )
         for excel_label in deal_labels.values():
             result[excel_label] = None
 
