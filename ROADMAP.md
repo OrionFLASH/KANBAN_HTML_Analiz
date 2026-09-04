@@ -257,10 +257,10 @@ src/
 | 11.28 | Даты в Excel как дата, формат `DD.MM.YYYY` | `excel_format.py`, `excel_sanitize.py` | `[v]` |
 | 11.29 | Матрица сроков: P20/P50/P80 по группе+продукту (все стадии), выделение порога, пунктир | `duration_matrix.py`, `exporter.py` | `[v]` |
 | 11.30 | Чтение Excel: убрать Base/table_auto, openpyxl `read_only=true` | `excel_loader.py`, `team_loader.py` | `[v]` |
+| 11.31 | Архив программы v2: `v2_program_files_20260904.zip` (код+config+docs, read_only) | корень репо | `[v]` |
 
 ---
 
 ## Следующий шаг
 
-- **11.30** — ускорение загрузки Excel (read_only, без именованных таблиц)
 - **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD`
