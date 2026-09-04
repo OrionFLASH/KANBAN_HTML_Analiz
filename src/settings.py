@@ -206,6 +206,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "freeze_panes": "A2",
             "float_format": "0.00",
             "int_format": "0",
+            "date_format": "DD.MM.YYYY",
             "max_column_width": 45,
             "min_column_width": 12,
             "sample_rows_for_width": 200,
@@ -352,6 +353,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
             "columns": {
                 "report_date": "Дата отчета",
+                "team_added_date": "Дата добавления в команду",
                 "lead_id": "ID ПрПр",
                 "deal_id": "ID сделки",
                 "member": "Участник команды",

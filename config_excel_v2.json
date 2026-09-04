@@ -341,6 +341,7 @@
     "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
     "columns": {
       "report_date": "Дата отчета",
+      "team_added_date": "Дата добавления в команду",
       "lead_id": "ID ПрПр",
       "deal_id": "ID сделки",
       "member_tab_number": "Табельный номер участника команды",
@@ -555,6 +556,7 @@
       "freeze_panes": "A2",
       "float_format": "0.00",
       "int_format": "0",
+      "date_format": "DD.MM.YYYY",
       "thousands_format": "# ##0",
       "max_column_width": 45,
       "min_column_width": 12,

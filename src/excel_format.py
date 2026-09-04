@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -10,8 +11,17 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import column_index_from_string
 
+from src.date_utils import parse_date_column
 from src.excel_sanitize import sanitize_dataframe
 from src.tab_number import format_tab_number_columns, tab_number_column_labels
+
+# Ключи config.columns / snapshot_columns, которые являются датами
+_DATE_COLUMN_KEYS: tuple[str, ...] = (
+    "report_date",
+    "work_start_date",
+    "deal_created_date",
+    "team_added_date",
+)
 
 
 def cell_text_width(value: Any) -> int:
@@ -24,9 +34,45 @@ def cell_text_width(value: Any) -> int:
     return len(text)
 
 
+def date_column_labels(config: dict[str, Any]) -> list[str]:
+    """Excel-заголовки колонок с датами (из snapshot_columns и columns)."""
+    labels: list[str] = []
+    seen: set[str] = set()
+    snap: dict[str, Any] = dict(config.get("output", {}).get("snapshot_columns") or {})
+    columns: dict[str, Any] = dict(config.get("columns") or {})
+    for key in _DATE_COLUMN_KEYS:
+        label: str | None = None
+        if key in snap and snap[key]:
+            label = str(snap[key])
+        elif key in columns and columns[key]:
+            label = str(columns[key])
+        if label and label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return labels
+
+
+def coerce_date_columns(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """Приводит известные колонки дат к datetime (для записи как даты Excel)."""
+    if frame.empty:
+        return frame
+    labels: set[str] = set(date_column_labels(config))
+    if not labels:
+        return frame
+    out: pd.DataFrame = frame.copy()
+    for col_name in out.columns:
+        header: str = str(col_name)
+        if header not in labels:
+            continue
+        out[col_name] = parse_date_column(out[col_name], config, header)
+    return out
+
+
 def prepare_excel_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Санитизация и нормализация табельных номеров перед записью в Excel."""
-    return sanitize_dataframe(format_tab_number_columns(frame, config))
+    """Санитизация, даты и нормализация табельных номеров перед записью в Excel."""
+    prepared: pd.DataFrame = coerce_date_columns(frame, config)
+    prepared = format_tab_number_columns(prepared, config)
+    return sanitize_dataframe(prepared)
 
 
 def _parse_last_col(value: Any) -> int:
@@ -177,18 +223,24 @@ def format_sheet(
 
     float_fmt: str = fmt_cfg.get("float_format", "0.00")
     int_fmt: str = fmt_cfg.get("int_format", "0")
+    date_fmt: str = str(fmt_cfg.get("date_format", "DD.MM.YYYY"))
     tab_cols: set[str] = set(tab_number_column_labels(config))
+    date_cols: set[str] = set(date_column_labels(config))
     headers_map: dict[int, str] = {idx: str(header or "") for idx, header in enumerate(headers, start=1)}
 
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
         for col_idx, cell in enumerate(row, start=1):
-            if isinstance(cell.value, float):
+            header_name: str = headers_map.get(col_idx, "")
+            if isinstance(cell.value, (datetime, date)):
+                cell.number_format = date_fmt
+            elif isinstance(cell.value, float):
                 cell.number_format = float_fmt
             elif isinstance(cell.value, int):
                 cell.number_format = int_fmt
-            header_name: str = headers_map.get(col_idx, "")
             if header_name in tab_cols and cell.value is not None:
                 cell.number_format = "@"
+            elif header_name in date_cols and isinstance(cell.value, (datetime, date)):
+                cell.number_format = date_fmt
             wrap: bool = bool(cell.alignment.wrap_text) if cell.alignment else False
             horizontal: str | None = cell.alignment.horizontal if cell.alignment else None
             cell.alignment = Alignment(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -54,6 +55,10 @@ def sanitize_cell_value(value: Any) -> Any:
         return value
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime().replace(tzinfo=None)
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, date):
+        return value
     text: str = str(value)
     if text in {"nan", "None", "NaT", "<NA>"}:
         return None
