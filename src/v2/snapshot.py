@@ -133,12 +133,12 @@ def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
         block = team_out.get(block_name)
         if not isinstance(block, dict):
             continue
-        # Стабильный порядок полей лидера
+        # Порядок: TN → ФИО → почты → роль → ТБ
         for field_key in ("member_tab_number", "member", "role", "tb"):
             label = block.get(field_key)
             if label and label in renamed.columns and label not in export_cols:
                 export_cols.append(str(label))
-            if field_key == "member_tab_number":
+            if field_key == "member":
                 email_block = email_out.get(block_name)
                 if isinstance(email_block, dict):
                     for ek in ("email_alpha", "email_sigma"):
