@@ -556,6 +556,7 @@
       "freeze_panes": "A2",
       "float_format": "0.00",
       "int_format": "0",
+      "date_format": "DD.MM.YYYY",
       "thousands_format": "# ##0",
       "max_column_width": 45,
       "min_column_width": 12,
