@@ -130,10 +130,21 @@ def _input_dir(config: dict[str, Any]) -> Path:
 
 
 def _read_team_file(path: Path, config: dict[str, Any]) -> pd.DataFrame:
-    """Читает один Excel файл команды."""
+    """Читает один Excel файл команды (лист с заголовком, read_only)."""
     engine: str = str(config.get("excel", {}).get("engine", "openpyxl"))
     na_values: list[str] = list(config.get("excel", {}).get("na_values", [""]))
-    df: pd.DataFrame = pd.read_excel(path, engine=engine, na_values=na_values)
+    read_kwargs: dict[str, Any] = {
+        "engine": engine,
+        "na_values": na_values,
+    }
+    if engine == "openpyxl":
+        excel_cfg: dict[str, Any] = config.get("excel") or {}
+        read_kwargs["engine_kwargs"] = {
+            "read_only": bool(excel_cfg.get("read_only", True)),
+            "data_only": bool(excel_cfg.get("data_only", True)),
+            "keep_links": bool(excel_cfg.get("keep_links", False)),
+        }
+    df: pd.DataFrame = pd.read_excel(path, **read_kwargs)
     # Убираем безымянные/пустые колонки
     drop_cols: list[str] = [
         c for c in df.columns if str(c).strip() == "" or str(c).startswith("Unnamed")

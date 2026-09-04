@@ -12,7 +12,7 @@
 ## Требования
 
 - Python 3.12 или Anaconda (pandas, openpyxl — без pip install)
-- Входные файлы: лист `Sheet1`, опционально именованная таблица `Base`
+- Входные файлы: лист `Sheet1`, первая строка — заголовок (именованные таблицы Excel не используются)
 
 ## Запуск
 
@@ -85,7 +85,7 @@ log/                 # логи INFO/DEBUG
 |--------|------------|
 | `mode`, `paths`, `test_files`, `prod_files` | Режим и каталоги |
 | `columns`, `required_column_keys` | Имена колонок Excel |
-| `excel` | Лист, таблица Base, движок |
+| `excel` | Лист Sheet1 (заголовок в первой строке), openpyxl `read_only` |
 | `processing` | Дедупликация, аудит, fallback сроков |
 | `performance` | Workers, память, оптимизация чтения |
 | `progress` | Вывод статуса, тайминг этапов, сводка в конце |

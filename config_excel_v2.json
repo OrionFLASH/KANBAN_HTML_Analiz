@@ -93,9 +93,10 @@
   ],
   "excel": {
     "sheet_name": "Sheet1",
-    "table_name": "Base",
-    "table_auto": true,
     "engine": "openpyxl",
+    "read_only": true,
+    "data_only": true,
+    "keep_links": false,
     "na_values": [""],
     "category_markers": {
       "for_sale": "К ПРОДАЖЕ",

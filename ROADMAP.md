@@ -12,7 +12,7 @@
 | Расчёт сроков | Оба метода в коде; `duration_source`: `columns` / `dates` |
 | Подстадии | `stage_analysis_mode`: `status` / `substages` / `both` |
 | Фильтры | Каждый вкл/выкл в config; AND; только подходящие строки |
-| Excel-таблица | Имя в config (`excel_table_name`: `Base`); авто fallback на Sheet1 |
+| Excel-лист | `Sheet1`, первая строка — заголовок; без именованных таблиц; openpyxl `read_only` |
 | JSON | Только агрегаты |
 | Категория файла | Объединять (не влияет на аналитику) |
 | Дубли / срок лида | Max дней на стадии; при равенстве — max `Дата отчета` |
@@ -255,11 +255,12 @@ src/
 | 11.26 | Отбор лидера: max дата отчёта → max «Дата добавления в команду»; равные → `\n` | `team_enrich.py`, `team_loader.py` | `[v]` |
 | 11.27 | Снимок: единообразные ключи config (`lead_id` как `deal_id`) | `snapshot.py`, `manager_summary.py` | `[v]` |
 | 11.28 | Даты в Excel как дата, формат `DD.MM.YYYY` | `excel_format.py`, `excel_sanitize.py` | `[v]` |
-| 11.29 | Матрица сроков: P20/P50/P80 по группе+продукту (все стадии), выделение порога, пунктир | `duration_matrix.py`, `exporter.py` | `[w]` |
+| 11.29 | Матрица сроков: P20/P50/P80 по группе+продукту (все стадии), выделение порога, пунктир | `duration_matrix.py`, `exporter.py` | `[v]` |
+| 11.30 | Чтение Excel: убрать Base/table_auto, openpyxl `read_only=true` | `excel_loader.py`, `team_loader.py` | `[v]` |
 
 ---
 
 ## Следующий шаг
 
-- **11.29** — колонки процентилей и оформление на «Распределение сроков»
+- **11.30** — ускорение загрузки Excel (read_only, без именованных таблиц)
 - **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD`

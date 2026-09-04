@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import logging
-import re
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from openpyxl import load_workbook
 
 from src.date_utils import parse_date_column
 from src.performance import resolve_parallel_workers
@@ -31,28 +29,14 @@ def _detect_category(filename: str, config: dict[str, Any]) -> str:
     return markers.get("unknown", "UNKNOWN")
 
 
-def _table_ref_from_workbook(wb: Any, sheet_name: str, table_name: str) -> str | None:
-    """Диапазон именованной таблицы из уже открытой книги openpyxl."""
-    if sheet_name not in wb.sheetnames:
-        return None
-    ws = wb[sheet_name]
-    for tbl in ws.tables.values():
-        if tbl.name == table_name:
-            return tbl.ref
-    return None
-
-
-def _resolve_table_range(
-    file_path: Path,
-    sheet_name: str,
-    table_name: str,
-) -> str | None:
-    """Возвращает диапазон именованной таблицы Excel или None."""
-    wb = load_workbook(file_path, read_only=False, data_only=True, keep_links=False)
-    try:
-        return _table_ref_from_workbook(wb, sheet_name, table_name)
-    finally:
-        wb.close()
+def _openpyxl_engine_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+    """Параметры openpyxl: потоковое чтение листа с заголовком."""
+    excel_cfg: dict[str, Any] = config.get("excel") or {}
+    return {
+        "read_only": bool(excel_cfg.get("read_only", True)),
+        "data_only": bool(excel_cfg.get("data_only", True)),
+        "keep_links": bool(excel_cfg.get("keep_links", False)),
+    }
 
 
 def _read_excel_dataframe(
@@ -60,12 +44,10 @@ def _read_excel_dataframe(
     config: dict[str, Any],
     use_columns: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Читает лист или именованную таблицу Excel (одно открытие файла через ExcelFile)."""
+    """Читает лист Excel целиком (первая строка — заголовок), без именованных таблиц."""
     excel_cfg: dict[str, Any] = config["excel"]
     sheet_name: str = excel_cfg["sheet_name"]
-    table_name: str = excel_cfg["table_name"]
-    use_auto: bool = bool(excel_cfg.get("table_auto", True))
-    engine: str = excel_cfg.get("engine", "openpyxl")
+    engine: str = str(excel_cfg.get("engine", "openpyxl"))
     na_values: list[str] = list(excel_cfg.get("na_values", [""]))
 
     read_kwargs: dict[str, Any] = {
@@ -73,34 +55,15 @@ def _read_excel_dataframe(
         "engine": engine,
         "na_values": na_values,
     }
+    if engine == "openpyxl":
+        read_kwargs["engine_kwargs"] = _openpyxl_engine_kwargs(config)
+
     if use_columns:
-        read_kwargs["usecols"] = use_columns
+        wanted: set[str] = {str(c) for c in use_columns}
+        # Callable — один проход, без отдельного открытия за шапкой
+        read_kwargs["usecols"] = lambda c, _w=wanted: str(c) in _w
 
-    with pd.ExcelFile(
-        file_path,
-        engine=engine,
-        engine_kwargs={"read_only": False, "data_only": True, "keep_links": False},
-    ) as xls:
-        if use_auto and engine == "openpyxl":
-            cell_range: str | None = _table_ref_from_workbook(
-                xls.book,
-                sheet_name,
-                table_name,
-            )
-            if cell_range:
-                match = re.match(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.replace("$", ""))
-                if not match:
-                    raise ValueError(f"Некорректный диапазон таблицы: {cell_range}")
-                start_row: int = int(match.group(2))
-                end_row: int = int(match.group(4))
-                return pd.read_excel(
-                    xls,
-                    header=start_row - 1,
-                    nrows=end_row - start_row,
-                    **read_kwargs,
-                )
-
-        return pd.read_excel(xls, **read_kwargs)
+    return pd.read_excel(file_path, **read_kwargs)
 
 
 def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
@@ -111,19 +74,8 @@ def read_single_file(args: tuple[str, dict[str, Any]]) -> pd.DataFrame:
 
     use_columns: list[str] | None = None
     if perf.get("read_only_required_columns", True):
-        # Обязательные + опциональные (ВКС и др.); отсутствующие optional отфильтруем по шапке
-        wanted: list[str] = load_column_names(config)
-        try:
-            header_df: pd.DataFrame = pd.read_excel(
-                file_path,
-                sheet_name=config["excel"]["sheet_name"],
-                engine=config["excel"].get("engine", "openpyxl"),
-                nrows=0,
-            )
-            available: set[str] = set(header_df.columns.astype(str))
-            use_columns = [c for c in wanted if c in available]
-        except Exception:
-            use_columns = wanted
+        # Обязательные + опциональные; отсутствующие optional просто не попадут в usecols-callable
+        use_columns = load_column_names(config)
 
     df: pd.DataFrame = _read_excel_dataframe(file_path, config, use_columns)
     _validate_columns(df, file_path, config)
@@ -263,7 +215,11 @@ def load_all_files(
         progress.step(f"Объединение {len(frames)} таблиц…")
 
     combined: pd.DataFrame = pd.concat(frames, ignore_index=True, copy=False)
-    logger.info("Объединено строк: %d из %d файлов (все строки файлов сохранены)", len(combined), len(frames))
+    logger.info(
+        "Объединено строк: %d из %d файлов (все строки файлов сохранены)",
+        len(combined),
+        len(frames),
+    )
     if progress:
         progress.done(f"Загрузка: {len(combined):,} строк из {len(frames)} файлов — полный объём")
     return combined

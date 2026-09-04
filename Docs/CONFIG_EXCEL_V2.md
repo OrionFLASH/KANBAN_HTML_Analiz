@@ -59,7 +59,7 @@ python -m src.v2.pipeline
 | Ключ | Назначение |
 |------|------------|
 | `columns`, `required_column_keys`, `optional_column_keys` | Имена колонок Kanban (см. [CONFIG.md §4](CONFIG.md#4-колонки-excel-columns)) |
-| `excel` | Лист Sheet1, таблица Base, движок openpyxl |
+| `excel` | Лист Sheet1 с заголовком, openpyxl `read_only` |
 | `processing` | Дедупликация, аудит, fallback сроков |
 | `dates` | Парсинг дат |
 | `duration_source` | `"columns"` (по умолчанию) или `"dates"` |

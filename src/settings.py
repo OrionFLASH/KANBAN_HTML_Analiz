@@ -79,9 +79,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     ],
     "excel": {
         "sheet_name": "Sheet1",
-        "table_name": "Base",
-        "table_auto": True,
         "engine": "openpyxl",
+        "read_only": True,
+        "data_only": True,
+        "keep_links": False,
         "na_values": [""],
         "category_markers": {
             "for_sale": "К ПРОДАЖЕ",
@@ -462,12 +463,14 @@ def normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
     # Обратная совместимость: плоские ключи корневого уровня
     legacy_excel: dict[str, tuple[str, str]] = {
         "sheet_name": ("excel", "sheet_name"),
-        "excel_table_name": ("excel", "table_name"),
-        "excel_table_auto": ("excel", "table_auto"),
     }
     for legacy_key, (section, target) in legacy_excel.items():
         if legacy_key in raw:
             merged[section][target] = raw[legacy_key]
+    # Устаревшие table_name / table_auto игнорируются (чтение только листа с заголовком)
+    if "table_name" in merged.get("excel", {}) or "table_auto" in merged.get("excel", {}):
+        merged["excel"].pop("table_name", None)
+        merged["excel"].pop("table_auto", None)
 
     # Фильтры: column → column_key
     for flt in merged.get("filters", {}).values():
