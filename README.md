@@ -55,6 +55,8 @@ python run_excel.py
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260904.zip`** в корне репозитория.
+
 ## Структура проекта
 
 ```
