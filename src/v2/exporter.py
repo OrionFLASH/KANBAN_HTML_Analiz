@@ -8,17 +8,25 @@ from typing import Any
 
 import pandas as pd
 from openpyxl.formatting.rule import ColorScaleRule
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-from src.excel_format import format_multiline_columns, format_sheet, prepare_excel_frame, resolve_freeze_panes
+from src.excel_format import (
+    format_multiline_columns,
+    format_sheet,
+    freeze_panes_from_last,
+    prepare_excel_frame,
+    resolve_freeze_panes,
+)
 from src.excel_sanitize import sanitize_sheet_name
 from src.export_overflow import (
     build_csv_redirect_sheet,
     export_overflow_csv_sheets,
     split_sheets_by_row_limit,
 )
+from src.percentile_stats import percentile_label
+from src.settings import percentile_display_value
 from src.v2.duration_matrix import DurationMatrixResult
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.exporter")
@@ -170,18 +178,16 @@ def _write_duration_matrix_sheet(
     """
     Лист «Распределение сроков»:
     стр.1 шапка, стр.2 итоги по дням, стр.3 номера колонок + автофильтр,
-    далее продукты; freeze D4; продукты — жирный бледно-жёлтый, влево.
+    далее продукты; колонки: группа | продукт | P… | Всего | дни;
+    закрепление до «Всего»; пунктирные границы; жирная рамка на дне порога.
     """
     labels: dict[str, Any] = config.get("output", {}).get("column_labels") or {}
     mtx_cfg: dict[str, Any] = config.get("output", {}).get("duration_matrix") or {}
     pg_label: str = str(labels.get("product_group", "Группа продукта"))
     pr_label: str = str(labels.get("product", "Продукт"))
     total_label: str = str(mtx_cfg.get("total_column_label", "Всего"))
-    # Приоритет: sheet_freeze.duration_matrix → duration_matrix.freeze_panes → D4
-    freeze: str | None = resolve_freeze_panes(config, "duration_matrix", default=None)
-    if freeze is None:
-        freeze = str(mtx_cfg.get("freeze_panes", "D4"))
     day_width: float = float(mtx_cfg.get("day_column_width", 4.5))
+    pct_width: float = float(mtx_cfg.get("percentile_column_width", 8))
     row_height: float = float(mtx_cfg.get("row_height", 28))
     header_row_height: float = float(mtx_cfg.get("header_row_height", 22))
     filter_row_height: float = float(mtx_cfg.get("filter_row_height", 16))
@@ -191,6 +197,8 @@ def _write_duration_matrix_sheet(
     )
     pale_yellow: str = str(mtx_cfg.get("header_fill", "FFF2CC"))
     faint_color: str = str(mtx_cfg.get("filter_row_font_color", "D9D9D9"))
+    grid_color: str = str(mtx_cfg.get("grid_border_color", "BFBFBF"))
+    highlight_color: str = str(mtx_cfg.get("threshold_border_color", "C65911"))
 
     yellow_fill: PatternFill = PatternFill(
         start_color=pale_yellow, end_color=pale_yellow, fill_type="solid"
@@ -204,6 +212,15 @@ def _write_duration_matrix_sheet(
     counts_font: Font = Font(size=counts_font_size)
     totals_font: Font = Font(bold=True, size=counts_font_size)
 
+    dash_side: Side = Side(style="dashed", color=grid_color)
+    dashed_border: Border = Border(
+        left=dash_side, right=dash_side, top=dash_side, bottom=dash_side
+    )
+    thick_side: Side = Side(style="medium", color=highlight_color)
+    threshold_border: Border = Border(
+        left=thick_side, right=thick_side, top=thick_side, bottom=thick_side
+    )
+
     color_cfg: dict[str, Any] = mtx_cfg.get("color_scale") or {}
     start_color: str = str(color_cfg.get("start", "63BE7B"))
     mid_color: str = str(color_cfg.get("mid", "FFEB84"))
@@ -213,26 +230,35 @@ def _write_duration_matrix_sheet(
         ws.cell(row=1, column=1, value="Нет данных для матрицы сроков")
         return
 
-    last_col: int = 3 + len(matrix.day_columns)
+    pct_list: list[float] = list(matrix.percentile_list)
+    n_pct: int = len(pct_list)
+    # A=группа, B=продукт, C… = процентили, затем Всего, затем дни
+    total_col: int = 2 + n_pct + 1
+    days_start_col: int = total_col + 1
+    last_col: int = total_col + len(matrix.day_columns)
 
-    headers: list[Any] = [pg_label, pr_label, total_label, *matrix.day_columns]
+    pct_headers: list[str] = [
+        f"P{percentile_display_value(p)}" for p in pct_list
+    ]
+    headers: list[Any] = [pg_label, pr_label, *pct_headers, total_label, *matrix.day_columns]
     for col_idx, value in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_idx, value=value)
         cell.font = header_font
         cell.alignment = center
         cell.fill = yellow_fill
 
-    # Строка 2 — горизонтальные итоги по дням
+    # Строка 2 — горизонтальные итоги по дням (процентили пустые)
     total_pg = ws.cell(row=2, column=1, value=total_label)
     total_pg.font = header_font
     total_pg.alignment = center
     total_pg.fill = yellow_fill
-    total_pr = ws.cell(row=2, column=2, value="")
-    total_pr.alignment = center
-    total_pr.fill = yellow_fill
+    for col_idx in range(2, total_col):
+        empty_cell = ws.cell(row=2, column=col_idx, value="")
+        empty_cell.alignment = center
+        empty_cell.fill = yellow_fill
     grand_cell = ws.cell(
         row=2,
-        column=3,
+        column=total_col,
         value=matrix.grand_total if matrix.grand_total else None,
     )
     grand_cell.font = totals_font
@@ -244,7 +270,7 @@ def _write_duration_matrix_sheet(
         day_sum: int = int(matrix.day_totals.get(day, 0))
         cell = ws.cell(
             row=2,
-            column=4 + day_offset,
+            column=days_start_col + day_offset,
             value=day_sum if day_sum else None,
         )
         cell.font = totals_font
@@ -261,30 +287,63 @@ def _write_duration_matrix_sheet(
         cell.alignment = center
 
     data_start: int = 4
-    for row_offset, (pg, pr, total, counts) in enumerate(matrix.rows, start=data_start):
+    exc_p: float = float(matrix.exceedance_percentile)
+    highlight_cells: list[tuple[int, int]] = []
+
+    for row_offset, (pg, pr, total, counts, pcts) in enumerate(matrix.rows, start=data_start):
         pg_cell = ws.cell(row=row_offset, column=1, value=pg)
         pg_cell.alignment = center
         pr_cell = ws.cell(row=row_offset, column=2, value=pr)
         pr_cell.alignment = left_wrap
         pr_cell.font = product_font
         pr_cell.fill = yellow_fill
-        total_cell = ws.cell(row=row_offset, column=3, value=total if total else None)
+
+        for pct_i, p in enumerate(pct_list):
+            pct_days: int | None = pcts.get(float(p))
+            pct_cell = ws.cell(
+                row=row_offset,
+                column=3 + pct_i,
+                value=pct_days if pct_days is not None else None,
+            )
+            pct_cell.alignment = center
+            pct_cell.font = counts_font
+            if pct_days is not None:
+                pct_cell.number_format = int_fmt
+
+        total_cell = ws.cell(
+            row=row_offset, column=total_col, value=total if total else None
+        )
         total_cell.alignment = center
         total_cell.font = counts_font
         if total:
             total_cell.number_format = int_fmt
+
+        threshold_day: int | None = pcts.get(exc_p)
         for day_offset, day in enumerate(matrix.day_columns):
             cnt: int | None = counts.get(day)
-            if not cnt:
-                continue
-            cell = ws.cell(row=row_offset, column=4 + day_offset, value=int(cnt))
-            cell.alignment = center
-            cell.font = counts_font
-            cell.number_format = int_fmt
+            col_idx = days_start_col + day_offset
+            if cnt:
+                cell = ws.cell(row=row_offset, column=col_idx, value=int(cnt))
+                cell.alignment = center
+                cell.font = counts_font
+                cell.number_format = int_fmt
+            if threshold_day is not None and int(day) == int(threshold_day):
+                highlight_cells.append((row_offset, col_idx))
 
     last_row: int = data_start - 1 + len(matrix.rows)
-    if last_row >= data_start and last_col >= 4:
-        data_range: str = f"D{data_start}:{get_column_letter(last_col)}{last_row}"
+
+    # Пунктирные границы на всю таблицу, затем жирная рамка порога
+    for row_idx in range(1, last_row + 1):
+        for col_idx in range(1, last_col + 1):
+            ws.cell(row=row_idx, column=col_idx).border = dashed_border
+    for row_idx, col_idx in highlight_cells:
+        ws.cell(row=row_idx, column=col_idx).border = threshold_border
+
+    if last_row >= data_start and last_col >= days_start_col:
+        data_range: str = (
+            f"{get_column_letter(days_start_col)}{data_start}:"
+            f"{get_column_letter(last_col)}{last_row}"
+        )
         ws.conditional_formatting.add(
             data_range,
             ColorScaleRule(
@@ -297,8 +356,9 @@ def _write_duration_matrix_sheet(
                 end_color=end_color,
             ),
         )
+        total_letter: str = get_column_letter(total_col)
         ws.conditional_formatting.add(
-            f"C{data_start}:C{last_row}",
+            f"{total_letter}{data_start}:{total_letter}{last_row}",
             ColorScaleRule(
                 start_type="min",
                 start_color=start_color,
@@ -310,18 +370,33 @@ def _write_duration_matrix_sheet(
             ),
         )
 
+    # Закрепление: последний столбец — «Всего»
+    freeze: str | None = freeze_panes_from_last(last_row=3, last_col=total_col)
     ws.freeze_panes = freeze
     ws.auto_filter.ref = f"A{filter_row}:{get_column_letter(last_col)}{last_row}"
     ws.column_dimensions["A"].width = float(label_widths.get("A", 28))
     ws.column_dimensions["B"].width = float(label_widths.get("B", 36))
-    ws.column_dimensions["C"].width = float(label_widths.get("C", 10))
-    for col_idx in range(4, last_col + 1):
+    for pct_i in range(n_pct):
+        ws.column_dimensions[get_column_letter(3 + pct_i)].width = pct_width
+    ws.column_dimensions[get_column_letter(total_col)].width = float(
+        label_widths.get("total", label_widths.get("C", 10))
+    )
+    for col_idx in range(days_start_col, last_col + 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = day_width
     ws.row_dimensions[1].height = header_row_height
     ws.row_dimensions[2].height = header_row_height
     ws.row_dimensions[filter_row].height = filter_row_height
     for row_idx in range(data_start, last_row + 1):
         ws.row_dimensions[row_idx].height = row_height
+
+    logger.info(
+        "Матрица сроков: лист записан, колонок процентилей=%s, порог %s, "
+        "выделено ячеек=%s, freeze=%s",
+        n_pct,
+        percentile_label(exc_p),
+        len(highlight_cells),
+        freeze,
+    )
 
 
 def export_excel_v2(

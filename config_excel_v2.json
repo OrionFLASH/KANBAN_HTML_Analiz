@@ -439,7 +439,7 @@
       "default": { "last_row": 1, "last_col": 0 },
       "norms": { "last_row": 1, "last_col": 3 },
       "statistics": { "last_row": 1, "last_col": 0 },
-      "duration_matrix": { "last_row": 3, "last_col": 3 },
+      "duration_matrix": { "last_row": 3, "last_col": 6 },
       "leads": { "last_row": 1, "last_col": 3 },
       "managers": { "last_row": 1, "last_col": 2 },
       "violations": { "last_row": 1, "last_col": 0 }
@@ -449,17 +449,21 @@
       "sort_mode": "by_volume",
       "total_column_label": "Всего",
       "day_column_width": 4.5,
+      "percentile_column_width": 8,
       "row_height": 28,
       "header_row_height": 22,
       "filter_row_height": 16,
       "counts_font_size": 14,
       "header_fill": "FFF2CC",
       "filter_row_font_color": "D9D9D9",
+      "grid_border_color": "BFBFBF",
+      "threshold_border_color": "C65911",
       "max_day_span": 3000,
       "label_column_widths": {
         "A": 28,
         "B": 36,
-        "C": 10
+        "C": 10,
+        "total": 10
       },
       "color_scale": {
         "start": "63BE7B",
