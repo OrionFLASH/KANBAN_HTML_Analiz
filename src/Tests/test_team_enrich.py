@@ -120,7 +120,9 @@ def test_enrich_uses_snapshot_deal_id_key() -> None:
         }
     )
     snapshot: pd.DataFrame = build_lead_snapshot(kanban, config)
+    assert "lead_id" in snapshot.columns
     assert "deal_id" in snapshot.columns
+    assert "ID ПрПр" not in snapshot.columns
     assert "ID сделки" not in snapshot.columns
 
     lead_team, deal_team = _team_frames(with_added=True)
@@ -148,8 +150,8 @@ def test_enrich_uses_snapshot_deal_id_key() -> None:
         snapshot, lead_team, deal_team, config
     )
 
-    row_l1: pd.Series = enriched.loc[enriched[lead_col] == "L1"].iloc[0]
-    row_l2: pd.Series = enriched.loc[enriched[lead_col] == "L2"].iloc[0]
+    row_l1: pd.Series = enriched.loc[enriched["lead_id"] == "L1"].iloc[0]
+    row_l2: pd.Series = enriched.loc[enriched["lead_id"] == "L2"].iloc[0]
 
     assert row_l1["ФИО Лидера лида"] == "Лидер Лида Б"
     assert row_l1["ФИО Лидера сделки"] == "Лидер Сделки А"

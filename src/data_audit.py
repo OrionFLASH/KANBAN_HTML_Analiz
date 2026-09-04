@@ -123,9 +123,10 @@ def audit_snapshot_coverage(
         )
         return
 
-    snap_key: str = lead_col if lead_col in snapshot.columns else "lead_id"
-    if snap_key not in snapshot.columns and "lead_id" in snapshot.columns:
-        snap_key = "lead_id"
+    snap_key: str = "lead_id" if "lead_id" in snapshot.columns else lead_col
+    if snap_key not in snapshot.columns:
+        logger.error("Аудит [снимок]: нет колонки lead_id / «%s»", lead_col)
+        return
 
     out_leads: set[str] = {
         str(v).strip()

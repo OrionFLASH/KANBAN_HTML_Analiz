@@ -44,18 +44,18 @@ def snapshot_column_map(config: dict[str, Any]) -> dict[str, str]:
 
 def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
     """
-    Уникальные ID ПрПр с подтягиванием полей из самых свежих непустых строк.
-    Один проход сортировки и groupby, без цепочки merge.
+    Уникальные лиды с подтягиванием полей из самых свежих непустых строк.
+    В снимке все поля под ключами config (lead_id, deal_id, …), не под Excel-именами.
     """
     if df.empty:
         return pd.DataFrame()
 
-    lead_col: str = col(config, "lead_id")
+    lead_src: str = col(config, "lead_id")
     report_col: str = col(config, "report_date")
     days_col: str = col(config, "days_on_stage")
     field_keys: list[str] = list(snapshot_column_map(config).keys())
 
-    src_cols: set[str] = {lead_col, report_col, days_col}
+    src_cols: set[str] = {lead_src, report_col, days_col}
     for key in field_keys:
         if key in config.get("columns", {}):
             src_cols.add(col(config, key))
@@ -63,16 +63,17 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
 
     work: pd.DataFrame = df[use_cols].copy()
     work[report_col] = pd.to_datetime(work[report_col], errors="coerce")
-    work = work.dropna(subset=[lead_col])
-    work[lead_col] = work[lead_col].astype(str).str.strip()
-    work = work.loc[work[lead_col] != ""]
-    work = work.sort_values([lead_col, report_col], ascending=[True, False], kind="mergesort")
+    work = work.dropna(subset=[lead_src])
+    work[lead_src] = work[lead_src].astype(str).str.strip()
+    work = work.loc[work[lead_src] != ""]
+    work = work.sort_values([lead_src, report_col], ascending=[True, False], kind="mergesort")
 
     empty: set[str] = _empty_tokens(config)
-    grouped = work.groupby(lead_col, sort=False)
+    grouped = work.groupby(lead_src, sort=False)
 
-    latest: pd.DataFrame = work.drop_duplicates(subset=[lead_col], keep="first")
-    indexed: pd.DataFrame = latest[[lead_col]].set_index(lead_col)
+    latest: pd.DataFrame = work.drop_duplicates(subset=[lead_src], keep="first")
+    indexed: pd.DataFrame = latest[[lead_src]].set_index(lead_src)
+    indexed.index.name = "lead_id"
     indexed["_report_date"] = latest[report_col].values
     if days_col in latest.columns:
         indexed["_days_on_stage"] = pd.to_numeric(latest[days_col], errors="coerce").values
@@ -100,18 +101,18 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
 
 
 def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Переименовывает колонки снимка для Excel."""
+    """Переименовывает ключи снимка в Excel-заголовки."""
     if snapshot.empty:
         return snapshot
 
-    lead_col: str = col(config, "lead_id")
+    lead_label: str = col(config, "lead_id")
     mapping: dict[str, str] = snapshot_column_map(config)
-    rename: dict[str, str] = {lead_col: lead_col}
+    rename: dict[str, str] = {"lead_id": lead_label}
     for key, label in mapping.items():
         if key in snapshot.columns:
             rename[key] = label
 
-    export_cols: list[str] = [lead_col] + [mapping[k] for k in mapping if k in snapshot.columns]
+    export_cols: list[str] = [lead_label] + [mapping[k] for k in mapping if k in snapshot.columns]
     renamed: pd.DataFrame = snapshot.rename(columns=rename)
     exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     extra_cols: list[str] = [

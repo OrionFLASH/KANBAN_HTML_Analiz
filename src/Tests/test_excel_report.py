@@ -27,7 +27,7 @@ def test_build_lead_snapshot_fill_forward() -> None:
     df[report_col] = pd.to_datetime(df[report_col])
 
     snapshot: pd.DataFrame = build_lead_snapshot(df, config)
-    row_l1: pd.Series = snapshot.loc[snapshot[lead_col] == "L1"].iloc[0]
+    row_l1: pd.Series = snapshot.loc[snapshot["lead_id"] == "L1"].iloc[0]
 
     assert row_l1["current_status"] == "СТАТУС 1"
     assert row_l1["product"] == "Продукт А"

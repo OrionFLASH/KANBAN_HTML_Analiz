@@ -1077,6 +1077,7 @@ HTML переключает срезы из `visualizations.filter_slices` кн�
   "leader_values": ["Да", "да", "yes", "1"],
   "columns": {
     "report_date": "Дата отчета",
+    "team_added_date": "Дата добавления в команду",
     "lead_id": "ID ПрПр",
     "deal_id": "ID сделки",
     "member": "Участник команды",

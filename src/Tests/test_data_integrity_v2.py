@@ -113,4 +113,4 @@ def test_audit_snapshot_coverage_passes() -> None:
     )
     snapshot = build_lead_snapshot(filtered, config)
     audit_snapshot_coverage(filtered, snapshot, config)
-    assert set(snapshot[lead_col]) == {"L1", "L2"}
+    assert set(snapshot["lead_id"]) == {"L1", "L2"}

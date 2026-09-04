@@ -192,23 +192,13 @@ def build_leaders_lookup_df(
 def _snapshot_id_column(snapshot: pd.DataFrame, config: dict[str, Any], key: str) -> str | None:
     """
     Имя колонки id в снимке для join с lookup лидеров.
-
-    В build_lead_snapshot:
-    - lead_id остаётся под Excel-именем (например «ID ПрПр»);
-    - прочие поля snapshot_columns — под ключами config («deal_id», не «ID сделки»).
+    Снимок хранит поля под ключами config (lead_id, deal_id); Excel-имя — запасной вариант.
     """
     if key not in config.get("columns", {}):
         return None
-    excel_name: str = col(config, key)
-    if key == "lead_id":
-        if excel_name in snapshot.columns:
-            return excel_name
-        if key in snapshot.columns:
-            return key
-        return None
-    # deal_id и аналоги: сначала ключ снимка, затем Excel-имя (если уже переименовано)
     if key in snapshot.columns:
         return key
+    excel_name: str = col(config, key)
     if excel_name in snapshot.columns:
         return excel_name
     return None

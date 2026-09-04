@@ -253,6 +253,7 @@ src/
 | 11.24 | Fix `clip_group_frame`: маска выбросов с индексом группы (IndexingError) | `outlier_clipping.py` | `[v]` |
 | 11.25 | Fix подливки лидера сделки: join по ключу снимка `deal_id` (+ все лидеры на max дате) | `team_enrich.py` | `[v]` |
 | 11.26 | Отбор лидера: max дата отчёта → max «Дата добавления в команду»; равные → `\n` | `team_enrich.py`, `team_loader.py` | `[v]` |
+| 11.27 | Снимок: единообразные ключи config (`lead_id` как `deal_id`) | `snapshot.py`, `manager_summary.py` | `[v]` |
 
 ---
 

@@ -54,7 +54,7 @@ def _collect_manager_entries(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
     tb_col: str = "tb"
     pg_col: str = "product_group"
     product_col: str = "product"
-    lead_col: str = col(config, "lead_id")
+    lead_col: str = "lead_id"
 
     for _, row in snapshot.iterrows():
         is_exceeded: bool = str(row.get(exc_flag) or "").upper() == "ДА"
@@ -163,8 +163,6 @@ def _manager_summary_from_entries(
     exceeded_leads_by_manager: dict[str, set[str]] = defaultdict(set)
     exceed_count_col: str = managers_exceedance_count_column(config)
 
-    lead_col: str = col(config, "lead_id")
-
     for entry in entries:
         key: str = entry["manager_key"]
         if key not in by_manager:
@@ -217,7 +215,7 @@ def _violations_detail_from_entries(
 
     snap_cols: dict[str, str] = config.get("output", {}).get("snapshot_columns") or {}
     exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
-    lead_col: str = col(config, "lead_id")
+    lead_label: str = col(config, "lead_id")
 
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -237,7 +235,7 @@ def _violations_detail_from_entries(
             "ФИО менеджера": entry["name"],
             "Роль": entry["role"],
             "ТБ менеджера": entry["tb"],
-            lead_col: lead_id,
+            lead_label: lead_id,
         }
         for key, label in snap_cols.items():
             if key in snap_row.index:
