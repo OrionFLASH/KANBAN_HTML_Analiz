@@ -6,15 +6,19 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
+from src.percentile_stats import empirical_percentile_stats, percentile_label
 from src.settings import col
+from src.v2.exceedance_config import exceedance_percentile
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.duration_matrix")
 
 # Запас по ширине Excel (макс. 16384 колонки)
 _EXCEL_MAX_COLUMNS: int = 16384
-_LABEL_COLUMNS: int = 3
+# Группа + продукт + процентили + Всего (число процентилей — из config)
+_BASE_LABEL_COLUMNS: int = 3
 
 # alpha_days — группы/продукты А→Я, дни по возрастанию
 # by_volume — строки/колонки по убыванию числа лидов
@@ -26,8 +30,8 @@ SORT_MODE_BY_VOLUME: str = "by_volume"
 class DurationMatrixResult:
     """Готовая матрица для листа Excel."""
 
-    # Строки: (группа, продукт, всего); колонки дней — int → count
-    rows: list[tuple[str, str, int, dict[int, int]]]
+    # Строки: (группа, продукт, всего, counts_по_дням, percentiles {p → дни})
+    rows: list[tuple[str, str, int, dict[int, int], dict[float, int | None]]]
     day_min: int
     day_max: int
     # Дни с ≥1 лидом (порядок зависит от sort_mode)
@@ -36,6 +40,10 @@ class DurationMatrixResult:
     day_totals: dict[int, int]
     # Сумма всех лидов в матрице
     grand_total: int
+    # Перцентили из config (порядок колонок)
+    percentile_list: list[float]
+    # Порог превышения (для выделения ячейки дня)
+    exceedance_percentile: float
     sort_mode: str
     empty: bool
 
@@ -67,6 +75,50 @@ def duration_matrix_enabled(config: dict[str, Any]) -> bool:
     return bool(_matrix_cfg(config).get("enabled", True))
 
 
+def _percentile_list(config: dict[str, Any]) -> list[float]:
+    """Список процентилей из config (как на листе нормативов)."""
+    raw: list[Any] = list(config.get("percentiles") or [20, 50, 80])
+    result: list[float] = []
+    for item in raw:
+        try:
+            result.append(float(item))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _empty_result(config: dict[str, Any], sort_mode: str) -> DurationMatrixResult:
+    """Пустая матрица с метаданными из config."""
+    return DurationMatrixResult(
+        rows=[],
+        day_min=0,
+        day_max=0,
+        day_columns=[],
+        day_totals={},
+        grand_total=0,
+        percentile_list=_percentile_list(config),
+        exceedance_percentile=exceedance_percentile(config),
+        sort_mode=sort_mode,
+        empty=True,
+    )
+
+
+def _row_percentiles(
+    day_values: np.ndarray,
+    percentiles: list[float],
+) -> dict[float, int | None]:
+    """
+    Эмпирические процентили по срокам лидов строки (все стадии вместе).
+    Возвращает только значение в днях (без count/le/gt).
+    """
+    out: dict[float, int | None] = {}
+    for p in percentiles:
+        stats: dict[str, int | None] = empirical_percentile_stats(day_values, p)
+        days_val: int | None = stats.get("days")  # type: ignore[assignment]
+        out[float(p)] = int(days_val) if days_val is not None else None
+    return out
+
+
 def build_duration_matrix(
     snapshot: pd.DataFrame,
     config: dict[str, Any],
@@ -75,19 +127,12 @@ def build_duration_matrix(
     Считает число уникальных лидов по (группа, продукт, целые дни на стадии).
 
     Столбцы дней — только значения, где есть ≥1 лид.
+    Процентили — пересчёт по всем лидам пары группа+продукт (все стадии вместе).
     Порядок строк/столбцов — `output.duration_matrix.sort_mode`.
     """
     sort_mode: str = resolve_sort_mode(config)
-    empty: DurationMatrixResult = DurationMatrixResult(
-        rows=[],
-        day_min=0,
-        day_max=0,
-        day_columns=[],
-        day_totals={},
-        grand_total=0,
-        sort_mode=sort_mode,
-        empty=True,
-    )
+    percentiles: list[float] = _percentile_list(config)
+    empty: DurationMatrixResult = _empty_result(config, sort_mode)
     if snapshot is None or snapshot.empty:
         return empty
 
@@ -153,10 +198,11 @@ def build_duration_matrix(
         day_max = int(work["_days_int"].max())
         day_set = {int(v) for v in work["_days_int"].tolist()}
 
-    if _LABEL_COLUMNS + len(day_set) > _EXCEL_MAX_COLUMNS:
+    label_cols: int = _BASE_LABEL_COLUMNS + len(percentiles)
+    if label_cols + len(day_set) > _EXCEL_MAX_COLUMNS:
         logger.error(
             "Матрица сроков: слишком много колонок (%s) — лист пропущен",
-            _LABEL_COLUMNS + len(day_set),
+            label_cols + len(day_set),
         )
         return empty
 
@@ -174,7 +220,7 @@ def build_duration_matrix(
     )
 
     day_totals: dict[int, int] = {d: 0 for d in day_set}
-    rows_map: dict[tuple[str, str], tuple[int, dict[int, int]]] = {}
+    rows_map: dict[tuple[str, str], tuple[int, dict[int, int], dict[float, int | None]]] = {}
     for pg, pr in pairs:
         sub: pd.DataFrame = grouped.loc[(grouped["_pg"] == pg) & (grouped["_pr"] == pr)]
         counts: dict[int, int] = {}
@@ -187,7 +233,13 @@ def build_duration_matrix(
                 counts[day_i] = cnt_i
                 day_totals[day_i] += cnt_i
         total: int = int(sum(counts.values()))
-        rows_map[(pg, pr)] = (total, counts)
+        # Все сроки лидов строки (с учётом кратности) — для процентилей по всем стадиям
+        day_values: np.ndarray = np.repeat(
+            np.array(list(counts.keys()), dtype=np.int64),
+            np.array(list(counts.values()), dtype=np.int64),
+        )
+        pct_map: dict[float, int | None] = _row_percentiles(day_values, percentiles)
+        rows_map[(pg, pr)] = (total, counts, pct_map)
 
     # Убрать дни с нулевой суммой
     day_columns: list[int] = [d for d in day_set if day_totals.get(d, 0) > 0]
@@ -201,9 +253,9 @@ def build_duration_matrix(
             key=lambda d: (-day_totals[d], d),
         )
         # Строки: сверху максимум лидов; при равенстве — алфавит группа/продукт
-        rows_out: list[tuple[str, str, int, dict[int, int]]] = [
-            (pg, pr, total, counts)
-            for (pg, pr), (total, counts) in sorted(
+        rows_out: list[tuple[str, str, int, dict[int, int], dict[float, int | None]]] = [
+            (pg, pr, total, counts, pcts)
+            for (pg, pr), (total, counts, pcts) in sorted(
                 rows_map.items(),
                 key=lambda item: (
                     -item[1][0],
@@ -215,20 +267,24 @@ def build_duration_matrix(
     else:
         day_columns = sorted(day_columns)
         rows_out = [
-            (pg, pr, total, counts)
-            for (pg, pr), (total, counts) in sorted(
+            (pg, pr, total, counts, pcts)
+            for (pg, pr), (total, counts, pcts) in sorted(
                 rows_map.items(),
                 key=lambda item: (item[0][0].casefold(), item[0][1].casefold()),
             )
         ]
 
+    exc_p: float = exceedance_percentile(config)
     logger.info(
-        "Матрица сроков: mode=%s, %s продуктов, дни %s…%s (%s колонок), всего лидов %s",
+        "Матрица сроков: mode=%s, %s продуктов, дни %s…%s (%s колонок), "
+        "процентили=%s, порог P%s, всего лидов %s",
         sort_mode,
         len(rows_out),
         day_min,
         day_max,
         len(day_columns),
+        [percentile_label(p) for p in percentiles],
+        percentile_label(exc_p).lstrip("p"),
         grand_total,
     )
     return DurationMatrixResult(
@@ -238,6 +294,8 @@ def build_duration_matrix(
         day_columns=day_columns,
         day_totals=day_totals,
         grand_total=grand_total,
+        percentile_list=percentiles,
+        exceedance_percentile=exc_p,
         sort_mode=sort_mode,
         empty=False,
     )
