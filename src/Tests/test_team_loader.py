@@ -50,11 +50,14 @@ def test_build_leader_lookup_max_date() -> None:
     df = pd.DataFrame(
         {
             "Дата отчета": pd.to_datetime(["2026-01-01", "2026-08-31", "2026-08-31"]),
+            "Дата добавления в команду": pd.to_datetime(
+                ["2026-01-01", "2026-06-01", "2026-07-01"]
+            ),
             "ID ПрПр": ["L1", "L1", "L1"],
             "ID сделки": ["D1", "D1", "D1"],
-            "Участник команды": ["Старый Лидер", "Новый Лидер", "Не лидер"],
+            "Участник команды": ["Старый Лидер", "Средний Лидер", "Новый Лидер"],
             "Роль участника команды": ["ПС", "ПС", "КМ"],
-            "Лидер": ["Да", "Да", "Нет"],
+            "Лидер": ["Да", "Да", "Да"],
             "ТБ": ["ТБ1"] * 3,
         }
     )
@@ -65,6 +68,25 @@ def test_build_leader_lookup_max_date() -> None:
     assert len(lookup["L1"]) == 1
     assert lookup["L1"][0]["name"] == "Новый Лидер"
     assert "Команда лида" in lookup["L1"][0]["role_label"]
+
+
+def test_build_leader_lookup_same_added_keeps_both() -> None:
+    df = pd.DataFrame(
+        {
+            "Дата отчета": pd.to_datetime(["2026-08-31", "2026-08-31"]),
+            "Дата добавления в команду": pd.to_datetime(["2026-07-01", "2026-07-01"]),
+            "ID ПрПр": ["L1", "L1"],
+            "ID сделки": ["D1", "D1"],
+            "Участник команды": ["Лидер А", "Лидер Б"],
+            "Роль участника команды": ["ПС", "КМ"],
+            "Лидер": ["Да", "Да"],
+            "ТБ": ["ТБ1", "ТБ1"],
+        }
+    )
+    lookup = build_leader_lookup(
+        df, _team_config(), id_key="lead_id", source=SOURCE_LEAD_TEAM
+    )
+    assert {m["name"] for m in lookup["L1"]} == {"Лидер А", "Лидер Б"}
 
 
 def test_compose_lead_team_unique_roles() -> None:

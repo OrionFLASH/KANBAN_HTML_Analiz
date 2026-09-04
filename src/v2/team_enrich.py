@@ -13,6 +13,7 @@ from src.team_loader import (
     _leader_value_set,
     load_team_frames,
     normalize_person_name,
+    pick_leaders_on_latest_dates,
 )
 from src.tab_number import normalize_tab_number_multiline
 
@@ -23,6 +24,7 @@ def _team_columns(config: dict[str, Any]) -> dict[str, str]:
     """Карта логических имён колонок команды."""
     defaults: dict[str, str] = {
         "report_date": "Дата отчета",
+        "team_added_date": "Дата добавления в команду",
         "lead_id": "ID ПрПр",
         "deal_id": "ID сделки",
         "member_tab_number": "Табельный номер участника команды",
@@ -67,8 +69,9 @@ def build_leaders_lookup_df(
     source: str = "lead",
 ) -> pd.DataFrame:
     """
-    DataFrame id → поля лидеров (TN, ФИО, роль, ТБ) на max(дата отчёта).
-    Векторизованная группировка вместо iterrows.
+    DataFrame id → поля лидеров (TN, ФИО, роль, ТБ).
+    Отбор: max(Дата отчета), затем max(Дата добавления в команду);
+    при равных датах — все лидеры через \\n.
     """
     if team_df.empty:
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
@@ -76,6 +79,7 @@ def build_leaders_lookup_df(
     cols: dict[str, str] = _team_columns(config)
     id_col: str = cols[id_key]
     date_col: str = cols["report_date"]
+    added_col: str = cols.get("team_added_date", "Дата добавления в команду")
     tn_col: str = cols["member_tab_number"]
     member_col: str = cols["member"]
     role_col: str = cols["role"]
@@ -90,9 +94,12 @@ def build_leaders_lookup_df(
         logger.warning("Команда (%s): нет колонок %s", source, missing)
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
-    work: pd.DataFrame = team_df[
-        [c for c in (id_col, date_col, tn_col, member_col, role_col, leader_col, tb_col) if c in team_df.columns]
-    ].copy()
+    use_cols: list[str] = [
+        c
+        for c in (id_col, date_col, added_col, tn_col, member_col, role_col, leader_col, tb_col)
+        if c in team_df.columns
+    ]
+    work: pd.DataFrame = team_df[use_cols].copy()
 
     leader_text: pd.Series = work[leader_col].fillna("").astype(str).str.strip().str.casefold()
     before_leader: int = len(work)
@@ -132,9 +139,24 @@ def build_leaders_lookup_df(
             pick_mode,
         )
 
-    # Все строки с max(Дата отчета) по id — несколько лидеров на одной дате сохраняем
-    max_dates: pd.Series = work.groupby("_id", sort=False)["_date"].transform("max")
-    latest: pd.DataFrame = work.loc[work["_date"] == max_dates].copy()
+    if added_col in work.columns:
+        work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
+        team_added_key: str | None = "_team_added"
+    else:
+        team_added_key = None
+        logger.info(
+            "Команда (%s): колонка «%s» отсутствует — отбор только по дате отчёта",
+            source,
+            added_col,
+        )
+
+    latest: pd.DataFrame = pick_leaders_on_latest_dates(
+        work,
+        id_col="_id",
+        report_date_col="_date",
+        team_added_col=team_added_key,
+        source=source,
+    )
     latest["_name"] = latest[member_col].map(normalize_person_name)
     before_names: int = len(latest)
     latest = latest.loc[latest["_name"] != ""]

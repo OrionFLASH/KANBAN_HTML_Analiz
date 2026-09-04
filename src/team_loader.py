@@ -60,6 +60,7 @@ def _team_column_map(config: dict[str, Any]) -> dict[str, str]:
     """Имена колонок файла команды (с defaults)."""
     defaults: dict[str, str] = {
         "report_date": "Дата отчета",
+        "team_added_date": "Дата добавления в команду",
         "lead_id": "ID ПрПр",
         "deal_id": "ID сделки",
         "member_tab_number": "Табельный номер участника команды",
@@ -219,6 +220,50 @@ def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
     return combined
 
 
+def pick_leaders_on_latest_dates(
+    work: pd.DataFrame,
+    *,
+    id_col: str = "_id",
+    report_date_col: str = "_date",
+    team_added_col: str | None = "_team_added",
+    source: str = "lead",
+) -> pd.DataFrame:
+    """
+    Среди лидеров: max(Дата отчета), затем max(Дата добавления в команду).
+    Несколько строк с одинаковой парой дат — все остаются (склейка снаружи).
+    Нет колонки / все даты добавления пустые — остаются все на max дате отчёта.
+    """
+    if work.empty:
+        return work
+
+    max_report: pd.Series = work.groupby(id_col, sort=False)[report_date_col].transform("max")
+    latest: pd.DataFrame = work.loc[work[report_date_col] == max_report].copy()
+    if latest.empty:
+        return latest
+
+    if not team_added_col or team_added_col not in latest.columns:
+        return latest
+
+    added: pd.Series = latest[team_added_col]
+    has_any_added: pd.Series = added.notna().groupby(latest[id_col], sort=False).transform("any")
+    if not bool(has_any_added.any()):
+        return latest
+
+    max_added: pd.Series = added.groupby(latest[id_col], sort=False).transform("max")
+    # Есть хотя бы одна дата добавления → только строки с max; иначе все на max отчёта
+    keep: pd.Series = (~has_any_added) | (added == max_added)
+    before: int = len(latest)
+    latest = latest.loc[keep].copy()
+    if len(latest) < before:
+        logger.info(
+            "Команда (%s): отбор по дате добавления в команду: %d → %d строк",
+            source,
+            before,
+            len(latest),
+        )
+    return latest
+
+
 def build_leader_lookup(
     df: pd.DataFrame,
     config: dict[str, Any],
@@ -227,7 +272,7 @@ def build_leader_lookup(
     source: str,
 ) -> dict[str, list[dict[str, str]]]:
     """
-    Словарь id → список лидеров на максимальной дате отчёта.
+    Словарь id → список лидеров на max(дата отчёта), затем max(дата добавления).
     id_key: lead_id | deal_id из карты колонок команды.
     """
     if df.empty:
@@ -236,6 +281,7 @@ def build_leader_lookup(
     cols: dict[str, str] = _team_column_map(config)
     id_col: str = cols[id_key]
     date_col: str = cols["report_date"]
+    added_col: str = cols.get("team_added_date", "Дата добавления в команду")
     member_col: str = cols["member"]
     role_col: str = cols["role"]
     leader_col: str = cols["is_leader"]
@@ -267,8 +313,19 @@ def build_leader_lookup(
     if work.empty:
         return {}
 
-    max_dates: pd.Series = work.groupby("_id", sort=False)["_date"].transform("max")
-    latest: pd.DataFrame = work.loc[work["_date"] == max_dates].copy()
+    if added_col in work.columns:
+        work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
+        team_added_key: str | None = "_team_added"
+    else:
+        team_added_key = None
+
+    latest: pd.DataFrame = pick_leaders_on_latest_dates(
+        work,
+        id_col="_id",
+        report_date_col="_date",
+        team_added_col=team_added_key,
+        source=source,
+    )
 
     result: dict[str, list[dict[str, str]]] = {}
     for lead_id, group in latest.groupby("_id", sort=False):

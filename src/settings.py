@@ -352,6 +352,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
             "columns": {
                 "report_date": "Дата отчета",
+                "team_added_date": "Дата добавления в команду",
                 "lead_id": "ID ПрПр",
                 "deal_id": "ID сделки",
                 "member": "Участник команды",
