@@ -259,6 +259,7 @@ src/
 | 11.30 | Чтение Excel: убрать Base/table_auto, openpyxl `read_only=true` | `excel_loader.py`, `team_loader.py` | `[v]` |
 | 11.31 | Архив программы v2: `v2_program_files_20260904.zip` (код+config+docs, read_only) | корень репо | `[v]` |
 | 11.32 | Единые файлы «команда лида и сделки» + колонка «Тип команды» (1/2/-) | `team_loader`, configs, docs | `[v]` |
+| 11.33 | Архив программы v2: `v2_program_files_20260907.zip` (без тестов, + единые команды) | корень репо | `[v]` |
 
 ### 11.32 — Декомпозиция
 
