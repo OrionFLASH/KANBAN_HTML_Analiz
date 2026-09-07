@@ -51,7 +51,7 @@ python run_excel.py
 | `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_*.xlsx` |
 | `prod` | `IN/PROD` | то же |
 
-В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config). Перед запуском проверяется наличие **всех** файлов для выбранного `mode`; при prod — **38 файлов** (22 Kanban + 16 команд).
+В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config). Перед запуском проверяется наличие **всех** файлов для выбранного `mode`; при prod — **15 файлов** (11 Kanban ЕФС + 4 объединённых «команда лида и сделки»).
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
@@ -97,7 +97,7 @@ log/                 # логи INFO/DEBUG
 | `output` | Имена файлов, листы Excel, оформление |
 | `filters` | Фильтры: Excel (`enabled`), JSON (`filter_slices` для `html_slice: true`), HTML (ВКЛ/ВЫКЛ). Config-only (`html_slice: false`): ЕФС, терминальные `exclude_deal_*`, опционально `exclude_current_for_sale` (исключить текущий статус «К ПРОДАЖЕ» из анализа и колонок UI) |
 | `dashboard` | Дашборд: `precompute_html_filter_slices`, `html_json` (split-bundle), метрики по умолчанию |
-| `manager_analytics` | Превышения P80; TOP по участникам команды (`rank_by_team` + `team_files`: команда лида/сделки); КМ+ВКС+лидеры; Excel/UI |
+| `manager_analytics` | Превышения P80; TOP по участникам команды (`rank_by_team` + `team_files.files` + «Тип команды» 1/2); КМ+ВКС+лидеры; Excel/UI |
 | `logging` | Файлы логов |
 
 ### Частые настройки

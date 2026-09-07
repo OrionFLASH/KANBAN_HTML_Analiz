@@ -23,6 +23,12 @@ SOURCE_DEAL_TEAM: str = "deal_team"
 SOURCE_KM: str = "km"
 SOURCE_VKS: str = "vks"
 
+# Единый список файлов (лид + сделка в одном комплекте)
+TEAM_FILES_KIND_UNIFIED: str = "files"
+# Устаревшие раздельные списки (fallback, если files пуст)
+TEAM_FILES_KIND_LEAD: str = "lead_team"
+TEAM_FILES_KIND_DEAL: str = "deal_team"
+
 EMPTY_NAME_TOKENS: frozenset[str] = frozenset({"", "-", "—", "nan", "none", "null"})
 
 
@@ -48,6 +54,14 @@ def normalize_person_name(value: Any) -> str:
     return text
 
 
+def is_empty_token(value: Any) -> bool:
+    """True для пустых / прочерков / NaN (тип команды, табельный и т.п.)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return True
+    token: str = str(value).strip().casefold()
+    return token in EMPTY_NAME_TOKENS
+
+
 def _is_leader_value(value: Any, leader_values: set[str]) -> bool:
     """True, если значение колонки «Лидер» означает лидера."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -68,6 +82,7 @@ def _team_column_map(config: dict[str, Any]) -> dict[str, str]:
         "role": "Роль участника команды",
         "is_leader": "Лидер",
         "tb": "ТБ",
+        "team_type": "Тип команды",
     }
     overrides: dict[str, Any] = team_files_config(config).get("columns") or {}
     result: dict[str, str] = dict(defaults)
@@ -75,6 +90,41 @@ def _team_column_map(config: dict[str, Any]) -> dict[str, str]:
         if value:
             result[str(key)] = str(value)
     return result
+
+
+def _team_type_value_sets(config: dict[str, Any]) -> dict[str, set[str]]:
+    """
+    Допустимые значения «Тип команды» в нормализованном виде (strip + casefold).
+    lead=1, deal=2, unassigned=прочерк.
+    """
+    defaults: dict[str, list[Any]] = {
+        "lead": [1, "1"],
+        "deal": [2, "2"],
+        "unassigned": ["-", "—", ""],
+    }
+    raw: Any = team_files_config(config).get("team_type_values") or {}
+    overrides: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+    result: dict[str, set[str]] = {}
+    for key, default_list in defaults.items():
+        values: list[Any] = list(overrides.get(key) or default_list)
+        result[key] = {str(v).strip().casefold() for v in values if str(v).strip() or key == "unassigned"}
+        # пустая строка всегда в unassigned
+        if key == "unassigned":
+            result[key].add("")
+    return result
+
+
+def _normalize_team_type_token(value: Any) -> str:
+    """Нормализует значение «Тип команды» к строке для сравнения."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    # Excel может отдать 1.0 / 2.0
+    if isinstance(value, (int, float)) and float(value) == int(value):
+        return str(int(value))
+    text: str = str(value).strip()
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text.casefold() if text else ""
 
 
 def _leader_value_set(config: dict[str, Any]) -> set[str]:
@@ -101,8 +151,18 @@ def _role_label(source: str, role: str) -> str:
 
 
 def team_filenames_for_mode(config: dict[str, Any], kind: str) -> list[str]:
-    """Публичная обёртка: имена файлов команды lead_team / deal_team для текущего mode."""
+    """Публичная обёртка: имена файлов команды для текущего mode."""
     return _resolve_team_filenames(config, kind)
+
+
+def unified_team_filenames_for_mode(config: dict[str, Any]) -> list[str]:
+    """Имена объединённых файлов команды (team_files.files) для текущего mode."""
+    return _resolve_team_filenames(config, TEAM_FILES_KIND_UNIFIED)
+
+
+def uses_unified_team_files(config: dict[str, Any]) -> bool:
+    """True, если для текущего mode задан единый комплект files."""
+    return bool(unified_team_filenames_for_mode(config))
 
 
 def _resolve_team_filenames(config: dict[str, Any], kind: str) -> list[str]:
@@ -154,16 +214,6 @@ def _read_team_file(path: Path, config: dict[str, Any]) -> pd.DataFrame:
     return df
 
 
-def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Загружает и склеивает файлы команды лида и команды сделки."""
-    if not is_team_files_enabled(config):
-        return pd.DataFrame(), pd.DataFrame()
-
-    lead_df: pd.DataFrame = load_team_kind_frames(config, "lead_team")
-    deal_df: pd.DataFrame = load_team_kind_frames(config, "deal_team")
-    return lead_df, deal_df
-
-
 def _load_one_team_file(path: Path, name: str, config: dict[str, Any]) -> pd.DataFrame:
     """Читает один файл команды и помечает source_file."""
     frame: pd.DataFrame = _read_team_file(path, config)
@@ -171,19 +221,17 @@ def _load_one_team_file(path: Path, name: str, config: dict[str, Any]) -> pd.Dat
     return frame
 
 
-def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
-    """Загружает и склеивает все файлы одного типа команды (lead_team | deal_team)."""
-    if not is_team_files_enabled(config):
-        return pd.DataFrame()
-    if kind not in {"lead_team", "deal_team"}:
-        raise ValueError("kind должен быть 'lead_team' или 'deal_team'")
-
-    input_dir: Path = _input_dir(config)
-    filenames: list[str] = _resolve_team_filenames(config, kind)
+def _load_team_file_list(
+    config: dict[str, Any],
+    filenames: list[str],
+    *,
+    label: str,
+) -> pd.DataFrame:
+    """Загружает и склеивает список файлов команды."""
     if not filenames:
         return pd.DataFrame()
 
-    label: str = "лида" if kind == "lead_team" else "сделки"
+    input_dir: Path = _input_dir(config)
     mode: str = str(config.get("mode", "test"))
     paths: list[tuple[Path, str]] = []
     for name in filenames:
@@ -220,7 +268,7 @@ def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
     combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
     cols: dict[str, str] = _team_column_map(config)
     tn_col: str = cols.get("member_tab_number", "")
-    if tn_col:
+    if tn_col and tn_col in combined.columns:
         combined = normalize_team_tab_column(combined, tn_col)
     logger.info(
         "Команда %s: загружено %d файлов, всего %s строк",
@@ -229,6 +277,113 @@ def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
         f"{len(combined):,}",
     )
     return combined
+
+
+def split_team_frames_by_type(
+    combined: pd.DataFrame,
+    config: dict[str, Any],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Делит объединённый файл по колонке «Тип команды»:
+    1 → команда лида, 2 → команда сделки.
+    Тип и ТН = «-» → лид не взят в работу (не попадает в lookup лидеров;
+    КМ/ВКС берутся из канбана, если лидеров нет).
+    """
+    if combined.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    cols: dict[str, str] = _team_column_map(config)
+    type_col: str = cols.get("team_type", "Тип команды")
+    tn_col: str = cols.get("member_tab_number", "Табельный номер участника команды")
+    type_sets: dict[str, set[str]] = _team_type_value_sets(config)
+
+    if type_col not in combined.columns:
+        logger.warning(
+            "Команда (объединённая): нет колонки «%s» — split невозможен, lookup пуст",
+            type_col,
+        )
+        return pd.DataFrame(), pd.DataFrame()
+
+    work: pd.DataFrame = combined.copy()
+    type_norm: pd.Series = work[type_col].map(_normalize_team_type_token)
+    work["_team_type_norm"] = type_norm
+
+    if tn_col in work.columns:
+        tn_empty: pd.Series = work[tn_col].map(is_empty_token)
+    else:
+        tn_empty = pd.Series(True, index=work.index)
+
+    type_empty: pd.Series = type_norm.map(lambda t: t in type_sets["unassigned"] or t == "")
+    unassigned_mask: pd.Series = type_empty & tn_empty
+    unassigned_count: int = int(unassigned_mask.sum())
+    if unassigned_count:
+        logger.info(
+            "Команда (объединённая): %s строк без команды (Тип=«-» и ТН=«-») — "
+            "лид не взят в работу, лидеры не подливаются; КМ/ВКС из канбана",
+            f"{unassigned_count:,}",
+        )
+
+    lead_mask: pd.Series = type_norm.isin(type_sets["lead"])
+    deal_mask: pd.Series = type_norm.isin(type_sets["deal"])
+    other_mask: pd.Series = ~(lead_mask | deal_mask | unassigned_mask)
+    other_count: int = int(other_mask.sum())
+    if other_count:
+        sample: list[str] = sorted({str(v) for v in type_norm.loc[other_mask].unique()})[:10]
+        logger.warning(
+            "Команда (объединённая): %s строк с неизвестным «%s»=%s — пропущены",
+            f"{other_count:,}",
+            type_col,
+            sample,
+        )
+
+    lead_df: pd.DataFrame = work.loc[lead_mask].drop(columns=["_team_type_norm"], errors="ignore")
+    deal_df: pd.DataFrame = work.loc[deal_mask].drop(columns=["_team_type_norm"], errors="ignore")
+    logger.info(
+        "Команда (объединённая): тип=1 (лид) %s строк, тип=2 (сделка) %s строк",
+        f"{len(lead_df):,}",
+        f"{len(deal_df):,}",
+    )
+    return lead_df.reset_index(drop=True), deal_df.reset_index(drop=True)
+
+
+def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Загружает файлы команд и возвращает (lead_df, deal_df).
+    Приоритет: единый комплект team_files.files + split по «Тип команды»;
+    иначе устаревшие lead_team / deal_team.
+    """
+    if not is_team_files_enabled(config):
+        return pd.DataFrame(), pd.DataFrame()
+
+    unified_names: list[str] = unified_team_filenames_for_mode(config)
+    if unified_names:
+        combined: pd.DataFrame = _load_team_file_list(
+            config, unified_names, label="лида и сделки"
+        )
+        return split_team_frames_by_type(combined, config)
+
+    lead_df: pd.DataFrame = load_team_kind_frames(config, TEAM_FILES_KIND_LEAD)
+    deal_df: pd.DataFrame = load_team_kind_frames(config, TEAM_FILES_KIND_DEAL)
+    return lead_df, deal_df
+
+
+def load_team_kind_frames(config: dict[str, Any], kind: str) -> pd.DataFrame:
+    """
+    Загружает кадр одного типа команды (lead_team | deal_team).
+    При едином комплекте files — читает его и фильтрует по «Тип команды».
+    """
+    if not is_team_files_enabled(config):
+        return pd.DataFrame()
+    if kind not in {TEAM_FILES_KIND_LEAD, TEAM_FILES_KIND_DEAL}:
+        raise ValueError("kind должен быть 'lead_team' или 'deal_team'")
+
+    if uses_unified_team_files(config):
+        lead_df, deal_df = load_team_frames(config)
+        return lead_df if kind == TEAM_FILES_KIND_LEAD else deal_df
+
+    label: str = "лида" if kind == TEAM_FILES_KIND_LEAD else "сделки"
+    filenames: list[str] = _resolve_team_filenames(config, kind)
+    return _load_team_file_list(config, filenames, label=label)
 
 
 def pick_leaders_on_latest_dates(
@@ -405,6 +560,8 @@ def compose_lead_team(
     """
     Актуальная команда сделки/лида: лидер лида + лидеры сделки + КМ + ВКС.
     Повторы ФИО схлопываются, роли объединяются.
+    Если лид не взят в работу (в файле команды Тип/ТН = «-»), lookup лидеров
+    пуст — остаются КМ и ВКС из канбана.
     """
     entries: list[dict[str, str]] = []
 
