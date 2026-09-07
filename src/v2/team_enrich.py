@@ -32,6 +32,7 @@ def _team_columns(config: dict[str, Any]) -> dict[str, str]:
         "role": "Роль участника команды",
         "is_leader": "Лидер",
         "tb": "ТБ",
+        "team_type": "Тип команды",
     }
     overrides: dict[str, Any] = config.get("team_files", {}).get("columns") or {}
     result: dict[str, str] = dict(defaults)

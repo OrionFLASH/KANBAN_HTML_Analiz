@@ -349,18 +349,26 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "rank_by_team": True,
         "team_files": {
             "enabled": False,
+            "files": {"test": [], "prod": []},
             "lead_team": {"test": [], "prod": []},
             "deal_team": {"test": [], "prod": []},
             "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+            "team_type_values": {
+                "lead": [1, "1"],
+                "deal": [2, "2"],
+                "unassigned": ["-", "—", ""],
+            },
             "columns": {
                 "report_date": "Дата отчета",
                 "team_added_date": "Дата добавления в команду",
                 "lead_id": "ID ПрПр",
                 "deal_id": "ID сделки",
+                "member_tab_number": "Табельный номер участника команды",
                 "member": "Участник команды",
                 "role": "Роль участника команды",
                 "is_leader": "Лидер",
                 "tb": "ТБ",
+                "team_type": "Тип команды",
             },
         },
         "rank_selection": {

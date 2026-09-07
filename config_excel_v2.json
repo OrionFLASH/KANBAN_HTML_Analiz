@@ -16,28 +16,17 @@
     "тест Канбан 2Т2Г (ALL) на 31-08-2026.xlsx"
   ],
   "prod_files": [
-    "Канбан СибБ (остаток) 01-09-2026.xlsx",
-    "Канбан СибБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан ЦЧБ (ВСЕ) 01-09-2026.xlsx",
-    "Канбан ЮЗБ (остаток) 01-09-2026.xlsx",
-    "Канбан ЮЗБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан СРБ (Реалзация сделки) 01-09-2026.xlsx",
-    "Канбан СРБ (остаток) 01-09-2026.xlsx",
-    "Канбан СРБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан СЗБ (остаток) 01-09-2026.xlsx",
-    "Канбан СЗБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан УБ (остаток) 01-09-2026.xlsx",
-    "Канбан УБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан МБ (Реалзация сделки) 01-09-2026.xlsx",
-    "Канбан МБ (остаток) 01-09-2026.xlsx",
-    "Канбан МБ_3У2 (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан МБ_3У1 (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан ПБ (остаток) 01-09-2026.xlsx",
-    "Канбан ПБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан ВВБ (остаток) 01-09-2026.xlsx",
-    "Канбан ВВБ (К продаже и Отказ) 01-09-2026.xlsx",
-    "Канбан ДВБ (ВСЕ) 01-09-2026.xlsx",
-    "Канбан ББ (ВСЕ) 01-09-2026.xlsx"
+    "Канбан ЕФС0 (SberX-НКД) __ 07-09-2026.xlsx",
+    "Канбан ЕФС0 (Активы-Пассивы-ФОТ) __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (НКД) -кроме К продаже-Отказ- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (НКД) -К продаже-Отказ- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (ФОТ) -Реализация- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (ФОТ) -Активация-Выявление-Обсуждение-Завершение- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (ФОТ) -К продаже-Отказ- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (Пассивы) -кроме К продаже-Отказ- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (Пассивы) -К продаже-Отказ- __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (Активы) __ 07-09-2026.xlsx",
+    "Канбан ЕФС1 (SberX) __ 07-09-2026.xlsx"
   ],
   "columns": {
     "report_date": "Дата отчета",
@@ -97,7 +86,9 @@
     "read_only": true,
     "data_only": true,
     "keep_links": false,
-    "na_values": [""],
+    "na_values": [
+      ""
+    ],
     "category_markers": {
       "for_sale": "К ПРОДАЖЕ",
       "in_work": "В РАБОТЕ",
@@ -105,7 +96,12 @@
     }
   },
   "processing": {
-    "empty_stage_values": ["", "-", "nan", "None"],
+    "empty_stage_values": [
+      "",
+      "-",
+      "nan",
+      "None"
+    ],
     "dedup_same_date_agg": "max",
     "pick_across_dates": "max_days_then_latest_report_date",
     "group_only_product_label": "—",
@@ -115,13 +111,32 @@
   "dates": {
     "dayfirst": true,
     "excel_origin": "1899-12-30",
-    "formats": ["%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"],
-    "empty_values": ["", "-", "nan", "none", "nat", "null", "N/A", "n/a"]
+    "formats": [
+      "%d.%m.%Y",
+      "%d.%m.%y",
+      "%Y-%m-%d",
+      "%d/%m/%Y",
+      "%m/%d/%Y"
+    ],
+    "empty_values": [
+      "",
+      "-",
+      "nan",
+      "none",
+      "nat",
+      "null",
+      "N/A",
+      "n/a"
+    ]
   },
   "duration_source": "columns",
   "stage_analysis_mode": "status",
   "product_analysis_mode": "group_product",
-  "percentiles": [20, 50, 80],
+  "percentiles": [
+    20,
+    50,
+    80
+  ],
   "exceedance": {
     "percentile": 50
   },
@@ -132,7 +147,9 @@
       "current_status",
       "stage_key"
     ],
-    "metrics": ["days_on_stage"]
+    "metrics": [
+      "days_on_stage"
+    ]
   },
   "outlier_clipping": {
     "enabled": true,
@@ -191,7 +208,9 @@
       "column_key": "efs_flag",
       "action": "include",
       "match": "equals",
-      "values": [1],
+      "values": [
+        1
+      ],
       "values_mode": "any",
       "value_type": "number",
       "case_sensitive": false
@@ -201,7 +220,9 @@
       "column_key": "change_conditions",
       "action": "include",
       "match": "equals",
-      "values": [0],
+      "values": [
+        0
+      ],
       "values_mode": "any",
       "value_type": "number",
       "case_sensitive": false
@@ -211,7 +232,9 @@
       "column_key": "data_entry",
       "action": "include",
       "match": "equals",
-      "values": [0],
+      "values": [
+        0
+      ],
       "values_mode": "any",
       "value_type": "number",
       "case_sensitive": false
@@ -221,7 +244,9 @@
       "column_key": "label",
       "action": "include",
       "match": "contains",
-      "values": ["Стратегия"],
+      "values": [
+        "Стратегия"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -244,7 +269,10 @@
       "column_key": "label",
       "action": "include",
       "match": "contains",
-      "values": ["Стратегия", "2026"],
+      "values": [
+        "Стратегия",
+        "2026"
+      ],
       "values_mode": "all",
       "value_type": "string",
       "case_sensitive": false
@@ -254,7 +282,9 @@
       "column_key": "current_status",
       "action": "include",
       "match": "contains",
-      "values": ["АКТИВАЦИЯ ПРОДУКТА"],
+      "values": [
+        "АКТИВАЦИЯ ПРОДУКТА"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -264,7 +294,9 @@
       "column_key": "current_status",
       "action": "exclude",
       "match": "contains",
-      "values": ["отказ"],
+      "values": [
+        "отказ"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -274,7 +306,9 @@
       "column_key": "current_status",
       "action": "exclude",
       "match": "equals",
-      "values": ["К ПРОДАЖЕ"],
+      "values": [
+        "К ПРОДАЖЕ"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -284,7 +318,9 @@
       "column_key": "deal_stage",
       "action": "exclude",
       "match": "contains",
-      "values": ["отказ"],
+      "values": [
+        "отказ"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -294,7 +330,9 @@
       "column_key": "deal_stage",
       "action": "exclude",
       "match": "contains",
-      "values": ["закрыта"],
+      "values": [
+        "закрыта"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
@@ -304,42 +342,38 @@
       "column_key": "deal_stage",
       "action": "exclude",
       "match": "contains",
-      "values": ["заключен"],
+      "values": [
+        "заключен"
+      ],
       "values_mode": "any",
       "value_type": "string",
       "case_sensitive": false
     }
   },
-    "team_files": {
+  "team_files": {
     "enabled": true,
     "pick_report_date": "latest",
     "lead_team": {
-      "test": ["тест Команда л 2Т2Г на 31-08-2026.xlsx"],
-      "prod": [
-        "Команда лида УБ на 01-09-2026.xlsx",
-        "Команда лида ЮЗБ на 01-09-2026.xlsx",
-        "Команда лида СРБ на 01-09-2026.xlsx",
-        "Команда лида СИБ ЦЧБ на 01-09-2026.xlsx",
-        "Команда лида СЗБ на 01-09-2026.xlsx",
-        "Команда лида МБ на 01-09-2026.xlsx",
-        "Команда лида ДВБ ПБ на 01-09-2026.xlsx",
-        "Команда лида ББ ВВБ на 01-09-2026.xlsx"
-      ]
+      "test": [
+        "тест Команда л 2Т2Г на 31-08-2026.xlsx"
+      ],
+      "prod": []
     },
     "deal_team": {
-      "test": ["тест Команда с 2Т2Г на 31-08-2026.xlsx"],
-      "prod": [
-        "Команда сделки УБ на 01-09-2026.xlsx",
-        "Команда сделки ЮЗБ на 01-09-2026.xlsx",
-        "Команда сделки СРБ на 01-09-2026.xlsx",
-        "Команда сделки СИБ ЦЧБ на 01-09-2026.xlsx",
-        "Команда сделки СЗБ на 01-09-2026.xlsx",
-        "Команда сделки МБ на 01-09-2026.xlsx",
-        "Команда сделки ДВБ ПБ на 01-09-2026.xlsx",
-        "Команда сделки ББ ВВБ на 01-09-2026.xlsx"
-      ]
+      "test": [
+        "тест Команда с 2Т2Г на 31-08-2026.xlsx"
+      ],
+      "prod": []
     },
-    "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+    "leader_values": [
+      "Да",
+      "да",
+      "yes",
+      "YES",
+      "true",
+      "True",
+      "1"
+    ],
     "columns": {
       "report_date": "Дата отчета",
       "team_added_date": "Дата добавления в команду",
@@ -349,7 +383,8 @@
       "member": "Участник команды",
       "role": "Роль участника команды",
       "is_leader": "Лидер",
-      "tb": "ТБ"
+      "tb": "ТБ",
+      "team_type": "Тип команды"
     },
     "output_columns": {
       "lead": {
@@ -364,6 +399,30 @@
         "role": "Роль Лидера сделки",
         "tb": "ТБ Лидера сделки"
       }
+    },
+    "files": {
+      "test": [],
+      "prod": [
+        "Канбан ЕФС0 команда лида и сделки __07-09-2026.xlsx",
+        "Канбан ЕФС1 команда лида и сделки (ФОТ) __07-09-2026.xlsx",
+        "Канбан ЕФС1 команда лида и сделки (Активы-Пассивы) __07-09-2026.xlsx",
+        "Канбан ЕФС1 команда лида и сделки (SberX-НКД) __07-09-2026.xlsx"
+      ]
+    },
+    "team_type_values": {
+      "lead": [
+        1,
+        "1"
+      ],
+      "deal": [
+        2,
+        "2"
+      ],
+      "unassigned": [
+        "-",
+        "—",
+        ""
+      ]
     }
   },
   "manager_emails": {
@@ -391,30 +450,102 @@
   "client_display": {
     "enabled": true,
     "abbreviations": [
-      {"match": "публичное акционерное общество", "replace": "ПАО"},
-      {"match": "непубличное акционерное общество", "replace": "НАО"},
-      {"match": "закрытое акционерное общество", "replace": "ЗАО"},
-      {"match": "открытое акционерное общество", "replace": "ОАО"},
-      {"match": "общество с ограниченной ответственностью", "replace": "ООО"},
-      {"match": "акционерное общество", "replace": "АО"},
-      {"match": "специализированный застройщик", "replace": "СЗ"},
-      {"match": "специализрованный застройщик", "replace": "СЗ"},
-      {"match": "индивидуальный предприниматель", "replace": "ИП"},
-      {"match": "федеральное государственное бюджетное учреждение", "replace": "ФГБУ"},
-      {"match": "федеральное государственное унитарное предприятие", "replace": "ФГУП"},
-      {"match": "государственное унитарное предприятие", "replace": "ГУП"},
-      {"match": "муниципальное унитарное предприятие", "replace": "МУП"},
-      {"match": "автономная некоммерческая организация", "replace": "АНО"},
-      {"match": "некоммерческая организация", "replace": "НКО"},
-      {"match": "товарищество собственников жилья", "replace": "ТСЖ"},
-      {"match": "товарищество собственников недвижимости", "replace": "ТСН"},
-      {"match": "крестьянское (фермерское) хозяйство", "replace": "КФХ"},
-      {"match": "крестьянское фермерское хозяйство", "replace": "КФХ"},
-      {"match": "производственный кооператив", "replace": "ПК"},
-      {"match": "сельскохозяйственный производственный кооператив", "replace": "СПК"},
-      {"match": "полное товарищество", "replace": "ПТ"},
-      {"match": "товарищество на вере", "replace": "ТНВ"},
-      {"match": "коммандитное товарищество", "replace": "КТ"}
+      {
+        "match": "публичное акционерное общество",
+        "replace": "ПАО"
+      },
+      {
+        "match": "непубличное акционерное общество",
+        "replace": "НАО"
+      },
+      {
+        "match": "закрытое акционерное общество",
+        "replace": "ЗАО"
+      },
+      {
+        "match": "открытое акционерное общество",
+        "replace": "ОАО"
+      },
+      {
+        "match": "общество с ограниченной ответственностью",
+        "replace": "ООО"
+      },
+      {
+        "match": "акционерное общество",
+        "replace": "АО"
+      },
+      {
+        "match": "специализированный застройщик",
+        "replace": "СЗ"
+      },
+      {
+        "match": "специализрованный застройщик",
+        "replace": "СЗ"
+      },
+      {
+        "match": "индивидуальный предприниматель",
+        "replace": "ИП"
+      },
+      {
+        "match": "федеральное государственное бюджетное учреждение",
+        "replace": "ФГБУ"
+      },
+      {
+        "match": "федеральное государственное унитарное предприятие",
+        "replace": "ФГУП"
+      },
+      {
+        "match": "государственное унитарное предприятие",
+        "replace": "ГУП"
+      },
+      {
+        "match": "муниципальное унитарное предприятие",
+        "replace": "МУП"
+      },
+      {
+        "match": "автономная некоммерческая организация",
+        "replace": "АНО"
+      },
+      {
+        "match": "некоммерческая организация",
+        "replace": "НКО"
+      },
+      {
+        "match": "товарищество собственников жилья",
+        "replace": "ТСЖ"
+      },
+      {
+        "match": "товарищество собственников недвижимости",
+        "replace": "ТСН"
+      },
+      {
+        "match": "крестьянское (фермерское) хозяйство",
+        "replace": "КФХ"
+      },
+      {
+        "match": "крестьянское фермерское хозяйство",
+        "replace": "КФХ"
+      },
+      {
+        "match": "производственный кооператив",
+        "replace": "ПК"
+      },
+      {
+        "match": "сельскохозяйственный производственный кооператив",
+        "replace": "СПК"
+      },
+      {
+        "match": "полное товарищество",
+        "replace": "ПТ"
+      },
+      {
+        "match": "товарищество на вере",
+        "replace": "ТНВ"
+      },
+      {
+        "match": "коммандитное товарищество",
+        "replace": "КТ"
+      }
     ]
   },
   "output": {
@@ -437,13 +568,34 @@
       "violations": "Свод ПрПр с отклонениями"
     },
     "sheet_freeze": {
-      "default": { "last_row": 1, "last_col": 0 },
-      "norms": { "last_row": 1, "last_col": 3 },
-      "statistics": { "last_row": 1, "last_col": 0 },
-      "duration_matrix": { "last_row": 3, "last_col": 6 },
-      "leads": { "last_row": 1, "last_col": 3 },
-      "managers": { "last_row": 1, "last_col": 2 },
-      "violations": { "last_row": 1, "last_col": 0 }
+      "default": {
+        "last_row": 1,
+        "last_col": 0
+      },
+      "norms": {
+        "last_row": 1,
+        "last_col": 3
+      },
+      "statistics": {
+        "last_row": 1,
+        "last_col": 0
+      },
+      "duration_matrix": {
+        "last_row": 3,
+        "last_col": 6
+      },
+      "leads": {
+        "last_row": 1,
+        "last_col": 3
+      },
+      "managers": {
+        "last_row": 1,
+        "last_col": 2
+      },
+      "violations": {
+        "last_row": 1,
+        "last_col": 0
+      }
     },
     "duration_matrix": {
       "enabled": true,

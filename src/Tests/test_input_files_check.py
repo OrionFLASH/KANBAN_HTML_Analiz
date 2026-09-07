@@ -40,7 +40,7 @@ def _base_config(tmp_path: Path) -> dict:
 
 
 def test_collect_required_input_files_prod(tmp_path: Path) -> None:
-    """Собирает Kanban и файлы команд для prod."""
+    """Собирает Kanban и файлы команд для prod (legacy lead/deal)."""
     config: dict = _base_config(tmp_path)
     items: list[tuple[str, str]] = collect_required_input_files(config)
     assert items == [
@@ -48,6 +48,21 @@ def test_collect_required_input_files_prod(tmp_path: Path) -> None:
         ("Kanban", "kanban_b.xlsx"),
         ("Команда лида", "team_lead.xlsx"),
         ("Команда сделки", "team_deal.xlsx"),
+    ]
+
+
+def test_collect_required_input_files_unified(tmp_path: Path) -> None:
+    """Единый комплект files имеет приоритет над lead_team/deal_team."""
+    config: dict = _base_config(tmp_path)
+    config["manager_analytics"]["team_files"]["files"] = {
+        "prod": ["team_unified_a.xlsx", "team_unified_b.xlsx"]
+    }
+    items: list[tuple[str, str]] = collect_required_input_files(config)
+    assert items == [
+        ("Kanban", "kanban_a.xlsx"),
+        ("Kanban", "kanban_b.xlsx"),
+        ("Команда лида и сделки", "team_unified_a.xlsx"),
+        ("Команда лида и сделки", "team_unified_b.xlsx"),
     ]
 
 

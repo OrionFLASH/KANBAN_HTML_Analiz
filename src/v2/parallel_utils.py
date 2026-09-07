@@ -11,7 +11,7 @@ import pandas as pd
 from src.v2.snapshot import build_lead_snapshot
 from src.lead_tracker import build_lead_stage_records
 from src.performance import resolve_parallel_workers
-from src.team_loader import load_team_kind_frames
+from src.team_loader import load_team_frames
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.parallel")
 
@@ -35,7 +35,7 @@ def run_snapshot_records_teams_parallel(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Снимок и трекинг — последовательно в основном процессе (без pickle DataFrame).
-    Файлы команд — параллельно в ThreadPool (I/O).
+    Файлы команд — в ThreadPool (I/O), один проход (единый комплект или legacy).
     Возвращает (snapshot, records, lead_team_df, deal_team_df).
     """
     workers: int = stage_workers(config, 2)
@@ -47,8 +47,7 @@ def run_snapshot_records_teams_parallel(
             workers,
         )
         with ThreadPoolExecutor(max_workers=workers) as io_pool:
-            fut_lead = io_pool.submit(load_team_kind_frames, shared_config, "lead_team")
-            fut_deal = io_pool.submit(load_team_kind_frames, shared_config, "deal_team")
+            fut_teams = io_pool.submit(load_team_frames, shared_config)
             snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
             records: pd.DataFrame = build_lead_stage_records(
                 filtered_df,
@@ -56,8 +55,7 @@ def run_snapshot_records_teams_parallel(
                 None,
                 terminal_filters_already_applied=terminal_applied,
             )
-            lead_team_df: pd.DataFrame = fut_lead.result()
-            deal_team_df: pd.DataFrame = fut_deal.result()
+            lead_team_df, deal_team_df = fut_teams.result()
     else:
         snapshot = build_lead_snapshot(filtered_df, config)
         records = build_lead_stage_records(
@@ -66,7 +64,6 @@ def run_snapshot_records_teams_parallel(
             None,
             terminal_filters_already_applied=terminal_applied,
         )
-        lead_team_df = load_team_kind_frames(shared_config, "lead_team")
-        deal_team_df = load_team_kind_frames(shared_config, "deal_team")
+        lead_team_df, deal_team_df = load_team_frames(shared_config)
 
     return snapshot, records, lead_team_df, deal_team_df

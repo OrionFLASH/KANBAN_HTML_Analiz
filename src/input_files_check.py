@@ -49,7 +49,8 @@ def config_for_team_loader(config: dict[str, Any]) -> dict[str, Any]:
 def collect_required_input_files(config: dict[str, Any]) -> list[tuple[str, str]]:
     """
     Список (категория, имя файла) для текущего mode.
-    Категории: Kanban, Команда лида, Команда сделки.
+    Категории: Kanban, Команда лида и сделки (единый комплект) либо
+    раздельно Команда лида / Команда сделки (legacy).
     """
     items: list[tuple[str, str]] = []
     for name in get_file_list(config):
@@ -57,6 +58,12 @@ def collect_required_input_files(config: dict[str, Any]) -> list[tuple[str, str]
 
     team_cfg: dict[str, Any] = config_for_team_loader(config)
     if not is_team_files_enabled(team_cfg):
+        return items
+
+    unified_names: list[str] = team_filenames_for_mode(team_cfg, "files")
+    if unified_names:
+        for name in unified_names:
+            items.append(("Команда лида и сделки", name))
         return items
 
     lead_names: list[str] = team_filenames_for_mode(team_cfg, "lead_team")
