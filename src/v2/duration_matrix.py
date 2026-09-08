@@ -165,8 +165,8 @@ def build_duration_matrix(
 
     # Целые дни (как на листе уникальных ID после round в exceedance)
     work["_days_int"] = work[days_internal].round().astype("int64")
-    work["_pg"] = work[pg_col].fillna("").astype(str).str.strip()
-    work["_pr"] = work[pr_col].fillna("").astype(str).str.strip()
+    work["_pg"] = work[pg_col].astype("string").fillna("").astype(str).str.strip()
+    work["_pr"] = work[pr_col].astype("string").fillna("").astype(str).str.strip()
     work = work.loc[(work["_pg"] != "") | (work["_pr"] != "")]
     if work.empty:
         return empty

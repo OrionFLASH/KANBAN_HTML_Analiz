@@ -60,7 +60,22 @@ def setup_logger(config: dict[str, Any] | None = None, level: int = logging.DEBU
     logger.addHandler(console)
 
     _attach_shared_module_loggers(logger, level)
+    _capture_python_warnings(logger)
     return logger
+
+
+def _capture_python_warnings(primary: logging.Logger) -> None:
+    """
+    Перенаправляет warnings (FutureWarning и др.) в те же handlers, что и pipeline.
+    Иначе они только в stderr консоли и не видны в INFO/DEBUG логах.
+    """
+    logging.captureWarnings(True)
+    warn_logger: logging.Logger = logging.getLogger("py.warnings")
+    warn_logger.setLevel(logging.WARNING)
+    warn_logger.handlers.clear()
+    for handler in primary.handlers:
+        warn_logger.addHandler(handler)
+    warn_logger.propagate = False
 
 
 def _attach_shared_module_loggers(primary: logging.Logger, level: int) -> None:

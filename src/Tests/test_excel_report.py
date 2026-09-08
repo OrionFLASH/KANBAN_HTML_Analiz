@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from src.v2.config_loader import load_excel_v2_config
-from src.v2.snapshot import build_lead_snapshot, snapshot_to_export_frame
+from src.v2.snapshot import _nonempty_mask, build_lead_snapshot, snapshot_to_export_frame
 from src.settings import col
 
 
@@ -31,6 +33,16 @@ def test_build_lead_snapshot_fill_forward() -> None:
 
     assert row_l1["current_status"] == "СТАТУС 1"
     assert row_l1["product"] == "Продукт А"
+
+
+def test_nonempty_mask_no_fillna_futurewarning() -> None:
+    """Маска непустых значений не вызывает FutureWarning от fillna/downcasting."""
+    series: pd.Series = pd.Series([1, None, "x", float("nan"), "-"], dtype=object)
+    empty: set[str] = {"", "-", "nan", "none"}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        mask: pd.Series = _nonempty_mask(series, empty)
+    assert list(mask) == [True, False, True, False, False]
 
 
 def test_export_leader_emails_after_fio() -> None:

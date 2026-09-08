@@ -118,7 +118,9 @@ def build_leaders_lookup_df(
     ]
     work: pd.DataFrame = team_df[use_cols].copy()
 
-    leader_text: pd.Series = work[leader_col].fillna("").astype(str).str.strip().str.casefold()
+    leader_text: pd.Series = (
+        work[leader_col].astype("string").fillna("").astype(str).str.strip().str.casefold()
+    )
     before_leader: int = len(work)
     work = work.loc[leader_text.isin(leader_values)]
     if len(work) < before_leader:

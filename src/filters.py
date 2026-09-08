@@ -192,8 +192,11 @@ def _resolve_value_type(flt: dict[str, Any]) -> str:
 
 
 def _string_series(series: pd.Series) -> pd.Series:
-    """Строковое представление ячеек без изменения индекса."""
-    return series.fillna("").astype(str)
+    """
+    Строковое представление ячеек без изменения индекса.
+    Через StringDtype — без FutureWarning downcasting на object fillna.
+    """
+    return series.astype("string").fillna("").astype(str)
 
 
 def _coerce_tokens(values: list[Any]) -> list[str]:
@@ -373,7 +376,7 @@ def _mask_empty_column_values(series: pd.Series, config: dict[str, Any]) -> pd.S
     )
     empty: set[str] = {str(v) for v in raw_empty}
     lowered: set[str] = {v.lower() for v in empty}
-    as_str: pd.Series = series.fillna("").astype(str).str.strip()
+    as_str: pd.Series = _string_series(series).str.strip()
     return as_str.isin(empty) | as_str.str.lower().isin(lowered) | (as_str == "")
 
 

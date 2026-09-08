@@ -22,9 +22,18 @@ def _empty_tokens(config: dict[str, Any]) -> set[str]:
     return tokens
 
 
+def _series_as_text(series: pd.Series) -> pd.Series:
+    """
+    Строковое представление серии без FutureWarning от fillna на object dtype.
+    Сначала StringDtype, затем fillna — без silent downcasting.
+    """
+    as_str: pd.Series = series.astype("string").fillna("").astype(str)
+    return as_str.str.strip().str.casefold()
+
+
 def _nonempty_mask(series: pd.Series, empty: set[str]) -> pd.Series:
     """Векторная маска непустых значений."""
-    as_str: pd.Series = series.fillna("").astype(str).str.strip().str.casefold()
+    as_str: pd.Series = _series_as_text(series)
     return ~as_str.isin(empty)
 
 
