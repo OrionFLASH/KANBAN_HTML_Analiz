@@ -270,9 +270,11 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         progress.substage("build_duration_matrix")
         with progress.timed("build_duration_matrix", snapshot_rows=len(snapshot)):
             duration_matrix = build_duration_matrix(snapshot, config)
-        progress.debug(
-            f"Матрица сроков: rows={0 if duration_matrix is None else len(duration_matrix):,}"
+        # DurationMatrixResult — не DataFrame: считаем строки матрицы, не len(result)
+        n_matrix_rows: int = (
+            0 if duration_matrix is None else len(duration_matrix.rows)
         )
+        progress.debug(f"Матрица сроков: rows={n_matrix_rows:,}")
     else:
         progress.debug("Матрица сроков: выключена")
 

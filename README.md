@@ -55,7 +55,7 @@ python run_excel.py
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
-Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260908b.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены).
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260908c.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены).
 
 ## Структура проекта
 
@@ -267,3 +267,4 @@ cd HTML && python -m http.server 8080
 | 2.3.1 | 2026-09-07 | Архив программы v2: `v2_program_files_20260907.zip` (без тестов) |
 | 2.3.2 | 2026-09-08 | Fix лидеров + подробный DEBUG; архив `v2_program_files_20260908.zip` |
 | 2.3.3 | 2026-09-08 | Архив `v2_program_files_20260908b.zip`: `team_files.files` + json_config |
+| 2.3.4 | 2026-09-08 | Fix `len(DurationMatrixResult)` после матрицы сроков; архив `20260908c` |

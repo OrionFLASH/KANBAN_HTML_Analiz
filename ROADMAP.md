@@ -265,6 +265,8 @@ src/
 | 11.36 | Архив `v2_program_files_20260908.zip`; удалены старые `v2_*.zip` | корень репо | `[v]` |
 | 11.37 | Понятная ошибка при битом JSON в config (контекст строки) | `json_config.py` | `[v]` |
 | 11.38 | Архив `v2_program_files_20260908b.zip` с корректным `team_files.files` | корень репо | `[v]` |
+| 11.39 | Fix: `TypeError: DurationMatrixResult has no len()` в DEBUG после матрицы сроков | `pipeline.py` | `[v]` |
+| 11.40 | Архив `v2_program_files_20260908c.zip` (fix len матрицы) | корень репо | `[v]` |
 
 ### 11.32 — Декомпозиция
 

@@ -47,6 +47,10 @@ class DurationMatrixResult:
     sort_mode: str
     empty: bool
 
+    def __len__(self) -> int:
+        """Число строк (группа+продукт) в матрице."""
+        return len(self.rows)
+
 
 def _matrix_cfg(config: dict[str, Any]) -> dict[str, Any]:
     """Блок output.duration_matrix."""
