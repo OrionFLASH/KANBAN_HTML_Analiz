@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from src.config_loader import get_file_list, get_input_dir, get_output_dir
+from src.json_config import load_json_file
 from src.performance import resolve_parallel_workers
 from src.project_paths import resolve_path
 from src.settings import normalize_config
@@ -19,8 +19,7 @@ def load_excel_v2_config(config_path: str | Path = "config_excel_v2.json") -> di
     if not path.exists():
         raise FileNotFoundError(f"Конфиг Excel v2 не найден: {path}")
 
-    with path.open(encoding="utf-8") as fh:
-        raw: dict[str, Any] = json.load(fh)
+    raw: dict[str, Any] = load_json_file(path)
 
     config: dict[str, Any] = normalize_config(raw)
     _validate_excel_v2_config(config)
