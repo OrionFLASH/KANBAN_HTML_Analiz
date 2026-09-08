@@ -75,7 +75,7 @@ python -m src.v2.pipeline
 | `client_display` | Сокращение юрформ в «Клиент», см. §6 |
 | `output` | Префикс, листы, подписи колонок, оформление Excel |
 | `performance` | Workers, память, параллель этапов, см. §7 |
-| `progress` | Консольный прогресс и сводка времени |
+| `progress` | Консольный прогресс и сводка времени; `debug_detail` (default true) — подэтапы/процедуры с таймингами в DEBUG-файл (без содержимого ячеек) |
 | `logging` | `logger_name: kanban_excel_v2` |
 | `parallel_workers` | `0` = авто (CPU − reserve) |
 | `excel_theme` | `"green_red"` — раскраска min/max |

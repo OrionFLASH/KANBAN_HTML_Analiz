@@ -611,7 +611,19 @@ def _apply_filter_subset(
         after: int = len(result)
         active.append(name)
         mode_label: str = "искл." if is_exclude_filter(uni) else "вкл."
+        logger.debug(
+            "→ filter:%s (%s) rows_in=%s",
+            name,
+            mode_label,
+            f"{before:,}",
+        )
         logger.info("Фильтр '%s' (%s): %d -> %d строк", name, mode_label, before, after)
+        logger.debug(
+            "← filter:%s rows_out=%s removed=%s",
+            name,
+            f"{after:,}",
+            f"{before - after:,}",
+        )
         append_funnel_step(
             funnel,
             stage=f"Фильтр: {name} ({mode_label})",
@@ -643,20 +655,34 @@ def apply_filters(
     group_auditor: Any = None,
 ) -> pd.DataFrame:
     """Оставляет строки после включённых фильтров Excel (без exclude — см. lead_tracker)."""
+    from src.debug_trace import procedure
+
     filters_cfg: dict[str, Any] = config.get("filters", {})
-    result, active = _apply_filter_subset(
-        df,
-        config,
-        filters_cfg,
-        include_filter=lambda _name, flt: bool(flt.get("enabled", False))
-        and not is_exclude_filter(flt),
-        audit_each_filter=audit_each_filter,
-        funnel=funnel,
-        group_auditor=group_auditor,
+    enabled_count: int = sum(
+        1
+        for flt in filters_cfg.values()
+        if isinstance(flt, dict) and flt.get("enabled") and not is_exclude_filter(flt)
     )
+    with procedure(
+        logger,
+        "apply_filters",
+        rows_in=len(df),
+        enabled_inclusion=enabled_count,
+    ):
+        result, active = _apply_filter_subset(
+            df,
+            config,
+            filters_cfg,
+            include_filter=lambda _name, flt: bool(flt.get("enabled", False))
+            and not is_exclude_filter(flt),
+            audit_each_filter=audit_each_filter,
+            funnel=funnel,
+            group_auditor=group_auditor,
+        )
 
     if active:
         logger.info("Применены фильтры (AND): %s", ", ".join(active))
+        logger.debug("apply_filters: rows_out=%s, active=%s", f"{len(result):,}", active)
     else:
         logger.info("Фильтры не активны, анализируются все строки")
 

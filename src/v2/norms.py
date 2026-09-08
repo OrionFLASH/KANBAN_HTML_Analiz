@@ -24,26 +24,29 @@ def build_norms_tables(
     Возвращает (combined_norms, by_tb, overall).
     combined_norms — единый лист: колонка ТБ + строки «все тб».
     """
-    stats: dict[str, pd.DataFrame] = build_all_statistics(records, config)
-    by_tb: pd.DataFrame = stats.get("by_tb", pd.DataFrame()).copy()
-    overall: pd.DataFrame = stats.get("overall", pd.DataFrame()).copy()
+    from src.debug_trace import procedure
 
-    tb_col: str = col(config, "tb")
-    all_tb_label: str = str(config.get("output", {}).get("all_tb_label", "все тб"))
+    with procedure(logger, "build_norms_tables", records=len(records)):
+        stats: dict[str, pd.DataFrame] = build_all_statistics(records, config)
+        by_tb: pd.DataFrame = stats.get("by_tb", pd.DataFrame()).copy()
+        overall: pd.DataFrame = stats.get("overall", pd.DataFrame()).copy()
 
-    frames: list[pd.DataFrame] = []
-    if not by_tb.empty and tb_col in by_tb.columns:
-        frames.append(by_tb.copy())
+        tb_col: str = col(config, "tb")
+        all_tb_label: str = str(config.get("output", {}).get("all_tb_label", "все тб"))
 
-    if not overall.empty:
-        overall_part: pd.DataFrame = overall.copy()
-        if tb_col not in overall_part.columns:
-            overall_part.insert(0, tb_col, all_tb_label)
-        else:
-            overall_part[tb_col] = all_tb_label
-        frames.append(overall_part)
+        frames: list[pd.DataFrame] = []
+        if not by_tb.empty and tb_col in by_tb.columns:
+            frames.append(by_tb.copy())
 
-    combined: pd.DataFrame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        if not overall.empty:
+            overall_part: pd.DataFrame = overall.copy()
+            if tb_col not in overall_part.columns:
+                overall_part.insert(0, tb_col, all_tb_label)
+            else:
+                overall_part[tb_col] = all_tb_label
+            frames.append(overall_part)
+
+        combined: pd.DataFrame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     logger.info(
         "Нормативы: by_tb=%s строк, overall=%s, combined=%s",
         len(by_tb),

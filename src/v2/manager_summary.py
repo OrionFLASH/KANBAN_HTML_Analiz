@@ -139,9 +139,13 @@ def build_manager_reports(
     config: dict[str, Any],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Свод по менеджеру и детализация нарушений за один проход по данным."""
-    entries: list[dict[str, Any]] = _collect_manager_entries(snapshot, config)
-    summary: pd.DataFrame = _manager_summary_from_entries(entries, config)
-    violations: pd.DataFrame = _violations_detail_from_entries(entries, snapshot, config)
+    from src.debug_trace import procedure
+
+    with procedure(logger, "build_manager_reports", snapshot_rows=len(snapshot)):
+        entries: list[dict[str, Any]] = _collect_manager_entries(snapshot, config)
+        logger.debug("manager_entries: count=%s", f"{len(entries):,}")
+        summary: pd.DataFrame = _manager_summary_from_entries(entries, config)
+        violations: pd.DataFrame = _violations_detail_from_entries(entries, snapshot, config)
     return summary, violations
 
 

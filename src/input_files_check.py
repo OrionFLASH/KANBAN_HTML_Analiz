@@ -101,11 +101,14 @@ def ensure_input_files_exist(config: dict[str, Any], log: logging.Logger | None 
     missing: list[tuple[str, str]] = find_missing_input_files(config)
     if not missing:
         active_log: logging.Logger = log or logger
+        required: list[tuple[str, str]] = collect_required_input_files(config)
+        team_count: int = sum(1 for cat, _ in required if cat != "Kanban")
         active_log.info(
-            "Входные файлы найдены: режим=%s, каталог=%s, Kanban=%d",
+            "Входные файлы найдены: режим=%s, каталог=%s, Kanban=%d, команда=%d",
             mode,
             input_dir,
             len(file_list),
+            team_count,
         )
         return
 

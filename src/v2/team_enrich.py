@@ -11,6 +11,8 @@ from src.v2.config_loader import config_for_shared_modules
 from src.settings import col
 from src.team_loader import (
     _leader_value_set,
+    _normalize_id_token,
+    _resolve_column_name,
     load_team_frames,
     normalize_person_name,
     pick_leaders_on_latest_dates,
@@ -78,27 +80,41 @@ def build_leaders_lookup_df(
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
     cols: dict[str, str] = _team_columns(config)
-    id_col: str = cols[id_key]
-    date_col: str = cols["report_date"]
-    added_col: str = cols.get("team_added_date", "Дата добавления в команду")
-    tn_col: str = cols["member_tab_number"]
-    member_col: str = cols["member"]
-    role_col: str = cols["role"]
-    leader_col: str = cols["is_leader"]
-    tb_col: str = cols["tb"]
+    id_col: str | None = _resolve_column_name(team_df, cols[id_key])
+    date_col: str | None = _resolve_column_name(team_df, cols["report_date"])
+    added_col: str | None = _resolve_column_name(
+        team_df, cols.get("team_added_date", "Дата добавления в команду")
+    )
+    tn_col: str | None = _resolve_column_name(team_df, cols["member_tab_number"])
+    member_col: str | None = _resolve_column_name(team_df, cols["member"])
+    role_col: str | None = _resolve_column_name(team_df, cols["role"])
+    leader_col: str | None = _resolve_column_name(team_df, cols["is_leader"])
+    tb_col: str | None = _resolve_column_name(team_df, cols["tb"])
     shared: dict[str, Any] = config_for_shared_modules(config)
     leader_values: set[str] = _leader_value_set(shared)
 
-    needed: list[str] = [id_col, date_col, member_col, leader_col]
-    missing: list[str] = [c for c in needed if c not in team_df.columns]
+    needed_map: dict[str, str | None] = {
+        cols[id_key]: id_col,
+        cols["report_date"]: date_col,
+        cols["member"]: member_col,
+        cols["is_leader"]: leader_col,
+    }
+    missing: list[str] = [name for name, resolved in needed_map.items() if resolved is None]
     if missing:
-        logger.warning("Команда (%s): нет колонок %s", source, missing)
+        logger.warning(
+            "Команда (%s): нет колонок %s среди %s",
+            source,
+            missing,
+            list(team_df.columns)[:25],
+        )
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
+
+    assert id_col and date_col and member_col and leader_col
 
     use_cols: list[str] = [
         c
         for c in (id_col, date_col, added_col, tn_col, member_col, role_col, leader_col, tb_col)
-        if c in team_df.columns
+        if c
     ]
     work: pd.DataFrame = team_df[use_cols].copy()
 
@@ -113,9 +129,14 @@ def build_leaders_lookup_df(
             len(work),
         )
     if work.empty:
+        logger.warning(
+            "Команда (%s): нет строк с Лидер∈%s — lookup пуст",
+            source,
+            sorted(leader_values),
+        )
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
-    work["_id"] = work[id_col].astype(str).str.strip()
+    work["_id"] = work[id_col].map(_normalize_id_token)
     work = work.loc[work["_id"] != ""]
     work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
     bad_date: int = int(work["_date"].isna().sum())
@@ -140,7 +161,7 @@ def build_leaders_lookup_df(
             pick_mode,
         )
 
-    if added_col in work.columns:
+    if added_col:
         work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
         team_added_key: str | None = "_team_added"
     else:
@@ -148,7 +169,7 @@ def build_leaders_lookup_df(
         logger.info(
             "Команда (%s): колонка «%s» отсутствует — отбор только по дате отчёта",
             source,
-            added_col,
+            cols.get("team_added_date", "Дата добавления в команду"),
         )
 
     latest: pd.DataFrame = pick_leaders_on_latest_dates(
@@ -178,11 +199,11 @@ def build_leaders_lookup_df(
         )
 
     agg_spec: dict[str, Any] = {"member": ("_name", _multiline_agg)}
-    if tn_col in latest.columns:
+    if tn_col and tn_col in latest.columns:
         agg_spec["member_tab_number"] = (tn_col, _multiline_tab_agg)
-    if role_col in latest.columns:
+    if role_col and role_col in latest.columns:
         agg_spec["role"] = (role_col, _multiline_agg)
-    if tb_col in latest.columns:
+    if tb_col and tb_col in latest.columns:
         agg_spec["tb"] = (tb_col, _multiline_agg)
 
     grouped: pd.DataFrame = latest.groupby("_id", sort=False).agg(**agg_spec)
@@ -231,7 +252,7 @@ def enrich_snapshot_with_team_dfs(
     result: pd.DataFrame = snapshot.copy()
 
     if lead_col and not lead_lookup.empty:
-        lead_key: pd.Series = result[lead_col].astype(str).str.strip()
+        lead_key: pd.Series = result[lead_col].map(_normalize_id_token)
         lead_merge: pd.DataFrame = lead_key.to_frame("_lead_id").merge(
             lead_lookup,
             left_on="_lead_id",
@@ -243,7 +264,16 @@ def enrich_snapshot_with_team_dfs(
                 result[excel_label] = lead_merge[field_key].values
             else:
                 result[excel_label] = None
+        matched_lead: int = int(lead_merge["member"].notna().sum()) if "member" in lead_merge.columns else 0
+        logger.info(
+            "Подливка лидера лида: совпало %s из %s строк снимка (lookup %s ключей)",
+            f"{matched_lead:,}",
+            f"{len(result):,}",
+            f"{len(lead_lookup):,}",
+        )
     else:
+        if lead_lookup.empty:
+            logger.warning("Lookup лидеров лида пуст — колонки лидера лида остаются пустыми")
         if not lead_col:
             logger.warning(
                 "Снимок: нет колонки ID лида для подливки лидеров "
@@ -254,7 +284,7 @@ def enrich_snapshot_with_team_dfs(
             result[excel_label] = None
 
     if deal_col and not deal_lookup.empty:
-        deal_key: pd.Series = result[deal_col].astype(str).str.strip()
+        deal_key: pd.Series = result[deal_col].map(_normalize_id_token)
         # Пустые / NaN → не матчим на ключ «nan»
         empty_deal: pd.Series = deal_key.isin({"", "nan", "none", "null", "nat", "-", "—"})
         deal_key = deal_key.mask(empty_deal, other=pd.NA)
@@ -269,6 +299,13 @@ def enrich_snapshot_with_team_dfs(
                 result[excel_label] = deal_merge[field_key].values
             else:
                 result[excel_label] = None
+        matched_deal: int = int(deal_merge["member"].notna().sum()) if "member" in deal_merge.columns else 0
+        logger.info(
+            "Подливка лидера сделки: совпало %s из %s строк снимка (lookup %s ключей)",
+            f"{matched_deal:,}",
+            f"{len(result):,}",
+            f"{len(deal_lookup):,}",
+        )
     else:
         if deal_lookup.empty:
             logger.info("Lookup лидеров сделки пуст — колонки лидера сделки остаются пустыми")

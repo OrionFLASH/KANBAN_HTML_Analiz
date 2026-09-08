@@ -9,6 +9,10 @@ from typing import Any
 
 from src.config_loader import get_log_dir
 
+# Дочерние модули пишут в kanban.* / kanban.excel_v2.* — их нужно
+# подключить к тем же handlers, что и основной logger_name из config.
+_SHARED_LOGGER_ROOTS: tuple[str, ...] = ("kanban", "kanban.excel_v2")
+
 
 def setup_logger(config: dict[str, Any] | None = None, level: int = logging.DEBUG) -> logging.Logger:
     """Создаёт логгер с выводом в файл и консоль."""
@@ -34,6 +38,7 @@ def setup_logger(config: dict[str, Any] | None = None, level: int = logging.DEBU
     logger: logging.Logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     logger.handlers.clear()
+    logger.propagate = False
 
     fmt: logging.Formatter = logging.Formatter(
         "%(asctime)s - [%(levelname)s] - %(message)s [class: %(name)s | def: %(funcName)s]"
@@ -54,4 +59,23 @@ def setup_logger(config: dict[str, Any] | None = None, level: int = logging.DEBU
     console.setFormatter(fmt)
     logger.addHandler(console)
 
+    _attach_shared_module_loggers(logger, level)
     return logger
+
+
+def _attach_shared_module_loggers(primary: logging.Logger, level: int) -> None:
+    """
+    Подключает семейство kanban.* к handlers основного логгера.
+    Иначе team_loader / team_enrich / snapshot пишут «в никуда»
+    при logger_name=kanban_excel_v2.
+    """
+    for root_name in _SHARED_LOGGER_ROOTS:
+        if root_name == primary.name:
+            continue
+        shared: logging.Logger = logging.getLogger(root_name)
+        shared.setLevel(level)
+        shared.handlers.clear()
+        for handler in primary.handlers:
+            shared.addHandler(handler)
+        # Дети (kanban.team_loader и т.п.) propagate → shared
+        shared.propagate = False

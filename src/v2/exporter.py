@@ -416,8 +416,37 @@ def export_excel_v2(
     «Статистика» — воронка фильтров и свод выбросов.
     «Распределение сроков» — матрица группа/продукт × дни.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    from src.debug_trace import debug_event, procedure
 
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet_sizes: dict[str, int] = {
+        key: (0 if frame is None else len(frame)) for key, frame in sheets.items()
+    }
+    debug_event(logger, "export_excel_v2 start", sheets=len(sheets), **{
+        f"rows_{k}": v for k, v in sheet_sizes.items()
+    })
+
+    with procedure(logger, "export_excel_v2", sheets=len(sheets)):
+        return _export_excel_v2_impl(
+            path,
+            sheets,
+            config,
+            funnel_frame=funnel_frame,
+            outlier_summary=outlier_summary,
+            duration_matrix=duration_matrix,
+        )
+
+
+def _export_excel_v2_impl(
+    path: Path,
+    sheets: dict[str, pd.DataFrame],
+    config: dict[str, Any],
+    *,
+    funnel_frame: pd.DataFrame | None = None,
+    outlier_summary: pd.DataFrame | None = None,
+    duration_matrix: DurationMatrixResult | None = None,
+) -> tuple[Path, list[Path]]:
+    """Внутренняя реализация экспорта (после обёртки procedure)."""
     sheet_names: dict[str, str] = dict(config.get("output", {}).get("sheets") or {})
     max_len: int = int(config.get("output", {}).get("excel_max_sheet_name_length", 31))
     engine: str = str(config.get("excel", {}).get("engine", "openpyxl"))
