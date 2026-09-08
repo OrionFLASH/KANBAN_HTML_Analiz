@@ -74,7 +74,8 @@ def build_leaders_lookup_df(
     """
     DataFrame id → поля лидеров (TN, ФИО, роль, ТБ).
     Отбор: max(Дата отчета), затем max(Дата добавления в команду);
-    если «Дата отчета» нет — только max(Дата добавления в команду);
+    если «Дата отчета» нет — весь файл считается одной датой отчёта
+    (не ошибка), дальше обычный отбор по дате добавления;
     при равных датах — все лидеры через \\n.
     """
     if team_df.empty:
@@ -108,40 +109,7 @@ def build_leaders_lookup_df(
         )
         return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
-    # Дата отчёта опциональна: в объединённых файлах часто только «Дата добавления…»
-    if date_col is None and added_col is None:
-        logger.warning(
-            "Команда (%s): нет ни «%s», ни «%s» среди %s — lookup пуст",
-            source,
-            cols["report_date"],
-            added_expected,
-            list(team_df.columns)[:25],
-        )
-        return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
-
     assert id_col and member_col and leader_col
-
-    primary_date_col: str
-    team_added_key: str | None
-    if date_col is not None:
-        primary_date_col = date_col
-        team_added_key = "_team_added" if added_col else None
-        if added_col is None:
-            logger.info(
-                "Команда (%s): колонка «%s» отсутствует — отбор только по дате отчёта",
-                source,
-                added_expected,
-            )
-    else:
-        assert added_col is not None
-        primary_date_col = added_col
-        team_added_key = None
-        logger.info(
-            "Команда (%s): нет «%s» — отбор лидеров по «%s»",
-            source,
-            cols["report_date"],
-            added_expected,
-        )
 
     use_cols: list[str] = [
         c
@@ -170,18 +138,28 @@ def build_leaders_lookup_df(
 
     work["_id"] = work[id_col].map(_normalize_id_token)
     work = work.loc[work["_id"] != ""]
-    work["_date"] = pd.to_datetime(work[primary_date_col], errors="coerce")
-    bad_date: int = int(work["_date"].isna().sum())
-    if bad_date:
-        logger.warning(
-            "Команда (%s): %s строк лидеров без разобранной «%s» — не участвуют в lookup",
+
+    if date_col is not None:
+        work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
+        bad_date: int = int(work["_date"].isna().sum())
+        if bad_date:
+            logger.warning(
+                "Команда (%s): %s строк лидеров без разобранной «%s» — не участвуют в lookup",
+                source,
+                f"{bad_date:,}",
+                date_col,
+            )
+        work = work.dropna(subset=["_date"])
+        if work.empty:
+            return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
+    else:
+        # Нет колонки даты отчёта — весь файл считаем одной датой (не падаем)
+        work["_date"] = pd.Timestamp("1970-01-01")
+        logger.info(
+            "Команда (%s): нет «%s» — весь файл считаем одной датой отчёта",
             source,
-            f"{bad_date:,}",
-            primary_date_col,
+            cols["report_date"],
         )
-    work = work.dropna(subset=["_date"])
-    if work.empty:
-        return pd.DataFrame(columns=["member_tab_number", "member", "role", "tb"])
 
     pick_mode: str = str(
         (config.get("team_files") or {}).get("pick_report_date", "latest")
@@ -193,10 +171,17 @@ def build_leaders_lookup_df(
             pick_mode,
         )
 
-    if team_added_key and added_col and added_col != primary_date_col:
+    team_added_key: str | None
+    if added_col:
         work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
+        team_added_key = "_team_added"
     else:
         team_added_key = None
+        logger.info(
+            "Команда (%s): колонка «%s» отсутствует — отбор только по дате отчёта",
+            source,
+            added_expected,
+        )
 
     latest: pd.DataFrame = pick_leaders_on_latest_dates(
         work,

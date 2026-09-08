@@ -100,8 +100,8 @@ def test_build_leaders_lookup_same_added_date_keeps_all() -> None:
 
 def test_build_leaders_lookup_without_report_date_uses_team_added() -> None:
     """
-    Объединённый файл команды часто без «Дата отчета» — только «Дата добавления…».
-    Раньше lookup был пуст → лидеры не подливались.
+    Нет «Дата отчета» — не падаем: весь файл = одна дата отчёта,
+    дальше обычный max(«Дата добавления в команду»).
     """
     config: dict = load_excel_v2_config("config_excel_v2.json")
     lead_team, deal_team = _team_frames(with_added=True)
@@ -116,9 +116,25 @@ def test_build_leaders_lookup_without_report_date_uses_team_added() -> None:
     )
     assert not lead_lookup.empty
     assert not deal_lookup.empty
-    # max дата добавления: лид 2026-05-01 → Лидер Лида Б; сделка 2026-04-01 → Лидер Сделки А
+    # Одна «дата отчёта» на файл → побеждает max дата добавления
     assert lead_lookup.loc["L1", "member"] == "Лидер Лида Б"
     assert deal_lookup.loc["D1", "member"] == "Лидер Сделки А"
+
+
+def test_build_leaders_lookup_without_any_dates_keeps_all() -> None:
+    """Нет даты отчёта и даты добавления — одна виртуальная дата, все лидеры через \\n."""
+    config: dict = load_excel_v2_config("config_excel_v2.json")
+    lead_team, _ = _team_frames(with_added=False)
+    lead_team = lead_team.drop(columns=["Дата отчета"])
+
+    lookup: pd.DataFrame = build_leaders_lookup_df(
+        lead_team, config, id_key="lead_id", source="lead"
+    )
+    names: str = str(lookup.loc["L1", "member"])
+    assert "Старый Лидер" in names
+    assert "Лидер Лида А" in names
+    assert "Лидер Лида Б" in names
+    assert "\n" in names
 
 
 def test_enrich_without_report_date_fills_leaders() -> None:

@@ -267,7 +267,7 @@ src/
 | 11.38 | Архив `v2_program_files_20260908b.zip` с корректным `team_files.files` | корень репо | `[v]` |
 | 11.39 | Fix: `TypeError: DurationMatrixResult has no len()` в DEBUG после матрицы сроков | `pipeline.py` | `[v]` |
 | 11.40 | Архив `v2_program_files_20260908c.zip` (fix len матрицы) | корень репо | `[v]` |
-| 11.41 | Fix: файл команды без «Дата отчета» — отбор по «Дата добавления в команду» | `team_enrich`, `team_loader` | `[v]` |
+| 11.41 | Fix: нет «Дата отчета» в файле команды — весь файл = одна дата, не падаем | `team_enrich`, `team_loader` | `[v]` |
 | 11.42 | Архив `v2_program_files_20260908d.zip` (fix лидеров без даты отчёта) | корень репо | `[v]` |
 
 ### 11.32 — Декомпозиция
