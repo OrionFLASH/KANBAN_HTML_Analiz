@@ -139,6 +139,9 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         config,
         shared_config,
     )
+    progress.step(
+        f"Команда: лид={len(lead_team_df):,} строк, сделка={len(deal_team_df):,} строк"
+    )
     snapshot = enrich_snapshot_with_team_dfs(snapshot, lead_team_df, deal_team_df, config)
     email_lookup = None
     if manager_emails_enabled(config):

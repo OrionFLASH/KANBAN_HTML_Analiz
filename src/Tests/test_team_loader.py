@@ -197,6 +197,36 @@ def test_split_team_frames_by_type() -> None:
     assert len(deal_df) == 2
 
 
+def test_split_team_type_column_with_spaces() -> None:
+    """Заголовок «Тип команды » с пробелом находится через resolve."""
+    from src.team_loader import _resolve_column_name
+
+    combined: pd.DataFrame = pd.DataFrame(
+        {
+            "Тип команды ": [1, 2],
+            "Табельный номер участника команды": ["111", "222"],
+            "ID ПрПр": ["L1", "L1"],
+            "ID сделки": ["D1", "D2"],
+            "Участник команды": ["A", "B"],
+            "Лидер": ["Да", "Да"],
+        }
+    )
+    assert _resolve_column_name(combined, "Тип команды") == "Тип команды "
+    lead_df, deal_df = split_team_frames_by_type(combined, _team_config())
+    assert len(lead_df) == 1
+    assert len(deal_df) == 1
+
+
+def test_normalize_id_token_strips_excel_float() -> None:
+    """ID вида 12345.0 из Excel склеивается с текстовым 12345."""
+    from src.team_loader import _normalize_id_token
+
+    assert _normalize_id_token(12345.0) == "12345"
+    assert _normalize_id_token("12345.0") == "12345"
+    assert _normalize_id_token(" 12345 ") == "12345"
+    assert _normalize_id_token("-") == ""
+
+
 def test_load_unified_team_files(tmp_path: Path) -> None:
     """Единый комплект files читается один раз и делится по Типу команды."""
     input_dir: Path = tmp_path / "IN" / "PROD"

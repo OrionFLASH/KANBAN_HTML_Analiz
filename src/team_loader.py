@@ -189,6 +189,51 @@ def _input_dir(config: dict[str, Any]) -> Path:
     return resolve_path(config["paths"][key])
 
 
+def _normalize_id_token(value: Any) -> str:
+    """
+    Нормализует ID ПрПр / ID сделки для join.
+    Убирает хвост «.0» у числовых значений из Excel (12345.0 → 12345).
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            as_float: float = float(value)
+            if as_float == int(as_float):
+                return str(int(as_float))
+        except (ValueError, OverflowError):
+            pass
+    text: str = str(value).strip()
+    if text.casefold() in EMPTY_NAME_TOKENS:
+        return ""
+    if text.endswith(".0"):
+        head: str = text[:-2]
+        if head.isdigit() or (head.startswith("-") and head[1:].isdigit()):
+            return head
+    return text
+
+
+def _resolve_column_name(df: pd.DataFrame, expected: str) -> str | None:
+    """
+    Ищет колонку: точное имя → strip → casefold.
+    Нужно из‑за пробелов/регистра в заголовках Excel.
+    """
+    if not expected:
+        return None
+    columns: list[str] = [str(c) for c in df.columns]
+    if expected in df.columns:
+        return expected
+    expected_strip: str = expected.strip()
+    for col_name in columns:
+        if col_name.strip() == expected_strip:
+            return col_name
+    expected_fold: str = expected_strip.casefold()
+    for col_name in columns:
+        if col_name.strip().casefold() == expected_fold:
+            return col_name
+    return None
+
+
 def _read_team_file(path: Path, config: dict[str, Any]) -> pd.DataFrame:
     """Читает один Excel файл команды (лист с заголовком, read_only)."""
     engine: str = str(config.get("excel", {}).get("engine", "openpyxl"))
@@ -205,6 +250,19 @@ def _read_team_file(path: Path, config: dict[str, Any]) -> pd.DataFrame:
             "keep_links": bool(excel_cfg.get("keep_links", False)),
         }
     df: pd.DataFrame = pd.read_excel(path, **read_kwargs)
+    # Убираем пробелы в заголовках (частая причина «нет колонки Тип команды»)
+    rename_map: dict[str, str] = {}
+    for col_name in df.columns:
+        stripped: str = str(col_name).strip()
+        if stripped != str(col_name):
+            rename_map[col_name] = stripped
+    if rename_map:
+        df = df.rename(columns=rename_map)
+        logger.info(
+            "Команда: обрезаны пробелы в заголовках (%d шт.) в %s",
+            len(rename_map),
+            path.name,
+        )
     # Убираем безымянные/пустые колонки
     drop_cols: list[str] = [
         c for c in df.columns if str(c).strip() == "" or str(c).startswith("Unnamed")
@@ -267,9 +325,17 @@ def _load_team_file_list(
 
     combined: pd.DataFrame = pd.concat(frames, ignore_index=True)
     cols: dict[str, str] = _team_column_map(config)
-    tn_col: str = cols.get("member_tab_number", "")
-    if tn_col and tn_col in combined.columns:
+    tn_expected: str = cols.get("member_tab_number", "")
+    tn_col: str | None = _resolve_column_name(combined, tn_expected) if tn_expected else None
+    if tn_col:
         combined = normalize_team_tab_column(combined, tn_col)
+    elif tn_expected:
+        logger.warning(
+            "Команда %s: колонка ТН «%s» не найдена среди %s",
+            label,
+            tn_expected,
+            list(combined.columns)[:20],
+        )
     logger.info(
         "Команда %s: загружено %d файлов, всего %s строк",
         label,
@@ -293,24 +359,52 @@ def split_team_frames_by_type(
         return pd.DataFrame(), pd.DataFrame()
 
     cols: dict[str, str] = _team_column_map(config)
-    type_col: str = cols.get("team_type", "Тип команды")
-    tn_col: str = cols.get("member_tab_number", "Табельный номер участника команды")
+    type_expected: str = cols.get("team_type", "Тип команды")
+    tn_expected: str = cols.get("member_tab_number", "Табельный номер участника команды")
     type_sets: dict[str, set[str]] = _team_type_value_sets(config)
 
-    if type_col not in combined.columns:
-        logger.warning(
-            "Команда (объединённая): нет колонки «%s» — split невозможен, lookup пуст",
-            type_col,
+    type_col: str | None = _resolve_column_name(combined, type_expected)
+    tn_col: str | None = _resolve_column_name(combined, tn_expected)
+
+    if type_col is None:
+        sample_cols: list[str] = [str(c) for c in combined.columns][:30]
+        logger.error(
+            "Команда (объединённая): нет колонки «%s» — split невозможен, "
+            "лидеры лида/сделки будут пустыми. Доступные колонки: %s",
+            type_expected,
+            sample_cols,
         )
         return pd.DataFrame(), pd.DataFrame()
+
+    if type_col != type_expected:
+        logger.info(
+            "Команда (объединённая): колонка типа найдена как «%s» (ожидали «%s»)",
+            type_col,
+            type_expected,
+        )
 
     work: pd.DataFrame = combined.copy()
     type_norm: pd.Series = work[type_col].map(_normalize_team_type_token)
     work["_team_type_norm"] = type_norm
 
-    if tn_col in work.columns:
+    # Диагностика распределения типов (топ значений)
+    value_counts: dict[str, int] = {
+        str(k): int(v) for k, v in type_norm.value_counts(dropna=False).head(15).items()
+    }
+    logger.info(
+        "Команда (объединённая): распределение «%s» (норм.): %s",
+        type_col,
+        value_counts,
+    )
+
+    if tn_col:
         tn_empty: pd.Series = work[tn_col].map(is_empty_token)
     else:
+        logger.warning(
+            "Команда (объединённая): нет колонки ТН «%s» — "
+            "признак «не взят в работу» только по пустому типу",
+            tn_expected,
+        )
         tn_empty = pd.Series(True, index=work.index)
 
     type_empty: pd.Series = type_norm.map(lambda t: t in type_sets["unassigned"] or t == "")
@@ -330,10 +424,13 @@ def split_team_frames_by_type(
     if other_count:
         sample: list[str] = sorted({str(v) for v in type_norm.loc[other_mask].unique()})[:10]
         logger.warning(
-            "Команда (объединённая): %s строк с неизвестным «%s»=%s — пропущены",
+            "Команда (объединённая): %s строк с неизвестным «%s»=%s — пропущены "
+            "(ожидали lead=%s, deal=%s)",
             f"{other_count:,}",
             type_col,
             sample,
+            sorted(type_sets["lead"]),
+            sorted(type_sets["deal"]),
         )
 
     lead_df: pd.DataFrame = work.loc[lead_mask].drop(columns=["_team_type_norm"], errors="ignore")
@@ -343,6 +440,13 @@ def split_team_frames_by_type(
         f"{len(lead_df):,}",
         f"{len(deal_df):,}",
     )
+    if lead_df.empty and deal_df.empty:
+        logger.error(
+            "Команда (объединённая): после split оба кадра пусты — "
+            "проверьте значения «%s» (сейчас %s) и team_type_values в config",
+            type_col,
+            value_counts,
+        )
     return lead_df.reset_index(drop=True), deal_df.reset_index(drop=True)
 
 
@@ -445,41 +549,65 @@ def build_leader_lookup(
         return {}
 
     cols: dict[str, str] = _team_column_map(config)
-    id_col: str = cols[id_key]
-    date_col: str = cols["report_date"]
-    added_col: str = cols.get("team_added_date", "Дата добавления в команду")
-    member_col: str = cols["member"]
-    role_col: str = cols["role"]
-    leader_col: str = cols["is_leader"]
+    id_col: str | None = _resolve_column_name(df, cols[id_key])
+    date_col: str | None = _resolve_column_name(df, cols["report_date"])
+    added_expected: str = cols.get("team_added_date", "Дата добавления в команду")
+    added_col: str | None = _resolve_column_name(df, added_expected)
+    member_col: str | None = _resolve_column_name(df, cols["member"])
+    role_col: str | None = _resolve_column_name(df, cols["role"])
+    leader_col: str | None = _resolve_column_name(df, cols["is_leader"])
     leader_values: set[str] = _leader_value_set(config)
 
-    needed: list[str] = [id_col, date_col, member_col, leader_col]
-    missing: list[str] = [c for c in needed if c not in df.columns]
+    needed_map: dict[str, str | None] = {
+        cols[id_key]: id_col,
+        cols["report_date"]: date_col,
+        cols["member"]: member_col,
+        cols["is_leader"]: leader_col,
+    }
+    missing: list[str] = [name for name, resolved in needed_map.items() if resolved is None]
     if missing:
-        logger.warning("Команда (%s): нет колонок %s — lookup пуст", source, missing)
+        logger.warning(
+            "Команда (%s): нет колонок %s среди %s — lookup пуст",
+            source,
+            missing,
+            list(df.columns)[:25],
+        )
         return {}
+
+    assert id_col and date_col and member_col and leader_col
 
     work: pd.DataFrame = df.copy()
     work["_is_leader"] = work[leader_col].map(lambda v: _is_leader_value(v, leader_values))
+    before_leader: int = len(work)
     work = work.loc[work["_is_leader"]].copy()
     if work.empty:
+        logger.warning(
+            "Команда (%s): нет строк с Лидер∈%s (%d → 0) — lookup пуст",
+            source,
+            sorted(leader_values),
+            before_leader,
+        )
         return {}
 
-    work["_id"] = work[id_col].map(lambda v: str(v).strip() if pd.notna(v) else "")
+    work["_id"] = work[id_col].map(_normalize_id_token)
     work = work.loc[work["_id"] != ""].copy()
     work["_name"] = work[member_col].map(normalize_person_name)
     work = work.loc[work["_name"] != ""].copy()
     work["_role"] = (
         work[role_col].map(lambda v: " ".join(str(v).split()).strip() if pd.notna(v) else "")
-        if role_col in work.columns
+        if role_col and role_col in work.columns
         else ""
     )
     work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
     work = work.dropna(subset=["_date"])
     if work.empty:
+        logger.warning(
+            "Команда (%s): после отбора лидеров/дат кадр пуст — lookup пуст",
+            source,
+        )
         return {}
 
-    if added_col in work.columns:
+    if added_col:
         work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
         team_added_key: str | None = "_team_added"
     else:
