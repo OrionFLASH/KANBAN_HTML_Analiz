@@ -98,8 +98,35 @@ def test_format_sheet_applies_date_number_format(tmp_path: Path) -> None:
     prepared.to_excel(path, index=False)
     wb = load_workbook(path)
     ws = wb.active
-    format_sheet(ws, cfg, sheet_key="leads")
+    format_sheet(ws, cfg, sheet_key="norms")
     assert isinstance(ws.cell(2, 2).value, datetime)
     assert ws.cell(2, 2).number_format == "DD.MM.YYYY"
     assert isinstance(ws.cell(2, 3).value, datetime)
     assert ws.cell(2, 3).number_format == "DD.MM.YYYY"
+
+
+def test_light_format_sheets_skips_per_cell_theme(tmp_path: Path) -> None:
+    """leads/violations в light_format_sheets — без обхода ячеек (даты без спец. формата)."""
+    cfg: dict = _config()
+    cfg["output"]["excel_format"]["light_format_sheets"] = ["leads", "violations"]
+    frame: pd.DataFrame = coerce_date_columns(
+        pd.DataFrame(
+            {
+                "ID": ["L1"],
+                "Мин дней": [1],
+                "Макс дней": [9],
+                "Дата начала работы": ["01.09.2026"],
+            }
+        ),
+        cfg,
+    )
+    prepared: pd.DataFrame = prepare_excel_frame(frame, cfg)
+    path: Path = tmp_path / "light.xlsx"
+    prepared.to_excel(path, index=False)
+    wb = load_workbook(path)
+    ws = wb.active
+    format_sheet(ws, cfg, sheet_key="leads")
+    # Шапка оформлена; поклеточная тема/формат DD.MM.YYYY не навешиваются
+    assert ws.cell(1, 1).font.bold is True
+    assert ws.cell(2, 2).number_format != "DD.MM.YYYY"
+    assert ws.cell(2, 4).number_format != "DD.MM.YYYY"

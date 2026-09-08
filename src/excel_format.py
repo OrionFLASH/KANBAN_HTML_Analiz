@@ -153,6 +153,15 @@ def resolve_freeze_panes(
     return default
 
 
+def _light_format_sheet_keys(config: dict[str, Any]) -> set[str]:
+    """Ключи листов с облегчённым оформлением (без обхода всех ячеек)."""
+    fmt_cfg: dict[str, Any] = (config.get("output") or {}).get("excel_format") or {}
+    raw: Any = fmt_cfg.get("light_format_sheets") or []
+    if not isinstance(raw, list):
+        return set()
+    return {str(item).strip() for item in raw if str(item).strip()}
+
+
 def format_sheet(
     ws: Any,
     config: dict[str, Any],
@@ -167,6 +176,8 @@ def format_sheet(
     labels: dict[str, str] = config["output"]["column_labels"]
     theme: str = config.get("excel_theme", "green_red")
     colors: dict[str, str] = fmt_cfg.get("colors", {"min": "C6EFCE", "max": "FFC7CE"})
+    # Большие листы: без green_red и без поклеточного number_format/alignment
+    light: bool = bool(sheet_key) and sheet_key in _light_format_sheet_keys(config)
 
     green_fill: PatternFill = PatternFill(
         start_color=colors["min"], end_color=colors["min"], fill_type="solid"
@@ -192,15 +203,16 @@ def format_sheet(
         if header and max_marker in str(header):
             max_cols.append(idx)
 
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for col_idx in min_cols:
-            cell = row[col_idx - 1]
-            if theme == "green_red" and isinstance(cell.value, (int, float)):
-                cell.fill = green_fill
-        for col_idx in max_cols:
-            cell = row[col_idx - 1]
-            if theme == "green_red" and isinstance(cell.value, (int, float)):
-                cell.fill = red_fill
+    if not light and theme == "green_red" and (min_cols or max_cols):
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+            for col_idx in min_cols:
+                cell = row[col_idx - 1]
+                if isinstance(cell.value, (int, float)):
+                    cell.fill = green_fill
+            for col_idx in max_cols:
+                cell = row[col_idx - 1]
+                if isinstance(cell.value, (int, float)):
+                    cell.fill = red_fill
 
     min_width: int = int(fmt_cfg.get("min_column_width", 12))
     max_width: int = int(fmt_cfg.get("max_column_width", 45))
@@ -220,6 +232,9 @@ def format_sheet(
     for cell in ws[1]:
         cell.font = header_font
         cell.alignment = header_align
+
+    if light:
+        return
 
     float_fmt: str = fmt_cfg.get("float_format", "0.00")
     int_fmt: str = fmt_cfg.get("int_format", "0")

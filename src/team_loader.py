@@ -272,9 +272,58 @@ def _read_team_file(path: Path, config: dict[str, Any]) -> pd.DataFrame:
     return df
 
 
+def _filter_team_frame_leaders_only(
+    frame: pd.DataFrame,
+    config: dict[str, Any],
+    *,
+    source_label: str,
+) -> pd.DataFrame:
+    """
+    Оставляет только строки «Лидер∈leader_values».
+
+    Дальше pipeline использует команду исключительно для lookup лидеров
+    (ФИО/ТН/роль/ТБ). Участники без флага «Лидер» в расчёты не входят —
+    отсев здесь безопасен и экономит RAM до concat.
+    """
+    tf_cfg: dict[str, Any] = team_files_config(config)
+    if not bool(tf_cfg.get("keep_leaders_only", True)):
+        return frame
+    if frame.empty:
+        return frame
+
+    cols: dict[str, str] = _team_column_map(config)
+    leader_expected: str = cols.get("is_leader", "Лидер")
+    leader_col: str | None = _resolve_column_name(frame, leader_expected)
+    if leader_col is None:
+        logger.warning(
+            "Команда (%s): keep_leaders_only — нет колонки «%s», фильтр пропущен",
+            source_label,
+            leader_expected,
+        )
+        return frame
+
+    leader_values: set[str] = _leader_value_set(config)
+    before: int = len(frame)
+    leader_text: pd.Series = (
+        frame[leader_col].astype("string").fillna("").astype(str).str.strip().str.casefold()
+    )
+    filtered: pd.DataFrame = frame.loc[leader_text.isin(leader_values)].copy()
+    removed: int = before - len(filtered)
+    if removed > 0:
+        logger.info(
+            "Команда (%s): keep_leaders_only %s → %s строк (−%s не-лидеров)",
+            source_label,
+            f"{before:,}",
+            f"{len(filtered):,}",
+            f"{removed:,}",
+        )
+    return filtered
+
+
 def _load_one_team_file(path: Path, name: str, config: dict[str, Any]) -> pd.DataFrame:
-    """Читает один файл команды и помечает source_file."""
+    """Читает один файл команды, сразу оставляет лидеров, помечает source_file."""
     frame: pd.DataFrame = _read_team_file(path, config)
+    frame = _filter_team_frame_leaders_only(frame, config, source_label=name)
     frame["source_file"] = name
     return frame
 

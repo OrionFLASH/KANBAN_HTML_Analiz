@@ -272,6 +272,8 @@ src/
 | 11.43 | Fix FutureWarning `fillna` downcasting в snapshot/filters + warnings→лог | `snapshot.py`, `filters.py`, `logger_setup.py` | `[v]` |
 | 11.44 | Обновить `team_files.files.prod` (файлы по ТБ на 08-09-2026) | `config_excel_v2.json` | `[v]` |
 | 11.45 | Архив `v2_program_files_20260908e.zip` | корень репо | `[v]` |
+| 11.46 | Лёгкое оформление больших листов (`light_format_sheets`) | `excel_format.py`, config | `[v]` |
+| 11.47 | `keep_leaders_only`: фильтр лидеров сразу при чтении team-файлов | `team_loader.py`, config | `[v]` |
 
 ### 11.32 — Декомпозиция
 

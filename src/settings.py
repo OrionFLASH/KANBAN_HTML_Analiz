@@ -353,6 +353,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "lead_team": {"test": [], "prod": []},
             "deal_team": {"test": [], "prod": []},
             "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
+            "keep_leaders_only": True,
             "team_type_values": {
                 "lead": [1, "1"],
                 "deal": [2, "2"],

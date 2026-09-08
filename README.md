@@ -271,3 +271,4 @@ cd HTML && python -m http.server 8080
 | 2.3.5 | 2026-09-08 | Fix: нет «Дата отчета» в команде → весь файл = одна дата; архив `20260908d` |
 | 2.3.6 | 2026-09-08 | Fix FutureWarning fillna; warnings→лог; team_files по ТБ 08-09; архив `20260908e` |
 | 2.3.7 | 2026-09-08 | POST: код без тестов/HTML; Docs только CONFIG; синхронизация с main |
+| 2.3.8 | 2026-09-08 | Лёгкое оформление leads/violations; `keep_leaders_only` при чтении команды |

@@ -326,7 +326,7 @@
       "case_sensitive": false
     },
     "exclude_deal_zakryta": {
-      "enabled": true,
+      "enabled": false,
       "column_key": "deal_stage",
       "action": "exclude",
       "match": "contains",
@@ -338,7 +338,7 @@
       "case_sensitive": false
     },
     "exclude_deal_zaklyuchen": {
-      "enabled": true,
+      "enabled": false,
       "column_key": "deal_stage",
       "action": "exclude",
       "match": "contains",
@@ -370,6 +370,7 @@
       "True",
       "1"
     ],
+    "keep_leaders_only": true,
     "columns": {
       "report_date": "Дата отчета",
       "team_added_date": "Дата добавления в команду",
@@ -730,6 +731,7 @@
       "min_column_width": 12,
       "sample_rows_for_width": 200,
       "hotspots_column_width": 55,
+      "light_format_sheets": ["leads", "violations"],
       "colors": {
         "min": "C6EFCE",
         "max": "FFC7CE"
