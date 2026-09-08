@@ -129,7 +129,9 @@ def count_unique_km_at_or_above_p80(
     valid: pd.Series = days_numeric.notna() & (days_numeric.round() >= threshold)
     if not valid.any():
         return 0
-    km_values: pd.Series = group.loc[valid, km_col].fillna("").astype(str).str.strip()
+    km_values: pd.Series = (
+        group.loc[valid, km_col].astype("string").fillna("").astype(str).str.strip()
+    )
     empty: set[str] = {"", "-", "nan", "none", "None"}
     km_values = km_values[~km_values.str.lower().isin({v.lower() for v in empty})]
     return int(km_values.nunique())

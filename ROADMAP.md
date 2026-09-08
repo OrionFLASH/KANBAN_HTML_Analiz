@@ -269,6 +269,9 @@ src/
 | 11.40 | Архив `v2_program_files_20260908c.zip` (fix len матрицы) | корень репо | `[v]` |
 | 11.41 | Fix: нет «Дата отчета» в файле команды — весь файл = одна дата, не падаем | `team_enrich`, `team_loader` | `[v]` |
 | 11.42 | Архив `v2_program_files_20260908d.zip` (fix лидеров без даты отчёта) | корень репо | `[v]` |
+| 11.43 | Fix FutureWarning `fillna` downcasting в snapshot/filters + warnings→лог | `snapshot.py`, `filters.py`, `logger_setup.py` | `[v]` |
+| 11.44 | Обновить `team_files.files.prod` (файлы по ТБ на 08-09-2026) | `config_excel_v2.json` | `[v]` |
+| 11.45 | Архив `v2_program_files_20260908e.zip` | корень репо | `[v]` |
 
 ### 11.32 — Декомпозиция
 
