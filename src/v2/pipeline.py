@@ -28,7 +28,7 @@ from src.v2.config_loader import (
     load_excel_v2_config,
 )
 from src.v2.exceedance import attach_p80_exceedance
-from src.v2.duration_matrix import build_duration_matrix, duration_matrix_enabled
+from src.v2.duration_matrix import build_all_duration_matrices, duration_matrix_enabled
 from src.v2.exporter import export_excel_v2
 from src.v2.manager_summary import build_manager_reports
 from src.manager_emails import (
@@ -265,16 +265,18 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         funnel_frame: pd.DataFrame = build_filter_funnel_frame(funnel_steps)
     with progress.timed("build_outlier_audit_summary"):
         outlier_summary: pd.DataFrame = build_outlier_audit_summary(norms_internal, config)
-    duration_matrix = None
+    duration_matrices: dict = {}
     if duration_matrix_enabled(config):
         progress.substage("build_duration_matrix")
         with progress.timed("build_duration_matrix", snapshot_rows=len(snapshot)):
-            duration_matrix = build_duration_matrix(snapshot, config)
-        # DurationMatrixResult — не DataFrame: считаем строки матрицы, не len(result)
-        n_matrix_rows: int = (
-            0 if duration_matrix is None else len(duration_matrix.rows)
+            duration_matrices = build_all_duration_matrices(snapshot, config)
+        n_matrix_rows: int = 0
+        for mtx in duration_matrices.values():
+            if mtx is not None and not mtx.empty:
+                n_matrix_rows = max(n_matrix_rows, len(mtx.rows))
+        progress.debug(
+            f"Матрица сроков: sheets={len(duration_matrices)}, rows={n_matrix_rows:,}"
         )
-        progress.debug(f"Матрица сроков: rows={n_matrix_rows:,}")
     else:
         progress.debug("Матрица сроков: выключена")
 
@@ -293,8 +295,9 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         "managers": manager_summary,
         "violations": violations_detail,
     }
-    if duration_matrix is not None and not duration_matrix.empty:
-        sheets_payload["duration_matrix"] = pd.DataFrame()
+    for m_key, mtx in duration_matrices.items():
+        if mtx is not None and not mtx.empty:
+            sheets_payload[m_key] = pd.DataFrame()
     sheet_sizes: dict[str, int] = {
         key: (0 if frame is None else len(frame)) for key, frame in sheets_payload.items()
     }
@@ -307,7 +310,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
             config,
             funnel_frame=funnel_frame,
             outlier_summary=outlier_summary,
-            duration_matrix=duration_matrix,
+            duration_matrices=duration_matrices,
         )
     if csv_paths:
         progress.done(

@@ -575,6 +575,7 @@
       "norms": "Нормативы",
       "statistics": "Статистика",
       "duration_matrix": "Распределение сроков",
+      "duration_matrix_by_group": "Распределение сроков (группы)",
       "leads": "Уникальные ID",
       "managers": "Свод по менеджеру",
       "violations": "Свод ПрПр с отклонениями"
@@ -596,6 +597,10 @@
         "last_row": 3,
         "last_col": 6
       },
+      "duration_matrix_by_group": {
+        "last_row": 3,
+        "last_col": 6
+      },
       "leads": {
         "last_row": 1,
         "last_col": 3
@@ -612,6 +617,16 @@
     "duration_matrix": {
       "enabled": true,
       "sort_mode": "by_volume",
+      "variants": [
+        {
+          "sheet_key": "duration_matrix",
+          "sort_mode": "by_volume"
+        },
+        {
+          "sheet_key": "duration_matrix_by_group",
+          "sort_mode": "group_alpha_product_volume"
+        }
+      ],
       "total_column_label": "Всего",
       "day_column_width": 4.5,
       "percentile_column_width": 8,

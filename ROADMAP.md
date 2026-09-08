@@ -274,6 +274,7 @@ src/
 | 11.45 | Архив `v2_program_files_20260908e.zip` | корень репо | `[v]` |
 | 11.46 | Лёгкое оформление больших листов (`light_format_sheets`) | `excel_format.py`, config | `[v]` |
 | 11.47 | `keep_leaders_only`: фильтр лидеров сразу при чтении team-файлов | `team_loader.py`, config | `[v]` |
+| 11.48 | Второй лист матрицы сроков: группы А→Я, продукты по объёму (`variants`) | `duration_matrix.py`, exporter, config | `[v]` |
 
 ### 11.32 — Декомпозиция
 

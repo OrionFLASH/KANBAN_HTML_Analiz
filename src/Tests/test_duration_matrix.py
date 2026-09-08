@@ -7,11 +7,59 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import load_workbook
 
-from src.v2.duration_matrix import build_duration_matrix
+from src.v2.duration_matrix import (
+    build_all_duration_matrices,
+    build_duration_matrix,
+    list_duration_matrix_specs,
+)
 from src.v2.exporter import export_excel_v2
 
 
-def _base_config(*, sort_mode: str = "alpha_days") -> dict:
+def _base_config(
+    *,
+    sort_mode: str = "alpha_days",
+    with_group_variant: bool = False,
+) -> dict:
+    sheets: dict[str, str] = {
+        "norms": "Нормативы",
+        "duration_matrix": "Распределение сроков",
+        "leads": "Уникальные ID",
+    }
+    freeze: dict[str, dict[str, int]] = {
+        "duration_matrix": {"last_row": 3, "last_col": 6},
+        "default": {"last_row": 1, "last_col": 0},
+    }
+    matrix_cfg: dict = {
+        "enabled": True,
+        "sort_mode": sort_mode,
+        "total_column_label": "Всего",
+        "day_column_width": 4.5,
+        "percentile_column_width": 8,
+        "row_height": 28,
+        "header_row_height": 22,
+        "filter_row_height": 16,
+        "counts_font_size": 14,
+        "header_fill": "FFF2CC",
+        "filter_row_font_color": "D9D9D9",
+        "grid_border_color": "BFBFBF",
+        "threshold_border_color": "C65911",
+        "max_day_span": 3000,
+        "color_scale": {
+            "start": "63BE7B",
+            "mid": "FFEB84",
+            "end": "F8696B",
+        },
+    }
+    if with_group_variant:
+        sheets["duration_matrix_by_group"] = "Распределение сроков (группы)"
+        freeze["duration_matrix_by_group"] = {"last_row": 3, "last_col": 6}
+        matrix_cfg["variants"] = [
+            {"sheet_key": "duration_matrix", "sort_mode": "by_volume"},
+            {
+                "sheet_key": "duration_matrix_by_group",
+                "sort_mode": "group_alpha_product_volume",
+            },
+        ]
     return {
         "columns": {
             "product_group": "Группа продукта",
@@ -22,42 +70,15 @@ def _base_config(*, sort_mode: str = "alpha_days") -> dict:
         "exceedance": {"percentile": 50},
         "excel": {"engine": "openpyxl"},
         "output": {
-            "sheets": {
-                "norms": "Нормативы",
-                "duration_matrix": "Распределение сроков",
-                "leads": "Уникальные ID",
-            },
+            "sheets": sheets,
             "column_labels": {
                 "product_group": "Группа продукта",
                 "product": "Продукт",
                 "min_header_marker": "Мин",
                 "max_header_marker": "Макс",
             },
-            "duration_matrix": {
-                "enabled": True,
-                "sort_mode": sort_mode,
-                "total_column_label": "Всего",
-                "day_column_width": 4.5,
-                "percentile_column_width": 8,
-                "row_height": 28,
-                "header_row_height": 22,
-                "filter_row_height": 16,
-                "counts_font_size": 14,
-                "header_fill": "FFF2CC",
-                "filter_row_font_color": "D9D9D9",
-                "grid_border_color": "BFBFBF",
-                "threshold_border_color": "C65911",
-                "max_day_span": 3000,
-                "color_scale": {
-                    "start": "63BE7B",
-                    "mid": "FFEB84",
-                    "end": "F8696B",
-                },
-            },
-            "sheet_freeze": {
-                "duration_matrix": {"last_row": 3, "last_col": 6},
-                "default": {"last_row": 1, "last_col": 0},
-            },
+            "duration_matrix": matrix_cfg,
+            "sheet_freeze": freeze,
             "excel_format": {
                 "freeze_panes": "A2",
                 "min_column_width": 10,
@@ -118,6 +139,50 @@ def test_build_duration_matrix_by_volume() -> None:
         ("Бета", "Z", 2),
         ("Альфа", "B", 1),
     ]
+
+
+def test_build_duration_matrix_group_alpha_product_volume() -> None:
+    result = build_duration_matrix(
+        _sample_snap(),
+        _base_config(sort_mode="group_alpha_product_volume"),
+    )
+    assert result.sort_mode == "group_alpha_product_volume"
+    assert result.day_columns == [3, 5, 10]
+    # Группы А→Я; внутри группы продукты по убыванию лидов
+    assert [(r[0], r[1], r[2]) for r in result.rows] == [
+        ("Альфа", "A", 2),
+        ("Альфа", "B", 1),
+        ("Бета", "Z", 2),
+    ]
+
+
+def test_build_all_duration_matrices_two_layouts() -> None:
+    config = _base_config(with_group_variant=True)
+    specs = list_duration_matrix_specs(config)
+    assert [s.sheet_key for s in specs] == [
+        "duration_matrix",
+        "duration_matrix_by_group",
+    ]
+    matrices = build_all_duration_matrices(_sample_snap(), config)
+    assert set(matrices) == {"duration_matrix", "duration_matrix_by_group"}
+    by_vol = matrices["duration_matrix"]
+    by_grp = matrices["duration_matrix_by_group"]
+    assert by_vol.sort_mode == "by_volume"
+    assert by_grp.sort_mode == "group_alpha_product_volume"
+    assert by_vol.day_columns == [3, 5, 10]
+    assert by_grp.day_columns == [3, 5, 10]
+    assert [(r[0], r[1]) for r in by_vol.rows] == [
+        ("Альфа", "A"),
+        ("Бета", "Z"),
+        ("Альфа", "B"),
+    ]
+    assert [(r[0], r[1]) for r in by_grp.rows] == [
+        ("Альфа", "A"),
+        ("Альфа", "B"),
+        ("Бета", "Z"),
+    ]
+    # Одинаковые counts — разная только раскладка
+    assert by_vol.grand_total == by_grp.grand_total == 5
 
 
 def test_duration_matrix_result_supports_len() -> None:
@@ -187,3 +252,40 @@ def test_duration_matrix_sheet_format(tmp_path: Path) -> None:
     # выделение порога P50=1 → колонка дня 1 (col 7)
     assert ws.cell(4, 7).border.left.style == "medium"
     assert ws.cell(4, 7).border.left.color.rgb in {"00C65911", "C65911"}
+
+
+def test_duration_matrix_two_sheets_export(tmp_path: Path) -> None:
+    config = _base_config(with_group_variant=True)
+    matrices = build_all_duration_matrices(_sample_snap(), config)
+    path = tmp_path / "matrix_two.xlsx"
+    export_excel_v2(
+        path,
+        {
+            "norms": pd.DataFrame({"ТБ": ["x"]}),
+            "duration_matrix": pd.DataFrame(),
+            "duration_matrix_by_group": pd.DataFrame(),
+            "leads": pd.DataFrame({"ID": [1]}),
+        },
+        config,
+        duration_matrices=matrices,
+    )
+    wb = load_workbook(path)
+    assert "Распределение сроков" in wb.sheetnames
+    assert "Распределение сроков (группы)" in wb.sheetnames
+    ws_vol = wb["Распределение сроков"]
+    ws_grp = wb["Распределение сроков (группы)"]
+    # by_volume: Альфа/A, Бета/Z, Альфа/B
+    assert ws_vol.cell(4, 1).value == "Альфа"
+    assert ws_vol.cell(4, 2).value == "A"
+    assert ws_vol.cell(5, 1).value == "Бета"
+    assert ws_vol.cell(5, 2).value == "Z"
+    # group layout: Альфа/A, Альфа/B, Бета/Z; дни по возрастанию
+    assert ws_grp.cell(4, 1).value == "Альфа"
+    assert ws_grp.cell(4, 2).value == "A"
+    assert ws_grp.cell(5, 1).value == "Альфа"
+    assert ws_grp.cell(5, 2).value == "B"
+    assert ws_grp.cell(6, 1).value == "Бета"
+    assert ws_grp.cell(1, 7).value == 3
+    assert ws_grp.cell(1, 8).value == 5
+    assert ws_grp.cell(1, 9).value == 10
+    assert ws_grp.freeze_panes == "G4"

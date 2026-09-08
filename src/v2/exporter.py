@@ -170,10 +170,17 @@ def _write_statistics_sheet(
     _autosize_columns(ws, max(ws.max_column or 1, 1), max(ws.max_row or 1, 1), config)
 
 
+def _is_duration_matrix_sheet_key(key: str) -> bool:
+    """Ключи листов матрицы сроков (основной и variants)."""
+    return key == "duration_matrix" or key.startswith("duration_matrix_")
+
+
 def _write_duration_matrix_sheet(
     ws: Any,
     matrix: DurationMatrixResult,
     config: dict[str, Any],
+    *,
+    sheet_key: str = "duration_matrix",
 ) -> None:
     """
     Лист «Распределение сроков»:
@@ -390,8 +397,10 @@ def _write_duration_matrix_sheet(
         ws.row_dimensions[row_idx].height = row_height
 
     logger.info(
-        "Матрица сроков: лист записан, колонок процентилей=%s, порог %s, "
+        "Матрица сроков [%s]: лист записан, mode=%s, колонок процентилей=%s, порог %s, "
         "выделено ячеек=%s, freeze=%s",
+        sheet_key,
+        matrix.sort_mode,
         n_pct,
         percentile_label(exc_p),
         len(highlight_cells),
@@ -407,6 +416,7 @@ def export_excel_v2(
     funnel_frame: pd.DataFrame | None = None,
     outlier_summary: pd.DataFrame | None = None,
     duration_matrix: DurationMatrixResult | None = None,
+    duration_matrices: dict[str, DurationMatrixResult] | None = None,
 ) -> tuple[Path, list[Path]]:
     """
     Записывает листы в Excel; листы > excel_max_rows_per_sheet — в CSV (;).
@@ -414,7 +424,7 @@ def export_excel_v2(
 
     «Нормативы» — обычная таблица групп (+ колонки отсечения выбросов по строке).
     «Статистика» — воронка фильтров и свод выбросов.
-    «Распределение сроков» — матрица группа/продукт × дни.
+    «Распределение сроков» — матрица группа/продукт × дни (возможно несколько variants).
     """
     from src.debug_trace import debug_event, procedure
 
@@ -426,6 +436,13 @@ def export_excel_v2(
         f"rows_{k}": v for k, v in sheet_sizes.items()
     })
 
+    matrices: dict[str, DurationMatrixResult] = dict(duration_matrices or {})
+    if duration_matrix is not None and not duration_matrix.empty:
+        matrices.setdefault(
+            duration_matrix.sheet_key or "duration_matrix",
+            duration_matrix,
+        )
+
     with procedure(logger, "export_excel_v2", sheets=len(sheets)):
         return _export_excel_v2_impl(
             path,
@@ -433,7 +450,7 @@ def export_excel_v2(
             config,
             funnel_frame=funnel_frame,
             outlier_summary=outlier_summary,
-            duration_matrix=duration_matrix,
+            duration_matrices=matrices,
         )
 
 
@@ -444,12 +461,17 @@ def _export_excel_v2_impl(
     *,
     funnel_frame: pd.DataFrame | None = None,
     outlier_summary: pd.DataFrame | None = None,
-    duration_matrix: DurationMatrixResult | None = None,
+    duration_matrices: dict[str, DurationMatrixResult] | None = None,
 ) -> tuple[Path, list[Path]]:
     """Внутренняя реализация экспорта (после обёртки procedure)."""
     sheet_names: dict[str, str] = dict(config.get("output", {}).get("sheets") or {})
     max_len: int = int(config.get("output", {}).get("excel_max_sheet_name_length", 31))
     engine: str = str(config.get("excel", {}).get("engine", "openpyxl"))
+    matrices: dict[str, DurationMatrixResult] = {
+        key: mtx
+        for key, mtx in (duration_matrices or {}).items()
+        if mtx is not None and not mtx.empty
+    }
 
     excel_sheets, csv_sheets = split_sheets_by_row_limit(sheets, config)
     csv_paths: list[Path] = export_overflow_csv_sheets(path, csv_sheets, sheet_names, config)
@@ -458,19 +480,29 @@ def _export_excel_v2_impl(
     prepared: dict[str, pd.DataFrame] = {}
     sheet_key_by_title: dict[str, str] = {}
 
-    # Порядок листов: нормативы, статистика, матрица сроков, остальные
+    # Порядок листов: нормативы, статистика, матрицы сроков, остальные
     preferred_order: list[str] = [
         "norms",
         "statistics",
         "duration_matrix",
+        "duration_matrix_by_group",
         "leads",
         "managers",
         "violations",
     ]
     ordered_keys: list[str] = [k for k in preferred_order if k in excel_sheets]
     ordered_keys.extend([k for k in excel_sheets if k not in ordered_keys])
+    # Матрицы, переданные отдельно, но без плейсхолдера в sheets
+    for m_key in matrices:
+        if m_key not in ordered_keys:
+            # Вставить после statistics / других матриц
+            insert_at: int = 0
+            for idx, key in enumerate(ordered_keys):
+                if key in {"norms", "statistics"} or _is_duration_matrix_sheet_key(key):
+                    insert_at = idx + 1
+            ordered_keys.insert(insert_at, m_key)
 
-    want_duration: bool = duration_matrix is not None and not duration_matrix.empty
+    want_duration: bool = bool(matrices)
 
     if not excel_sheets and csv_paths and not want_duration:
         redirect_title: str = sanitize_sheet_name("Экспорт CSV", used_sheet_names, max_len)
@@ -478,11 +510,10 @@ def _export_excel_v2_impl(
         sheet_key_by_title[redirect_title] = "_csv_redirect"
     else:
         for key in ordered_keys:
-            frame = excel_sheets[key]
+            frame = excel_sheets.get(key, pd.DataFrame({"_": []}))
             title: str = sanitize_sheet_name(sheet_names.get(key, key), used_sheet_names, max_len)
             sheet_key_by_title[title] = key
-            if key in {"statistics", "duration_matrix"}:
-                # Плейсхолдер — содержимое пишется отдельно
+            if key == "statistics" or _is_duration_matrix_sheet_key(key):
                 prepared[title] = pd.DataFrame({"_": []})
             else:
                 prepared[title] = prepare_excel_frame(frame, config)
@@ -498,14 +529,13 @@ def _export_excel_v2_impl(
             sheet_key_by_title[title] = "statistics"
             prepared[title] = pd.DataFrame({"_": []})
 
-        if want_duration and "duration_matrix" not in excel_sheets:
+        for m_key, mtx in matrices.items():
+            if m_key in sheet_key_by_title.values():
+                continue
             title = sanitize_sheet_name(
-                sheet_names.get("duration_matrix", "Распределение сроков"),
-                used_sheet_names,
-                max_len,
+                sheet_names.get(m_key, m_key), used_sheet_names, max_len
             )
-            sheet_key_by_title[title] = "duration_matrix"
-            # Вставить после статистики, если возможно
+            sheet_key_by_title[title] = m_key
             prepared[title] = pd.DataFrame({"_": []})
 
     with pd.ExcelWriter(path, engine=engine) as writer:
@@ -517,13 +547,14 @@ def _export_excel_v2_impl(
                 if ws.max_row >= 1:
                     ws.delete_rows(1, ws.max_row)
                 _write_statistics_sheet(ws, config, funnel_frame, outlier_summary)
-            elif key == "duration_matrix":
+            elif _is_duration_matrix_sheet_key(key):
                 pd.DataFrame({"_": []}).to_excel(writer, sheet_name=title, index=False)
                 ws = writer.book[title]
                 if ws.max_row >= 1:
                     ws.delete_rows(1, ws.max_row)
-                if duration_matrix is not None:
-                    _write_duration_matrix_sheet(ws, duration_matrix, config)
+                mtx = matrices.get(key)
+                if mtx is not None:
+                    _write_duration_matrix_sheet(ws, mtx, config, sheet_key=key)
             elif frame.empty:
                 pd.DataFrame({"Нет данных": []}).to_excel(writer, sheet_name=title, index=False)
             else:
@@ -535,8 +566,7 @@ def _export_excel_v2_impl(
                 continue
             ws = wb[title]
             sheet_key: str = sheet_key_by_title.get(title, "")
-            if sheet_key in {"statistics", "duration_matrix"}:
-                # Уже оформлены своими writers
+            if sheet_key == "statistics" or _is_duration_matrix_sheet_key(sheet_key):
                 continue
             format_sheet(ws, config, sheet_key=sheet_key)
             markers: list[str] = MULTILINE_BY_SHEET.get(sheet_key, [])
