@@ -554,6 +554,7 @@ def build_leader_lookup(
 ) -> dict[str, list[dict[str, str]]]:
     """
     Словарь id → список лидеров на max(дата отчёта), затем max(дата добавления).
+    Нет колонки даты отчёта — весь файл считаем одной датой (не ошибка).
     id_key: lead_id | deal_id из карты колонок команды.
     """
     if df.empty:
@@ -571,7 +572,6 @@ def build_leader_lookup(
 
     needed_map: dict[str, str | None] = {
         cols[id_key]: id_col,
-        cols["report_date"]: date_col,
         cols["member"]: member_col,
         cols["is_leader"]: leader_col,
     }
@@ -585,7 +585,7 @@ def build_leader_lookup(
         )
         return {}
 
-    assert id_col and date_col and member_col and leader_col
+    assert id_col and member_col and leader_col
 
     work: pd.DataFrame = df.copy()
     work["_is_leader"] = work[leader_col].map(lambda v: _is_leader_value(v, leader_values))
@@ -609,18 +609,28 @@ def build_leader_lookup(
         if role_col and role_col in work.columns
         else ""
     )
-    work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
-    work = work.dropna(subset=["_date"])
-    if work.empty:
-        logger.warning(
-            "Команда (%s): после отбора лидеров/дат кадр пуст — lookup пуст",
-            source,
-        )
-        return {}
 
+    if date_col is not None:
+        work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
+        work = work.dropna(subset=["_date"])
+        if work.empty:
+            logger.warning(
+                "Команда (%s): после отбора лидеров/дат кадр пуст — lookup пуст",
+                source,
+            )
+            return {}
+    else:
+        work["_date"] = pd.Timestamp("1970-01-01")
+        logger.info(
+            "Команда (%s): нет «%s» — весь файл считаем одной датой отчёта",
+            source,
+            cols["report_date"],
+        )
+
+    team_added_key: str | None
     if added_col:
         work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
-        team_added_key: str | None = "_team_added"
+        team_added_key = "_team_added"
     else:
         team_added_key = None
 
