@@ -226,7 +226,7 @@ cd HTML && python -m http.server 8080
 
 ## Перенос на другой ПК (без Git)
 
-Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). UI: один файл `OUT/kanban_report_*.json` (monolith). Копия для пересылки: `POST/KANBAN_HTML_Analiz/`.
+Подробно: [Docs/DEPLOY.md](Docs/DEPLOY.md). UI: один файл `OUT/kanban_report_*.json` (monolith). Копия для пересылки: `POST/KANBAN_HTML_Analiz/` (код без тестов и HTML; в Docs — только CONFIG).
 
 ## История версий
 
@@ -270,3 +270,4 @@ cd HTML && python -m http.server 8080
 | 2.3.4 | 2026-09-08 | Fix `len(DurationMatrixResult)` после матрицы сроков; архив `20260908c` |
 | 2.3.5 | 2026-09-08 | Fix: нет «Дата отчета» в команде → весь файл = одна дата; архив `20260908d` |
 | 2.3.6 | 2026-09-08 | Fix FutureWarning fillna; warnings→лог; team_files по ТБ 08-09; архив `20260908e` |
+| 2.3.7 | 2026-09-08 | POST: код без тестов/HTML; Docs только CONFIG; синхронизация с main |
