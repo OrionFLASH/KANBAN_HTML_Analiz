@@ -55,7 +55,7 @@ python run_excel.py
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
-Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260908.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены).
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260908b.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены).
 
 ## Структура проекта
 
@@ -265,3 +265,5 @@ cd HTML && python -m http.server 8080
 | 2.2.9 | 2026-09-03 | Fix `outlier_clipping` на больших группах (выравнивание индекса); почты на своде после ФИО; `group_keys` без `analysis_level` |
 | 2.3.0 | 2026-09-07 | Единые файлы «команда лида и сделки» + колонка «Тип команды» (1/2/-); prod Kanban ЕФС 07-09-2026 |
 | 2.3.1 | 2026-09-07 | Архив программы v2: `v2_program_files_20260907.zip` (без тестов) |
+| 2.3.2 | 2026-09-08 | Fix лидеров + подробный DEBUG; архив `v2_program_files_20260908.zip` |
+| 2.3.3 | 2026-09-08 | Архив `v2_program_files_20260908b.zip`: `team_files.files` + json_config |

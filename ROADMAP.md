@@ -263,6 +263,8 @@ src/
 | 11.34 | Fix: лидеры пустые после unified — логи, strip заголовков, «Тип команды», ID | `team_loader`, `logger_setup`, `team_enrich` | `[v]` |
 | 11.35 | DEBUG-лог: стадии/подстадии/процедуры + тайминги (без данных из файлов) | `progress`, `debug_trace`, pipeline v2 | `[v]` |
 | 11.36 | Архив `v2_program_files_20260908.zip`; удалены старые `v2_*.zip` | корень репо | `[v]` |
+| 11.37 | Понятная ошибка при битом JSON в config (контекст строки) | `json_config.py` | `[v]` |
+| 11.38 | Архив `v2_program_files_20260908b.zip` с корректным `team_files.files` | корень репо | `[v]` |
 
 ### 11.32 — Декомпозиция
 
