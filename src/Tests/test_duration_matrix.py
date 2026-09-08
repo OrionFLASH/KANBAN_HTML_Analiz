@@ -120,6 +120,13 @@ def test_build_duration_matrix_by_volume() -> None:
     ]
 
 
+def test_duration_matrix_result_supports_len() -> None:
+    """Регрессия: pipeline логировал len(duration_matrix) → TypeError без __len__."""
+    result = build_duration_matrix(_sample_snap(), _base_config())
+    assert len(result) == len(result.rows) == 3
+    assert len(result) == 3
+
+
 def test_duration_matrix_sheet_format(tmp_path: Path) -> None:
     config = _base_config(sort_mode="by_volume")
     snap = pd.DataFrame(
