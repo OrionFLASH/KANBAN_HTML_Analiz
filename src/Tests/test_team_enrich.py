@@ -98,6 +98,60 @@ def test_build_leaders_lookup_same_added_date_keeps_all() -> None:
     assert "\n" in names
 
 
+def test_build_leaders_lookup_without_report_date_uses_team_added() -> None:
+    """
+    Объединённый файл команды часто без «Дата отчета» — только «Дата добавления…».
+    Раньше lookup был пуст → лидеры не подливались.
+    """
+    config: dict = load_excel_v2_config("config_excel_v2.json")
+    lead_team, deal_team = _team_frames(with_added=True)
+    lead_team = lead_team.drop(columns=["Дата отчета"])
+    deal_team = deal_team.drop(columns=["Дата отчета"])
+
+    lead_lookup: pd.DataFrame = build_leaders_lookup_df(
+        lead_team, config, id_key="lead_id", source="lead"
+    )
+    deal_lookup: pd.DataFrame = build_leaders_lookup_df(
+        deal_team, config, id_key="deal_id", source="deal"
+    )
+    assert not lead_lookup.empty
+    assert not deal_lookup.empty
+    # max дата добавления: лид 2026-05-01 → Лидер Лида Б; сделка 2026-04-01 → Лидер Сделки А
+    assert lead_lookup.loc["L1", "member"] == "Лидер Лида Б"
+    assert deal_lookup.loc["D1", "member"] == "Лидер Сделки А"
+
+
+def test_enrich_without_report_date_fills_leaders() -> None:
+    """Подливка в снимок работает, если в файле команды нет «Дата отчета»."""
+    config: dict = load_excel_v2_config("config_excel_v2.json")
+    lead_col: str = col(config, "lead_id")
+    report_col: str = col(config, "report_date")
+    deal_src: str = col(config, "deal_id")
+    days_col: str = col(config, "days_on_stage")
+    status_col: str = col(config, "current_status")
+
+    kanban: pd.DataFrame = pd.DataFrame(
+        {
+            lead_col: ["L1"],
+            report_col: pd.to_datetime(["2026-09-01"]),
+            deal_src: ["D1"],
+            days_col: [10],
+            status_col: ["С1"],
+        }
+    )
+    snapshot: pd.DataFrame = build_lead_snapshot(kanban, config)
+    lead_team, deal_team = _team_frames(with_added=True)
+    lead_team = lead_team.drop(columns=["Дата отчета"])
+    deal_team = deal_team.drop(columns=["Дата отчета"])
+
+    enriched: pd.DataFrame = enrich_snapshot_with_team_dfs(
+        snapshot, lead_team, deal_team, config
+    )
+    row: pd.Series = enriched.iloc[0]
+    assert row["ФИО Лидера лида"] == "Лидер Лида Б"
+    assert row["ФИО Лидера сделки"] == "Лидер Сделки А"
+
+
 def test_enrich_uses_snapshot_deal_id_key() -> None:
     """
     Снимок хранит deal_id под ключом config, не под «ID сделки».

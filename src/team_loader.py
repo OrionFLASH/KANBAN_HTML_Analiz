@@ -571,7 +571,6 @@ def build_leader_lookup(
 
     needed_map: dict[str, str | None] = {
         cols[id_key]: id_col,
-        cols["report_date"]: date_col,
         cols["member"]: member_col,
         cols["is_leader"]: leader_col,
     }
@@ -585,7 +584,33 @@ def build_leader_lookup(
         )
         return {}
 
-    assert id_col and date_col and member_col and leader_col
+    if date_col is None and added_col is None:
+        logger.warning(
+            "Команда (%s): нет ни «%s», ни «%s» среди %s — lookup пуст",
+            source,
+            cols["report_date"],
+            added_expected,
+            list(df.columns)[:25],
+        )
+        return {}
+
+    assert id_col and member_col and leader_col
+
+    primary_date_col: str
+    team_added_key: str | None
+    if date_col is not None:
+        primary_date_col = date_col
+        team_added_key = "_team_added" if added_col else None
+    else:
+        assert added_col is not None
+        primary_date_col = added_col
+        team_added_key = None
+        logger.info(
+            "Команда (%s): нет «%s» — отбор лидеров по «%s»",
+            source,
+            cols["report_date"],
+            added_expected,
+        )
 
     work: pd.DataFrame = df.copy()
     work["_is_leader"] = work[leader_col].map(lambda v: _is_leader_value(v, leader_values))
@@ -609,7 +634,7 @@ def build_leader_lookup(
         if role_col and role_col in work.columns
         else ""
     )
-    work["_date"] = pd.to_datetime(work[date_col], errors="coerce")
+    work["_date"] = pd.to_datetime(work[primary_date_col], errors="coerce")
     work = work.dropna(subset=["_date"])
     if work.empty:
         logger.warning(
@@ -618,9 +643,8 @@ def build_leader_lookup(
         )
         return {}
 
-    if added_col:
+    if team_added_key and added_col and added_col != primary_date_col:
         work["_team_added"] = pd.to_datetime(work[added_col], errors="coerce")
-        team_added_key: str | None = "_team_added"
     else:
         team_added_key = None
 
