@@ -786,6 +786,7 @@
   "progress": {
     "enabled": true,
     "log_every_seconds": 3,
-    "show_timing_summary": true
+    "show_timing_summary": true,
+    "debug_detail": true
   }
 }

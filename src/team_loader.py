@@ -456,18 +456,29 @@ def load_team_frames(config: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame
     Приоритет: единый комплект team_files.files + split по «Тип команды»;
     иначе устаревшие lead_team / deal_team.
     """
+    from src.debug_trace import procedure
+
     if not is_team_files_enabled(config):
+        logger.debug("load_team_frames: team_files выключены")
         return pd.DataFrame(), pd.DataFrame()
 
     unified_names: list[str] = unified_team_filenames_for_mode(config)
     if unified_names:
-        combined: pd.DataFrame = _load_team_file_list(
-            config, unified_names, label="лида и сделки"
-        )
-        return split_team_frames_by_type(combined, config)
+        with procedure(
+            logger,
+            "load_team_frames.unified",
+            files=len(unified_names),
+            mode=str(config.get("mode", "")),
+        ):
+            combined: pd.DataFrame = _load_team_file_list(
+                config, unified_names, label="лида и сделки"
+            )
+            lead_df, deal_df = split_team_frames_by_type(combined, config)
+        return lead_df, deal_df
 
-    lead_df: pd.DataFrame = load_team_kind_frames(config, TEAM_FILES_KIND_LEAD)
-    deal_df: pd.DataFrame = load_team_kind_frames(config, TEAM_FILES_KIND_DEAL)
+    with procedure(logger, "load_team_frames.legacy"):
+        lead_df = load_team_kind_frames(config, TEAM_FILES_KIND_LEAD)
+        deal_df = load_team_kind_frames(config, TEAM_FILES_KIND_DEAL)
     return lead_df, deal_df
 
 

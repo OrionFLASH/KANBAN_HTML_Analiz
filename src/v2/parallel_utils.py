@@ -12,6 +12,7 @@ from src.v2.snapshot import build_lead_snapshot
 from src.lead_tracker import build_lead_stage_records
 from src.performance import resolve_parallel_workers
 from src.team_loader import load_team_frames
+from src.debug_trace import debug_event, procedure
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.parallel")
 
@@ -40,30 +41,52 @@ def run_snapshot_records_teams_parallel(
     """
     workers: int = stage_workers(config, 2)
     terminal_applied: bool = True
+    parallel_io: bool = parallel_pipeline_enabled(config) and workers > 1
+    debug_event(
+        logger,
+        "snapshot/records/teams start",
+        rows_in=len(filtered_df),
+        parallel_io=parallel_io,
+        workers=workers,
+    )
 
-    if parallel_pipeline_enabled(config) and workers > 1:
+    if parallel_io:
         logger.info(
             "Параллельная загрузка команд (ThreadPool, workers=%d); snapshot+records — последовательно",
             workers,
         )
         with ThreadPoolExecutor(max_workers=workers) as io_pool:
             fut_teams = io_pool.submit(load_team_frames, shared_config)
-            snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
-            records: pd.DataFrame = build_lead_stage_records(
+            with procedure(logger, "build_lead_snapshot", rows_in=len(filtered_df)):
+                snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
+            with procedure(logger, "build_lead_stage_records", rows_in=len(filtered_df)):
+                records: pd.DataFrame = build_lead_stage_records(
+                    filtered_df,
+                    config,
+                    None,
+                    terminal_filters_already_applied=terminal_applied,
+                )
+            with procedure(logger, "load_team_frames.await"):
+                lead_team_df, deal_team_df = fut_teams.result()
+    else:
+        with procedure(logger, "build_lead_snapshot", rows_in=len(filtered_df)):
+            snapshot = build_lead_snapshot(filtered_df, config)
+        with procedure(logger, "build_lead_stage_records", rows_in=len(filtered_df)):
+            records = build_lead_stage_records(
                 filtered_df,
                 config,
                 None,
                 terminal_filters_already_applied=terminal_applied,
             )
-            lead_team_df, deal_team_df = fut_teams.result()
-    else:
-        snapshot = build_lead_snapshot(filtered_df, config)
-        records = build_lead_stage_records(
-            filtered_df,
-            config,
-            None,
-            terminal_filters_already_applied=terminal_applied,
-        )
-        lead_team_df, deal_team_df = load_team_frames(shared_config)
+        with procedure(logger, "load_team_frames"):
+            lead_team_df, deal_team_df = load_team_frames(shared_config)
 
+    debug_event(
+        logger,
+        "snapshot/records/teams done",
+        snapshot=len(snapshot),
+        records=len(records),
+        lead_team=len(lead_team_df),
+        deal_team=len(deal_team_df),
+    )
     return snapshot, records, lead_team_df, deal_team_df

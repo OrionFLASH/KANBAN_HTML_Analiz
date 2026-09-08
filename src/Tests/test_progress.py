@@ -48,3 +48,21 @@ def test_stage_closes_previous_without_done() -> None:
 
     names: list[str] = [name for name, _ in reporter._timings]
     assert names == ["Первый", "Второй"]
+
+
+def test_timed_and_substage_debug() -> None:
+    """timed/substage пишут DEBUG и фиксируют подэтапы."""
+    logger: logging.Logger = logging.getLogger("test.progress.timed")
+    logger.handlers.clear()
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(logging.NullHandler())
+
+    config: dict = {"progress": {"enabled": True, "debug_detail": True}}
+    reporter: ProgressReporter = ProgressReporter(config, logger)
+    reporter.stage("Главный")
+    reporter.substage("подшаг A")
+    with reporter.timed("proc_x", rows=10):
+        time.sleep(0.02)
+    reporter.done("ok")
+    assert any(name == "подшаг A" for name, _ in reporter._sub_timings)
+    assert reporter._timings[-1][0] == "Главный"

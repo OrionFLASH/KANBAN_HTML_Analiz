@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 
 class ProgressReporter:
@@ -16,12 +17,17 @@ class ProgressReporter:
         self.enabled: bool = bool(prog.get("enabled", True))
         self.log_every_seconds: float = float(prog.get("log_every_seconds", 3))
         self.show_timing_summary: bool = bool(prog.get("show_timing_summary", True))
+        # Подробный DEBUG: подэтапы и процедуры (без содержимого файлов)
+        self.debug_detail: bool = bool(prog.get("debug_detail", True))
         self.logger: logging.Logger = logger
         self._last_emit: float = 0.0
         self._pipeline_start: float = time.monotonic()
         self._stage_name: str | None = None
         self._stage_start: float | None = None
         self._timings: list[tuple[str, float]] = []
+        self._substage_name: str | None = None
+        self._substage_start: float | None = None
+        self._sub_timings: list[tuple[str, float]] = []
 
     def _emit(self, message: str) -> None:
         """Пишет сообщение в лог и сразу выводит в консоль."""
@@ -35,6 +41,12 @@ class ProgressReporter:
         sys.stderr.flush()
         self._last_emit = time.monotonic()
 
+    def debug(self, message: str) -> None:
+        """Только DEBUG-файл: подшаг без дубля в консоль INFO."""
+        if not self.enabled or not self.debug_detail:
+            return
+        self.logger.debug(message)
+
     def _record_stage(self, name: str, elapsed: float, note: str = "") -> None:
         """Сохраняет длительность этапа и пишет строку с таймингом."""
         self._timings.append((name, elapsed))
@@ -42,9 +54,21 @@ class ProgressReporter:
         if note:
             timing_line = f"{timing_line} — {note}"
         self._emit(timing_line)
+        self.debug(f"⏱ Этап «{name}» зафиксирован: {elapsed:.2f} сек")
+
+    def _finalize_open_substage(self) -> None:
+        """Закрывает открытый подэтап в DEBUG."""
+        if self._substage_name is None or self._substage_start is None:
+            return
+        elapsed: float = time.monotonic() - self._substage_start
+        self._sub_timings.append((self._substage_name, elapsed))
+        self.debug(f"  ✓ подэтап «{self._substage_name}» — {elapsed:.2f} сек")
+        self._substage_name = None
+        self._substage_start = None
 
     def _finalize_open_stage(self, note: str = "") -> None:
         """Закрывает текущий этап, если он ещё не зафиксирован через done()."""
+        self._finalize_open_substage()
         if self._stage_name is None or self._stage_start is None:
             return
         elapsed: float = time.monotonic() - self._stage_start
@@ -61,13 +85,26 @@ class ProgressReporter:
         if detail:
             text = f"{text} — {detail}"
         self._emit(text)
+        self.debug(f"▶ Старт этапа «{name}»{f' ({detail})' if detail else ''}")
+
+    def substage(self, name: str, detail: str = "") -> None:
+        """Подэтап внутри текущего stage (DEBUG + краткий step в INFO)."""
+        self._finalize_open_substage()
+        self._substage_name = name
+        self._substage_start = time.monotonic()
+        detail_part: str = f" — {detail}" if detail else ""
+        self.debug(f"  ▸ подэтап: {name}{detail_part}")
+        if self.enabled:
+            self.step(f"{name}{detail_part}")
 
     def step(self, message: str) -> None:
         """Промежуточный шаг внутри этапа."""
         self._emit(f"  … {message}")
+        self.debug(f"  … {message}")
 
     def done(self, message: str) -> None:
         """Завершение этапа с фиксацией времени."""
+        self._finalize_open_substage()
         elapsed: float = 0.0
         if self._stage_start is not None:
             elapsed = time.monotonic() - self._stage_start
@@ -76,11 +113,40 @@ class ProgressReporter:
         if elapsed > 0 and self._stage_name is not None:
             text = f"{text} ({elapsed:.1f} сек)"
         self._emit(text)
+        self.debug(f"✓ Этап «{self._stage_name or '?'}» завершён: {message} ({elapsed:.2f} сек)")
 
         if self._stage_name is not None and elapsed > 0:
             self._timings.append((self._stage_name, elapsed))
             self._stage_name = None
             self._stage_start = None
+
+    @contextmanager
+    def timed(self, name: str, **meta: Any) -> Iterator[None]:
+        """
+        DEBUG-замер процедуры внутри этапа.
+        meta — только обезличенные счётчики/флаги (без ФИО/ID/ячеек).
+        """
+        if not self.enabled or not self.debug_detail:
+            yield
+            return
+        extras: str = ", ".join(f"{k}={v}" for k, v in meta.items() if v is not None)
+        suffix: str = f" [{extras}]" if extras else ""
+        self.debug(f"  → {name}{suffix}")
+        started: float = time.monotonic()
+        error: BaseException | None = None
+        try:
+            yield
+        except BaseException as exc:
+            error = exc
+            raise
+        finally:
+            elapsed = time.monotonic() - started
+            if error is None:
+                self.debug(f"  ← {name} — {elapsed:.2f} сек{suffix}")
+            else:
+                self.debug(
+                    f"  ✗ {name} — {elapsed:.2f} сек, ошибка {type(error).__name__}{suffix}"
+                )
 
     def maybe_heartbeat(self, message: str) -> None:
         """Периодическое обновление (не чаще log_every_seconds)."""
@@ -89,6 +155,7 @@ class ProgressReporter:
         now: float = time.monotonic()
         if now - self._last_emit >= self.log_every_seconds:
             self._emit(f"  … {message}")
+            self.debug(f"  … heartbeat: {message}")
 
     def timing_summary(self, total_wall: float | None = None) -> None:
         """Итоговая сводка времени по этапам и общее wall-clock время."""
@@ -119,6 +186,11 @@ class ProgressReporter:
 
         for line in lines:
             self._emit(line)
+
+        if self.debug_detail and self._sub_timings:
+            self.debug("── DEBUG: подэтапы (накопительно) ──")
+            for name, sec in self._sub_timings:
+                self.debug(f"  · {name}: {sec:.2f} сек")
 
     class Heartbeat:
         """Контекст для периодических сообщений в длительном цикле."""
