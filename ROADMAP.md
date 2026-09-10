@@ -285,6 +285,7 @@ src/
 | 11.56 | Архив документации `docs_20260910b.zip`; удалить `docs_20260910.zip` | корень репо | `[v]` |
 | 11.57 | Полный справочник: подробное описание **каждого** ключа `config_excel_v2.json` | Docs | `[v]` |
 | 11.59 | Третий Excel: исходные строки + лидеры/почты; отдельные фильтры; report_parts source | `source_export`, filters, pipeline, docs, zip | `[v]` |
+| 11.60 | Проверка: `filters` и `source_export` независимы (не режут друг друга) | test, docs, pipeline comments | `[v]` |
 
 ### 11.59 — Декомпозиция
 

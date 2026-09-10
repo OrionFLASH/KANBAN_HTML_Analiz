@@ -213,10 +213,13 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     progress.debug(f"После загрузки Kanban: rows={rows_loaded:,}, cols={raw_df.shape[1]}")
     _maybe_free_memory(config)
 
-    # Копия для source-файла (фильтры analytics/detail на неё не влияют)
+    # Независимые ветки данных:
+    # - analytics/detail: config.filters (+ terminal exclude) на raw_df
+    # - source: output.source_export.filters на отдельной копии raw_for_source
+    # Одна ветка НЕ режет и НЕ ограничивает другую (не «сначала одни, потом другие»).
     raw_for_source: pd.DataFrame | None = raw_df.copy() if need_source else None
 
-    # Только source — без нормативов/снимка
+    # Только source — без нормативов/снимка и без корневых filters
     if need_source and not need_analytics and not need_detail:
         return _run_source_only_pipeline(
             config=config,
@@ -229,7 +232,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
             t_start=t_start,
         )
 
-    progress.stage("Фильтрация", f"{rows_loaded:,} строк")
+    progress.stage("Фильтрация (analytics/detail)", f"{rows_loaded:,} строк")
     enabled_filters: list[str] = _enabled_filter_names(config)
     progress.substage(
         "подготовка фильтров",
@@ -345,10 +348,13 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         audit_snapshot_coverage(filtered_df, snapshot, config)
     progress.done(f"Уникальных ID: {len(snapshot):,}, записей стадий: {len(records):,}")
 
-    # Source export до удаления team frames
+    # Source: только output.source_export на полной копии загрузки (не filtered_df)
     source_export_frame: pd.DataFrame = pd.DataFrame()
     if need_source and raw_for_source is not None:
-        progress.stage("Исходные строки (source)", f"{len(raw_for_source):,} строк")
+        progress.stage(
+            "Исходные строки (source)",
+            f"{len(raw_for_source):,} строк до source_export-фильтров",
+        )
         with progress.timed("build_source_export_frame", rows_in=len(raw_for_source)):
             source_export_frame = build_source_export_frame(
                 raw_for_source,

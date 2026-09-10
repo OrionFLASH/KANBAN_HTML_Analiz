@@ -168,6 +168,72 @@ def test_build_report_path_source(tmp_path: Path) -> None:
     assert not sheet_belongs_to_part("source", REPORT_PART_DETAIL)
 
 
+def test_root_and_source_filters_are_independent() -> None:
+    """
+    Корневой filters и output.source_export.filters — независимые ветки:
+    каждая стартует от полного raw, не от остатка другой.
+    """
+    from src.filters import apply_filters
+
+    config = {
+        "columns": {
+            "efs_flag": "ЕФС флаг",
+            "label": "Метка",
+            "lead_id": "ID ПрПр",
+            "deal_id": "ID сделки",
+        },
+        "processing": {"audit_row_counts": False, "empty_stage_values": ["", "-"]},
+        "team_files": {"enabled": False, "output_columns": {"lead": {}, "deal": {}}},
+        "manager_emails": {"enabled": False},
+        # analytics/detail: только ЕФС=1
+        "filters": {
+            "efs_flag": {
+                "enabled": True,
+                "column_key": "efs_flag",
+                "action": "include",
+                "match": "equals",
+                "values": [1],
+                "value_type": "number",
+            }
+        },
+        # source: только метка со «Стратегия» (ЕФС не трогаем)
+        "output": {
+            "source_export": {
+                "filters_order": ["label_strategy"],
+                "filters": {
+                    "label_strategy": {
+                        "enabled": True,
+                        "column_key": "label",
+                        "action": "include",
+                        "match": "contains",
+                        "values": ["Стратегия"],
+                        "value_type": "string",
+                    }
+                },
+            }
+        },
+    }
+    raw = pd.DataFrame(
+        {
+            "ЕФС флаг": [1, 1, 0, 0],
+            "Метка": ["Стратегия A", "Прочее", "Стратегия B", "Прочее"],
+            "ID ПрПр": ["a", "b", "c", "d"],
+            "ID сделки": ["", "", "", ""],
+        }
+    )
+    raw_for_source = raw.copy()
+
+    analytics_rows = apply_filters(raw, config)
+    source_rows = build_source_export_frame(raw_for_source, config)
+
+    # analytics: ЕФС=1 → строки a,b (независимо от метки)
+    assert sorted(analytics_rows["ID ПрПр"].tolist()) == ["a", "b"]
+    # source: Стратегия → a,c (включая ЕФС=0 — корневой фильтр не режет)
+    assert sorted(source_rows["ID ПрПр"].tolist()) == ["a", "c"]
+    # полная копия raw не испорчена корневым фильтром
+    assert len(raw_for_source) == 4
+
+
 def test_build_source_export_frame_keeps_raw_columns() -> None:
     config = {
         "columns": {

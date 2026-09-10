@@ -34,8 +34,10 @@ def build_source_export_frame(
     email_lookup: EmailLookup | None = None,
 ) -> pd.DataFrame:
     """
-    Исходные колонки как после загрузки → фильтры source_export по порядку →
+    Исходные колонки как после загрузки → фильтры output.source_export по порядку →
     подливка лидеров лида/сделки и почт.
+
+    Корневой config.filters сюда не применяется: выборка независима от analytics/detail.
     """
     if raw_df.empty:
         return raw_df.copy()
