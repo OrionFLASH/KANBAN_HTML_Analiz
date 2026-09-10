@@ -1,6 +1,6 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия копии POST:** 2.7.0 (2026-09-10)
+**Версия копии POST:** 2.8.0 (2026-09-10)
 
 Инструкция для работы после пересылки по почте или копированием каталога.
 
@@ -49,7 +49,7 @@ KANBAN_HTML_Analiz/
 
 В корне репозитория: **`v2_program_files_20260910.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
 
-Только документация: **`docs_20260910c.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
+Только документация: **`docs_20260910d.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ + допустимые значения) + `README.md` + `ROADMAP.md`.
 
 Выход `run_excel.py` — **два файла** (или один, см. `output.report_parts`):
 

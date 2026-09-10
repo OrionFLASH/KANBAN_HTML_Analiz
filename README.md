@@ -57,7 +57,7 @@ python run_excel.py
 
 Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.7.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
 
-Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910c.zip`**.
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910d.zip`**.
 
 ## Структура проекта
 
@@ -297,3 +297,4 @@ cd HTML && python -m http.server 8080
 | 2.6.0 | 2026-09-10 | Подробные описания statistics/`export_km_count` и др.; km_count на P80 |
 | 2.6.1 | 2026-09-10 | Архив документации `docs_20260910b.zip` (v2.6.0 docs) |
 | 2.7.0 | 2026-09-10 | CONFIG_EXCEL_V2_PARAMS: карточка на каждый ключ config (603); архив `docs_20260910c.zip` |
+| 2.8.0 | 2026-09-10 | В каждой карточке — допустимые значения/варианты и эффект; архив `docs_20260910d.zip` |
