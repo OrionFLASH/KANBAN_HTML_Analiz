@@ -3,12 +3,17 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.6.0 (2026-09-10)
+> **Полный перечень без исключений:** на **каждый** ключ актуального `config_excel_v2.json` есть отдельная карточка (зачем / как / что даёт / от чего зависит / значение) в  
+> **[CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)** (603 пути, проверка: `python3 scripts/check_config_excel_v2_params.py`).  
+> Этот файл — обзорный гайд по блокам и сценариям.
+
+**Версия документа:** 2.7.0 (2026-09-10)
 
 ---
 
 ## Оглавление
 
+0. [Полный справочник по каждому ключу](CONFIG_EXCEL_V2_PARAMS.md)
 1. [Запуск и пути](#1-запуск-и-пути)
 2. [Карта корневых ключей](#2-карта-корневых-ключей)
 2.1. [columns](#21-columns--имена-колонок-kanban)
@@ -1059,6 +1064,7 @@ Excel закрепляет всё слева и выше первой незак
 
 ## Связанные документы
 
+- **[CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)** — карточка на каждый ключ `config_excel_v2.json`
 - [README.md](../README.md) — обзор, запуск `run_excel.py`
 - [CONFIG.md](CONFIG.md) — справочник `config.json` (HTML+JSON pipeline)
 - [DEPLOY.md](DEPLOY.md) — перенос на другой ПК
