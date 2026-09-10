@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.3.7 (2026-09-08)
+**Версия документа:** 2.4.0 (2026-09-10)
 
 ---
 
@@ -49,6 +49,8 @@ python -m src.v2.pipeline
 | `statistics` | Статистика | Воронка фильтров (до/после/отсечено строк и лидов) + свод выбросов по всем группам |
 | `duration_matrix` | Распределение сроков | Матрица группа/продукт × дни; колонки P20/P50/P80; «Всего»; выделение порога; freeze до «Всего»; порядок — `sort_mode` / `variants` |
 | `duration_matrix_by_group` | Распределение сроков (группы) | Тот же pivot: дни ↑; группы А→Я; внутри группы продукты по убыванию лидов (`group_alpha_product_volume`) |
+| `duration_matrix_by_status` | Распределение сроков (статус) | Как `duration_matrix`, плюс колонка «Текущий статус» после продукта; freeze смещён на +1 |
+| `duration_matrix_by_group_status` | Распред. сроков (группы+статус) | Как `duration_matrix_by_group` + статус после продукта |
 | `leads` | Уникальные ID | Снимок лидов, лидеры, норматив P80, превышение |
 | `managers` | Свод по менеджеру | Уникальные ФИО/ТН, число нарушений P80, разрез «Группа + Продукт» |
 | `violations` | Свод ПрПр с отклонениями | Строка на каждое превышение с деталями лида |
@@ -336,6 +338,8 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
   "statistics": "Статистика",
   "duration_matrix": "Распределение сроков",
   "duration_matrix_by_group": "Распределение сроков (группы)",
+  "duration_matrix_by_status": "Распределение сроков (статус)",
+  "duration_matrix_by_group_status": "Распред. сроков (группы+статус)",
   "leads": "Уникальные ID",
   "managers": "Свод по менеджеру",
   "violations": "Свод ПрПр с отклонениями"
@@ -348,6 +352,8 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 | `statistics` | Воронка фильтров и свод отсечений (отдельное оформление: два блока) |
 | `duration_matrix` | Матрица числа лидов по сроку (дни); см. блок `output.duration_matrix` ниже |
 | `duration_matrix_by_group` | Второй лист той же матрицы с раскладкой `group_alpha_product_volume` (через `variants`) |
+| `duration_matrix_by_status` | Матрица с разрезом по «Текущий статус» (колонка после продукта) |
+| `duration_matrix_by_group_status` | Группы А→Я + статус; имя листа ≤31 символа |
 | `leads` / `managers` / `violations` | См. §1 |
 
 ### sheet_freeze
@@ -366,23 +372,26 @@ Excel закрепляет всё слева и выше первой незак
   "norms": { "last_row": 1, "last_col": 3 },
   "duration_matrix": { "last_row": 3, "last_col": 6 },
   "duration_matrix_by_group": { "last_row": 3, "last_col": 6 },
+  "duration_matrix_by_status": { "last_row": 3, "last_col": 7 },
+  "duration_matrix_by_group_status": { "last_row": 3, "last_col": 7 },
   "leads": { "last_row": 1, "last_col": 3 },
   "managers": { "last_row": 1, "last_col": 2 }
 }
 ```
 
 Примеры: `1` / `0` → freeze `A2`; `1` / `3` → шапка + A–C (после «Продукт»); `1` / `2` → шапка + A–B (после «ФИО»).
+Листы со статусом: `last_col: 7` (группа + продукт + статус + P20/P50/P80 + Всего).
 
 ### duration_matrix
 
 Лист строится по **снимку уникальных лидов** (после входных фильтров): текущий срок `_days_on_stage` (целые дни).
-Один проход агрегации; при наличии `variants[]` — несколько листов с разной раскладкой строк/колонок.
+Агрегация кешируется отдельно для variants без статуса и со статусом (`include_status`).
 
 | Ось | Содержание |
 |-----|------------|
-| Строки | «Группа продукта», «Продукт» — по `sort_mode` |
-| Колонки слева | После «Продукт»: **P20 / P50 / P80** (только значение в днях) → **«Всего»** → дни |
-| Процентили | Пересчёт по лидам строки (группа+продукт), **все стадии вместе**; те же `percentiles`, что в config |
+| Строки | «Группа продукта», «Продукт»[, «Текущий статус»] — по `sort_mode` |
+| Колонки слева | После «Продукт» [и статуса]: **P20 / P50 / P80** (только значение в днях) → **«Всего»** → дни |
+| Процентили | Пересчёт по лидам строки, **все стадии вместе**; те же `percentiles`, что в config |
 | Строка 2 | Горизонталь «Всего» — сумма лидов по каждому дню + общий итог |
 | Столбцы дней | Целые дни, где есть **хотя бы один** лид |
 | Ячейка дней | Число лидов с этим сроком; **0 и пусто не пишутся** |
@@ -394,10 +403,21 @@ Excel закрепляет всё слева и выше первой незак
   "enabled": true,
   "sort_mode": "by_volume",
   "variants": [
-    { "sheet_key": "duration_matrix", "sort_mode": "by_volume" },
+    { "sheet_key": "duration_matrix", "sort_mode": "by_volume", "include_status": false },
     {
       "sheet_key": "duration_matrix_by_group",
-      "sort_mode": "group_alpha_product_volume"
+      "sort_mode": "group_alpha_product_volume",
+      "include_status": false
+    },
+    {
+      "sheet_key": "duration_matrix_by_status",
+      "sort_mode": "by_volume",
+      "include_status": true
+    },
+    {
+      "sheet_key": "duration_matrix_by_group_status",
+      "sort_mode": "group_alpha_product_volume",
+      "include_status": true
     }
   ],
   "total_column_label": "Всего",
@@ -413,7 +433,8 @@ Excel закрепляет всё слева и выше первой незак
 |------|--------------|----------|
 | `enabled` | `true` | Выключить лист без удаления ключа из `sheets` |
 | `sort_mode` | `by_volume` | Режим основного листа, если `variants` нет |
-| `variants` | — | Список `{sheet_key, sort_mode}`: несколько листов с одной агрегацией |
+| `variants` | — | Список `{sheet_key, sort_mode, include_status?}`: несколько листов |
+| `include_status` | `false` | В variant: колонка текущего статуса после продукта |
 | `max_day_span` | `3000` | Лимит числа колонок дней |
 | `row_height` | `28` | Высота строк продуктов |
 | `counts_font_size` | `14` | Размер шрифта чисел лидов (ячейки и «Всего») |
@@ -478,9 +499,15 @@ Excel закрепляет всё слева и выше первой незак
 - `freeze_panes: A2` в `excel_format` — fallback, если нет `sheet_freeze`
 - `sheet_freeze` — закрепление **по листам** (`last_row` / `last_col`), см. выше
 - автофильтр, ширина колонок
-- `date_format: "DD.MM.YYYY"` — колонки дат (`Дата начала работы`, `Дата создания сделки`, …) пишутся как даты Excel
+- `date_format: "YYYY-MM-DD"` — колонки дат (`Дата начала работы`, `Дата создания сделки`, …) пишутся как даты Excel
 - `hotspots_column_width: 55` — многострочные колонки (лидеры, «Группа + Продукт», «Клиент»)
 - `thousands_format: "# ##0"` — разделитель разрядов (пробел) для чисел на листе **«Статистика»**
+
+#### Текстовые идентификаторы
+
+«Идентификатор клиента» (и связанные ID) читаются и пишутся как **текст** (`number_format=@`), чтобы длинные значения не обрезались в Excel как числа.
+
+В `snapshot_columns` **не выводятся** `source_deal_id` (ID сделки в исходной системе) и `tb_code` (Код ТБ).
 
 #### `excel_theme` и `light_format_sheets`
 
@@ -489,7 +516,7 @@ Excel закрепляет всё слева и выше первой незак
 | Лист (ключ) | `green_red` min/max | Полное поклеточное оформление |
 |-------------|---------------------|-------------------------------|
 | `norms`, `managers`, … | да | да |
-| `leads`, `violations` (список `light_format_sheets`) | **нет** | **нет** (только freeze / автофильтр / шапка / ширина) |
+| `leads`, `violations` (список `light_format_sheets`) | **нет** | только даты/`@` для ID + freeze / автофильтр / шапка / ширина |
 | `duration_matrix*` | своё оформление листа матрицы | не через `format_sheet` |
 | `statistics` | своё оформление | не через `format_sheet` |
 

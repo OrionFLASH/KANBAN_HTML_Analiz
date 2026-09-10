@@ -15,6 +15,7 @@ from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
 from src.resource_guard import release_memory_if_needed
 from src.settings import col, load_column_names, required_column_names
+from src.text_ids import format_id_as_text
 
 logger: logging.Logger = logging.getLogger("kanban.excel_loader")
 
@@ -37,6 +38,25 @@ def _openpyxl_engine_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         "data_only": bool(excel_cfg.get("data_only", True)),
         "keep_links": bool(excel_cfg.get("keep_links", False)),
     }
+
+
+def _id_text_converter(value: Any) -> Any:
+    """Конвертер длинных ID при чтении Excel → строка (без float/научной записи)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return pd.NA
+    text: str | None = format_id_as_text(value)
+    return text if text is not None else pd.NA
+
+
+def _text_id_converters(config: dict[str, Any]) -> dict[str, Any]:
+    """Converters для колонок-идентификаторов (client_id и др.)."""
+    c: dict[str, str] = config.get("columns") or {}
+    converters: dict[str, Any] = {}
+    for key in ("client_id", "lead_id", "deal_id", "inn", "source_deal_id"):
+        name: str | None = c.get(key)
+        if name:
+            converters[str(name)] = _id_text_converter
+    return converters
 
 
 def _read_excel_dataframe(
@@ -62,6 +82,15 @@ def _read_excel_dataframe(
         wanted: set[str] = {str(c) for c in use_columns}
         # Callable — один проход, без отдельного открытия за шапкой
         read_kwargs["usecols"] = lambda c, _w=wanted: str(c) in _w
+
+    converters: dict[str, Any] = _text_id_converters(config)
+    if converters:
+        # Только для колонок, которые реально читаем
+        if use_columns:
+            wanted_names: set[str] = {str(c) for c in use_columns}
+            converters = {k: v for k, v in converters.items() if k in wanted_names}
+        if converters:
+            read_kwargs["converters"] = converters
 
     return pd.read_excel(file_path, **read_kwargs)
 
@@ -129,6 +158,14 @@ def _normalize_types(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
         name = c[key]
         if name in df.columns:
             df[name] = df[name].astype(str).str.strip()
+
+    # Длинные идентификаторы — всегда текст (после converters на всякий случай)
+    for key in ("client_id", "deal_id", "inn", "source_deal_id", "tb_code"):
+        name = c.get(key) or ""
+        if name and name in df.columns:
+            df[name] = [
+                format_id_as_text(v) if pd.notna(v) else pd.NA for v in df[name].tolist()
+            ]
 
     km_key: str | None = c.get("km")
     if km_key and km_key in df.columns:

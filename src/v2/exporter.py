@@ -185,13 +185,20 @@ def _write_duration_matrix_sheet(
     """
     Лист «Распределение сроков»:
     стр.1 шапка, стр.2 итоги по дням, стр.3 номера колонок + автофильтр,
-    далее продукты; колонки: группа | продукт | P… | Всего | дни;
+    далее продукты; колонки: группа | продукт [| статус] | P… | Всего | дни;
     закрепление до «Всего»; пунктирные границы; жирная рамка на дне порога.
     """
     labels: dict[str, Any] = config.get("output", {}).get("column_labels") or {}
+    snap_labels: dict[str, Any] = config.get("output", {}).get("snapshot_columns") or {}
     mtx_cfg: dict[str, Any] = config.get("output", {}).get("duration_matrix") or {}
     pg_label: str = str(labels.get("product_group", "Группа продукта"))
     pr_label: str = str(labels.get("product", "Продукт"))
+    # Подпись статуса: column_labels → snapshot_columns → «Текущий статус»
+    st_label: str = str(
+        labels.get("current_status")
+        or snap_labels.get("current_status")
+        or "Текущий статус"
+    )
     total_label: str = str(mtx_cfg.get("total_column_label", "Всего"))
     day_width: float = float(mtx_cfg.get("day_column_width", 4.5))
     pct_width: float = float(mtx_cfg.get("percentile_column_width", 8))
@@ -206,6 +213,7 @@ def _write_duration_matrix_sheet(
     faint_color: str = str(mtx_cfg.get("filter_row_font_color", "D9D9D9"))
     grid_color: str = str(mtx_cfg.get("grid_border_color", "BFBFBF"))
     highlight_color: str = str(mtx_cfg.get("threshold_border_color", "C65911"))
+    with_status: bool = bool(matrix.include_status)
 
     yellow_fill: PatternFill = PatternFill(
         start_color=pale_yellow, end_color=pale_yellow, fill_type="solid"
@@ -239,15 +247,20 @@ def _write_duration_matrix_sheet(
 
     pct_list: list[float] = list(matrix.percentile_list)
     n_pct: int = len(pct_list)
-    # A=группа, B=продукт, C… = процентили, затем Всего, затем дни
-    total_col: int = 2 + n_pct + 1
+    # A=группа, B=продукт, [C=статус], далее процентили, Всего, дни
+    label_cols: int = 3 if with_status else 2
+    pct_start_col: int = label_cols + 1
+    total_col: int = label_cols + n_pct + 1
     days_start_col: int = total_col + 1
     last_col: int = total_col + len(matrix.day_columns)
 
     pct_headers: list[str] = [
         f"P{percentile_display_value(p)}" for p in pct_list
     ]
-    headers: list[Any] = [pg_label, pr_label, *pct_headers, total_label, *matrix.day_columns]
+    headers: list[Any] = [pg_label, pr_label]
+    if with_status:
+        headers.append(st_label)
+    headers.extend([*pct_headers, total_label, *matrix.day_columns])
     for col_idx, value in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_idx, value=value)
         cell.font = header_font
@@ -297,19 +310,24 @@ def _write_duration_matrix_sheet(
     exc_p: float = float(matrix.exceedance_percentile)
     highlight_cells: list[tuple[int, int]] = []
 
-    for row_offset, (pg, pr, total, counts, pcts) in enumerate(matrix.rows, start=data_start):
+    for row_offset, (pg, pr, status, total, counts, pcts) in enumerate(
+        matrix.rows, start=data_start
+    ):
         pg_cell = ws.cell(row=row_offset, column=1, value=pg)
         pg_cell.alignment = center
         pr_cell = ws.cell(row=row_offset, column=2, value=pr)
         pr_cell.alignment = left_wrap
         pr_cell.font = product_font
         pr_cell.fill = yellow_fill
+        if with_status:
+            st_cell = ws.cell(row=row_offset, column=3, value=status or "")
+            st_cell.alignment = left_wrap
 
         for pct_i, p in enumerate(pct_list):
             pct_days: int | None = pcts.get(float(p))
             pct_cell = ws.cell(
                 row=row_offset,
-                column=3 + pct_i,
+                column=pct_start_col + pct_i,
                 value=pct_days if pct_days is not None else None,
             )
             pct_cell.alignment = center
@@ -377,16 +395,18 @@ def _write_duration_matrix_sheet(
             ),
         )
 
-    # Закрепление: последний столбец — «Всего»
+    # Закрепление: последний столбец — «Всего» (со статусом сдвигается вправо)
     freeze: str | None = freeze_panes_from_last(last_row=3, last_col=total_col)
     ws.freeze_panes = freeze
     ws.auto_filter.ref = f"A{filter_row}:{get_column_letter(last_col)}{last_row}"
     ws.column_dimensions["A"].width = float(label_widths.get("A", 28))
     ws.column_dimensions["B"].width = float(label_widths.get("B", 36))
+    if with_status:
+        ws.column_dimensions["C"].width = float(label_widths.get("C", 22))
     for pct_i in range(n_pct):
-        ws.column_dimensions[get_column_letter(3 + pct_i)].width = pct_width
+        ws.column_dimensions[get_column_letter(pct_start_col + pct_i)].width = pct_width
     ws.column_dimensions[get_column_letter(total_col)].width = float(
-        label_widths.get("total", label_widths.get("C", 10))
+        label_widths.get("total", label_widths.get("D" if with_status else "C", 10))
     )
     for col_idx in range(days_start_col, last_col + 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = day_width
@@ -397,10 +417,11 @@ def _write_duration_matrix_sheet(
         ws.row_dimensions[row_idx].height = row_height
 
     logger.info(
-        "Матрица сроков [%s]: лист записан, mode=%s, колонок процентилей=%s, порог %s, "
-        "выделено ячеек=%s, freeze=%s",
+        "Матрица сроков [%s]: лист записан, mode=%s, status=%s, колонок процентилей=%s, "
+        "порог %s, выделено ячеек=%s, freeze=%s",
         sheet_key,
         matrix.sort_mode,
+        with_status,
         n_pct,
         percentile_label(exc_p),
         len(highlight_cells),
@@ -486,6 +507,8 @@ def _export_excel_v2_impl(
         "statistics",
         "duration_matrix",
         "duration_matrix_by_group",
+        "duration_matrix_by_status",
+        "duration_matrix_by_group_status",
         "leads",
         "managers",
         "violations",

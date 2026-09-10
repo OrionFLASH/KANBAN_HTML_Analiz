@@ -576,6 +576,8 @@
       "statistics": "Статистика",
       "duration_matrix": "Распределение сроков",
       "duration_matrix_by_group": "Распределение сроков (группы)",
+      "duration_matrix_by_status": "Распределение сроков (статус)",
+      "duration_matrix_by_group_status": "Распред. сроков (группы+статус)",
       "leads": "Уникальные ID",
       "managers": "Свод по менеджеру",
       "violations": "Свод ПрПр с отклонениями"
@@ -601,6 +603,14 @@
         "last_row": 3,
         "last_col": 6
       },
+      "duration_matrix_by_status": {
+        "last_row": 3,
+        "last_col": 7
+      },
+      "duration_matrix_by_group_status": {
+        "last_row": 3,
+        "last_col": 7
+      },
       "leads": {
         "last_row": 1,
         "last_col": 3
@@ -620,11 +630,23 @@
       "variants": [
         {
           "sheet_key": "duration_matrix",
-          "sort_mode": "by_volume"
+          "sort_mode": "by_volume",
+          "include_status": false
         },
         {
           "sheet_key": "duration_matrix_by_group",
-          "sort_mode": "group_alpha_product_volume"
+          "sort_mode": "group_alpha_product_volume",
+          "include_status": false
+        },
+        {
+          "sheet_key": "duration_matrix_by_status",
+          "sort_mode": "by_volume",
+          "include_status": true
+        },
+        {
+          "sheet_key": "duration_matrix_by_group_status",
+          "sort_mode": "group_alpha_product_volume",
+          "include_status": true
         }
       ],
       "total_column_label": "Всего",
@@ -642,7 +664,8 @@
       "label_column_widths": {
         "A": 28,
         "B": 36,
-        "C": 10,
+        "C": 22,
+        "D": 10,
         "total": 10
       },
       "color_scale": {
@@ -740,7 +763,7 @@
       "freeze_panes": "A2",
       "float_format": "0.00",
       "int_format": "0",
-      "date_format": "DD.MM.YYYY",
+      "date_format": "YYYY-MM-DD",
       "thousands_format": "# ##0",
       "max_column_width": 45,
       "min_column_width": 12,
@@ -761,10 +784,8 @@
       "client": "Клиент",
       "work_start_date": "Дата начала работы",
       "deal_id": "ID сделки",
-      "source_deal_id": "ID сделки в исходной системе",
       "deal_created_date": "Дата создания сделки",
       "deal_stage": "Текущая стадия сделки",
-      "tb_code": "Код ТБ",
       "tb": "ТБ",
       "gosb": "ГОСБ",
       "km": "КМ",

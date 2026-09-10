@@ -1,4 +1,4 @@
-"""Матрица числа лидов: группа/продукт × срок (дни)."""
+"""Матрица числа лидов: группа/продукт[/статус] × срок (дни)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ logger: logging.Logger = logging.getLogger("kanban.excel_v2.duration_matrix")
 
 # Запас по ширине Excel (макс. 16384 колонки)
 _EXCEL_MAX_COLUMNS: int = 16384
-# Группа + продукт + процентили + Всего (число процентилей — из config)
+# Группа + продукт + Всего (без статуса); со статусом +1
 _BASE_LABEL_COLUMNS: int = 3
 
 # alpha_days — группы/продукты А→Я, дни по возрастанию
@@ -35,8 +35,11 @@ KNOWN_SORT_MODES: frozenset[str] = frozenset(
     }
 )
 
-# (группа, продукт, всего, counts_по_дням, percentiles)
-RowTuple = tuple[str, str, int, dict[int, int], dict[float, int | None]]
+# (группа, продукт, статус|None, всего, counts_по_дням, percentiles)
+RowTuple = tuple[str, str, str | None, int, dict[int, int], dict[float, int | None]]
+
+# Ключ строки агрегации: (группа, продукт) или (группа, продукт, статус)
+RowKey = tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -54,9 +57,10 @@ class DurationMatrixResult:
     sort_mode: str
     empty: bool
     sheet_key: str = "duration_matrix"
+    include_status: bool = False
 
     def __len__(self) -> int:
-        """Число строк (группа+продукт) в матрице."""
+        """Число строк (группа+продукт[+статус]) в матрице."""
         return len(self.rows)
 
 
@@ -66,6 +70,7 @@ class DurationMatrixSpec:
 
     sheet_key: str
     sort_mode: str
+    include_status: bool = False
 
 
 def _matrix_cfg(config: dict[str, Any]) -> dict[str, Any]:
@@ -105,11 +110,22 @@ def _raw_variants(config: dict[str, Any]) -> list[Any]:
     return list(raw) if isinstance(raw, list) else []
 
 
+def _parse_include_status(raw: Any) -> bool:
+    """Флаг разреза по текущему статусу из variants."""
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return False
+    text: str = str(raw).strip().casefold()
+    return text in {"1", "true", "yes", "y", "да"}
+
+
 def list_duration_matrix_specs(config: dict[str, Any]) -> list[DurationMatrixSpec]:
     """
     Список листов матрицы.
 
     variants[] в config — несколько листов; иначе один лист duration_matrix + sort_mode.
+    В variant можно задать include_status: true — колонка статуса после продукта.
     """
     cfg: dict[str, Any] = _matrix_cfg(config)
     sheets: dict[str, Any] = config.get("output", {}).get("sheets") or {}
@@ -126,12 +142,22 @@ def list_duration_matrix_specs(config: dict[str, Any]) -> list[DurationMatrixSpe
             mode: str = normalize_sort_mode(
                 item.get("sort_mode") or cfg.get("sort_mode") or SORT_MODE_BY_VOLUME
             )
-            specs.append(DurationMatrixSpec(sheet_key=key, sort_mode=mode))
+            include_status: bool = _parse_include_status(
+                item.get("include_status", cfg.get("include_status", False))
+            )
+            specs.append(
+                DurationMatrixSpec(
+                    sheet_key=key,
+                    sort_mode=mode,
+                    include_status=include_status,
+                )
+            )
     elif "duration_matrix" in sheets or cfg.get("enabled", True):
         specs.append(
             DurationMatrixSpec(
                 sheet_key="duration_matrix",
                 sort_mode=resolve_sort_mode(config),
+                include_status=_parse_include_status(cfg.get("include_status", False)),
             )
         )
 
@@ -164,6 +190,7 @@ def _empty_result(
     sort_mode: str,
     *,
     sheet_key: str = "duration_matrix",
+    include_status: bool = False,
 ) -> DurationMatrixResult:
     """Пустая матрица с метаданными из config."""
     return DurationMatrixResult(
@@ -178,6 +205,7 @@ def _empty_result(
         sort_mode=sort_mode,
         empty=True,
         sheet_key=sheet_key,
+        include_status=include_status,
     )
 
 
@@ -195,25 +223,35 @@ def _row_percentiles(
 
 
 def _layout_rows(
-    rows_map: dict[tuple[str, str], tuple[int, dict[int, int], dict[float, int | None]]],
+    rows_map: dict[RowKey, tuple[int, dict[int, int], dict[float, int | None]]],
     day_totals: dict[int, int],
     day_columns: list[int],
     sort_mode: str,
+    *,
+    include_status: bool,
 ) -> tuple[list[int], list[RowTuple]]:
     """Упорядочивает дни и строки по sort_mode."""
+
+    def _to_row(key: RowKey, total: int, counts: dict[int, int], pcts: dict[float, int | None]) -> RowTuple:
+        pg: str = str(key[0])
+        pr: str = str(key[1])
+        status: str | None = str(key[2]) if include_status else None
+        return (pg, pr, status, total, counts, pcts)
+
     if sort_mode == SORT_MODE_BY_VOLUME:
         ordered_days: list[int] = sorted(
             day_columns,
             key=lambda d: (-day_totals[d], d),
         )
         rows_out: list[RowTuple] = [
-            (pg, pr, total, counts, pcts)
-            for (pg, pr), (total, counts, pcts) in sorted(
+            _to_row(key, total, counts, pcts)
+            for key, (total, counts, pcts) in sorted(
                 rows_map.items(),
                 key=lambda item: (
                     -item[1][0],
                     item[0][0].casefold(),
                     item[0][1].casefold(),
+                    (item[0][2].casefold() if include_status and len(item[0]) > 2 else ""),
                 ),
             )
         ]
@@ -221,14 +259,20 @@ def _layout_rows(
 
     if sort_mode == SORT_MODE_GROUP_ALPHA_PRODUCT_VOLUME:
         ordered_days = sorted(day_columns)
+        # Объём продукта внутри группы (сумма по статусам, если они есть)
+        product_volume: dict[tuple[str, str], int] = {}
+        for key, (total, _counts, _pcts) in rows_map.items():
+            pair: tuple[str, str] = (str(key[0]), str(key[1]))
+            product_volume[pair] = product_volume.get(pair, 0) + int(total)
         rows_out = [
-            (pg, pr, total, counts, pcts)
-            for (pg, pr), (total, counts, pcts) in sorted(
+            _to_row(key, total, counts, pcts)
+            for key, (total, counts, pcts) in sorted(
                 rows_map.items(),
                 key=lambda item: (
                     item[0][0].casefold(),
-                    -item[1][0],
+                    -product_volume.get((str(item[0][0]), str(item[0][1])), 0),
                     item[0][1].casefold(),
+                    (item[0][2].casefold() if include_status and len(item[0]) > 2 else ""),
                 ),
             )
         ]
@@ -237,10 +281,14 @@ def _layout_rows(
     # alpha_days (и fallback)
     ordered_days = sorted(day_columns)
     rows_out = [
-        (pg, pr, total, counts, pcts)
-        for (pg, pr), (total, counts, pcts) in sorted(
+        _to_row(key, total, counts, pcts)
+        for key, (total, counts, pcts) in sorted(
             rows_map.items(),
-            key=lambda item: (item[0][0].casefold(), item[0][1].casefold()),
+            key=lambda item: (
+                item[0][0].casefold(),
+                item[0][1].casefold(),
+                (item[0][2].casefold() if include_status and len(item[0]) > 2 else ""),
+            ),
         )
     ]
     return ordered_days, rows_out
@@ -249,8 +297,10 @@ def _layout_rows(
 def _aggregate_duration_counts(
     snapshot: pd.DataFrame,
     config: dict[str, Any],
+    *,
+    include_status: bool = False,
 ) -> tuple[
-    dict[tuple[str, str], tuple[int, dict[int, int], dict[float, int | None]]],
+    dict[RowKey, tuple[int, dict[int, int], dict[float, int | None]]],
     dict[int, int],
     list[int],
     int,
@@ -260,24 +310,48 @@ def _aggregate_duration_counts(
     """
     Один проход по снимку → counts / процентили / итоги по дням.
 
+    include_status=True — ключ строки (группа, продукт, статус).
     Возвращает None, если данных нет.
     """
     percentiles: list[float] = _percentile_list(config)
     pg_key: str = "product_group"
     pr_key: str = "product"
+    st_key: str = "current_status"
     days_internal: str = "_days_on_stage"
 
     pg_col: str = pg_key if pg_key in snapshot.columns else col(config, pg_key)
     pr_col: str = pr_key if pr_key in snapshot.columns else col(config, pr_key)
+    st_col: str | None = None
+    if include_status:
+        if st_key in snapshot.columns:
+            st_col = st_key
+        else:
+            st_src: str = col(config, st_key)
+            if st_src in snapshot.columns:
+                st_col = st_src
+            else:
+                logger.warning(
+                    "Матрица сроков: нет колонки статуса (%s / %s) — лист со статусом пуст",
+                    st_key,
+                    col(config, st_key),
+                )
+                return None
+
     if days_internal not in snapshot.columns:
         days_src: str = col(config, "days_on_stage")
         if days_src not in snapshot.columns:
             logger.warning("Матрица сроков: нет колонки дней в снимке")
             return None
-        work: pd.DataFrame = snapshot[[pg_col, pr_col, days_src]].copy()
+        keep_cols: list[str] = [pg_col, pr_col, days_src]
+        if st_col is not None:
+            keep_cols.append(st_col)
+        work: pd.DataFrame = snapshot[keep_cols].copy()
         work[days_internal] = pd.to_numeric(work[days_src], errors="coerce")
     else:
-        work = snapshot[[pg_col, pr_col, days_internal]].copy()
+        keep_cols = [pg_col, pr_col, days_internal]
+        if st_col is not None:
+            keep_cols.append(st_col)
+        work = snapshot[keep_cols].copy()
         work[days_internal] = pd.to_numeric(work[days_internal], errors="coerce")
 
     work = work.dropna(subset=[days_internal])
@@ -288,7 +362,13 @@ def _aggregate_duration_counts(
     work["_days_int"] = work[days_internal].round().astype("int64")
     work["_pg"] = work[pg_col].astype("string").fillna("").astype(str).str.strip()
     work["_pr"] = work[pr_col].astype("string").fillna("").astype(str).str.strip()
-    work = work.loc[(work["_pg"] != "") | (work["_pr"] != "")]
+    if include_status and st_col is not None:
+        work["_st"] = work[st_col].astype("string").fillna("").astype(str).str.strip()
+        work = work.loc[
+            ((work["_pg"] != "") | (work["_pr"] != "")) & (work["_st"] != "")
+        ]
+    else:
+        work = work.loc[(work["_pg"] != "") | (work["_pr"] != "")]
     if work.empty:
         return None
 
@@ -319,7 +399,7 @@ def _aggregate_duration_counts(
         day_max = int(work["_days_int"].max())
         day_set = {int(v) for v in work["_days_int"].tolist()}
 
-    label_cols: int = _BASE_LABEL_COLUMNS + len(percentiles)
+    label_cols: int = _BASE_LABEL_COLUMNS + (1 if include_status else 0) + len(percentiles)
     if label_cols + len(day_set) > _EXCEL_MAX_COLUMNS:
         logger.error(
             "Матрица сроков: слишком много колонок (%s) — лист пропущен",
@@ -327,23 +407,47 @@ def _aggregate_duration_counts(
         )
         return None
 
+    group_cols: list[str] = ["_pg", "_pr", "_days_int"]
+    if include_status:
+        group_cols = ["_pg", "_pr", "_st", "_days_int"]
+
     grouped = (
-        work.groupby(["_pg", "_pr", "_days_int"], sort=False)
+        work.groupby(group_cols, sort=False)
         .size()
         .reset_index(name="_cnt")
     )
 
-    pairs: list[tuple[str, str]] = list(
-        {
-            (str(pg), str(pr))
-            for pg, pr in zip(grouped["_pg"].tolist(), grouped["_pr"].tolist(), strict=True)
-        }
-    )
+    if include_status:
+        pairs: list[RowKey] = list(
+            {
+                (str(pg), str(pr), str(st))
+                for pg, pr, st in zip(
+                    grouped["_pg"].tolist(),
+                    grouped["_pr"].tolist(),
+                    grouped["_st"].tolist(),
+                    strict=True,
+                )
+            }
+        )
+    else:
+        pairs = list(
+            {
+                (str(pg), str(pr))
+                for pg, pr in zip(grouped["_pg"].tolist(), grouped["_pr"].tolist(), strict=True)
+            }
+        )
 
     day_totals: dict[int, int] = {d: 0 for d in day_set}
-    rows_map: dict[tuple[str, str], tuple[int, dict[int, int], dict[float, int | None]]] = {}
-    for pg, pr in pairs:
-        sub: pd.DataFrame = grouped.loc[(grouped["_pg"] == pg) & (grouped["_pr"] == pr)]
+    rows_map: dict[RowKey, tuple[int, dict[int, int], dict[float, int | None]]] = {}
+    for key in pairs:
+        if include_status:
+            pg, pr, st = key[0], key[1], key[2]
+            sub: pd.DataFrame = grouped.loc[
+                (grouped["_pg"] == pg) & (grouped["_pr"] == pr) & (grouped["_st"] == st)
+            ]
+        else:
+            pg, pr = key[0], key[1]
+            sub = grouped.loc[(grouped["_pg"] == pg) & (grouped["_pr"] == pr)]
         counts: dict[int, int] = {}
         for day_val, cnt_val in zip(
             sub["_days_int"].tolist(), sub["_cnt"].tolist(), strict=True
@@ -359,7 +463,7 @@ def _aggregate_duration_counts(
             np.array(list(counts.values()), dtype=np.int64),
         )
         pct_map: dict[float, int | None] = _row_percentiles(day_values, percentiles)
-        rows_map[(pg, pr)] = (total, counts, pct_map)
+        rows_map[key] = (total, counts, pct_map)
 
     day_columns: list[int] = [d for d in day_set if day_totals.get(d, 0) > 0]
     day_totals = {d: day_totals[d] for d in day_columns}
@@ -373,9 +477,10 @@ def build_duration_matrix(
     *,
     sort_mode: str | None = None,
     sheet_key: str = "duration_matrix",
+    include_status: bool = False,
 ) -> DurationMatrixResult:
     """
-    Считает число уникальных лидов по (группа, продукт, целые дни на стадии).
+    Считает число уникальных лидов по (группа, продукт[, статус], целые дни на стадии).
 
     sort_mode=None → из config (основной лист).
     """
@@ -384,23 +489,34 @@ def build_duration_matrix(
         if sort_mode is not None
         else resolve_sort_mode(config)
     )
-    empty: DurationMatrixResult = _empty_result(config, mode, sheet_key=sheet_key)
+    empty: DurationMatrixResult = _empty_result(
+        config, mode, sheet_key=sheet_key, include_status=include_status
+    )
     if snapshot is None or snapshot.empty:
         return empty
 
-    aggregated = _aggregate_duration_counts(snapshot, config)
+    aggregated = _aggregate_duration_counts(
+        snapshot, config, include_status=include_status
+    )
     if aggregated is None:
         return empty
 
     rows_map, day_totals, day_columns, day_min, day_max, grand_total = aggregated
-    ordered_days, rows_out = _layout_rows(rows_map, day_totals, day_columns, mode)
+    ordered_days, rows_out = _layout_rows(
+        rows_map,
+        day_totals,
+        day_columns,
+        mode,
+        include_status=include_status,
+    )
     percentiles: list[float] = _percentile_list(config)
     exc_p: float = exceedance_percentile(config)
     logger.info(
-        "Матрица сроков [%s]: mode=%s, %s продуктов, дни %s…%s (%s колонок), "
+        "Матрица сроков [%s]: mode=%s, status=%s, %s строк, дни %s…%s (%s колонок), "
         "процентили=%s, порог P%s, всего лидов %s",
         sheet_key,
         mode,
+        include_status,
         len(rows_out),
         day_min,
         day_max,
@@ -421,6 +537,7 @@ def build_duration_matrix(
         sort_mode=mode,
         empty=False,
         sheet_key=sheet_key,
+        include_status=include_status,
     )
 
 
@@ -429,9 +546,9 @@ def build_all_duration_matrices(
     config: dict[str, Any],
 ) -> dict[str, DurationMatrixResult]:
     """
-    Строит все листы матрицы из variants (один проход агрегации).
+    Строит все листы матрицы из variants.
 
-    Ключ словаря = sheet_key.
+    Агрегация кешируется отдельно для include_status true/false.
     """
     specs: list[DurationMatrixSpec] = list_duration_matrix_specs(config)
     if not specs:
@@ -439,31 +556,60 @@ def build_all_duration_matrices(
 
     if snapshot is None or snapshot.empty:
         return {
-            spec.sheet_key: _empty_result(config, spec.sort_mode, sheet_key=spec.sheet_key)
+            spec.sheet_key: _empty_result(
+                config,
+                spec.sort_mode,
+                sheet_key=spec.sheet_key,
+                include_status=spec.include_status,
+            )
             for spec in specs
         }
 
-    aggregated = _aggregate_duration_counts(snapshot, config)
-    if aggregated is None:
-        return {
-            spec.sheet_key: _empty_result(config, spec.sort_mode, sheet_key=spec.sheet_key)
-            for spec in specs
-        }
-
-    rows_map, day_totals, day_columns, day_min, day_max, grand_total = aggregated
+    cache: dict[
+        bool,
+        tuple[
+            dict[RowKey, tuple[int, dict[int, int], dict[float, int | None]]],
+            dict[int, int],
+            list[int],
+            int,
+            int,
+            int,
+        ]
+        | None,
+    ] = {}
+    result: dict[str, DurationMatrixResult] = {}
     percentiles: list[float] = _percentile_list(config)
     exc_p: float = exceedance_percentile(config)
-    result: dict[str, DurationMatrixResult] = {}
 
     for spec in specs:
+        if spec.include_status not in cache:
+            cache[spec.include_status] = _aggregate_duration_counts(
+                snapshot, config, include_status=spec.include_status
+            )
+        aggregated = cache[spec.include_status]
+        if aggregated is None:
+            result[spec.sheet_key] = _empty_result(
+                config,
+                spec.sort_mode,
+                sheet_key=spec.sheet_key,
+                include_status=spec.include_status,
+            )
+            continue
+
+        rows_map, day_totals, day_columns, day_min, day_max, grand_total = aggregated
         ordered_days, rows_out = _layout_rows(
-            rows_map, day_totals, day_columns, spec.sort_mode
+            rows_map,
+            day_totals,
+            day_columns,
+            spec.sort_mode,
+            include_status=spec.include_status,
         )
         logger.info(
-            "Матрица сроков [%s]: mode=%s, %s продуктов, дни %s…%s (%s колонок), "
+            "Матрица сроков [%s]: mode=%s, status=%s, %s строк, дни %s…%s (%s колонок), "
             "процентили=%s, порог P%s, всего лидов %s",
             spec.sheet_key,
             spec.sort_mode,
+            spec.include_status,
             len(rows_out),
             day_min,
             day_max,
@@ -484,5 +630,6 @@ def build_all_duration_matrices(
             sort_mode=spec.sort_mode,
             empty=False,
             sheet_key=spec.sheet_key,
+            include_status=spec.include_status,
         )
     return result
