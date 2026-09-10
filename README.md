@@ -48,16 +48,16 @@ python run_excel.py
 
 | Режим | Каталог входа | Выход |
 |-------|---------------|-------|
-| `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_{analytics\|detail}_*.xlsx` |
+| `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_{analytics\|detail\|source}_*.xlsx` |
 | `prod` | `IN/PROD` | то же |
 
 В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config). Перед запуском проверяется наличие **всех** файлов для выбранного `mode`; при prod — **15 файлов** (11 Kanban ЕФС + 4 объединённых «команда лида и сделки»).
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
-Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.7.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910f.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.8.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
 
-Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910c.zip`**.
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910f.zip`**.
 
 ## Структура проекта
 
@@ -297,3 +297,4 @@ cd HTML && python -m http.server 8080
 | 2.6.0 | 2026-09-10 | Подробные описания statistics/`export_km_count` и др.; km_count на P80 |
 | 2.6.1 | 2026-09-10 | Архив документации `docs_20260910b.zip` (v2.6.0 docs) |
 | 2.7.0 | 2026-09-10 | CONFIG_EXCEL_V2_PARAMS: карточка на каждый ключ config (603); архив `docs_20260910c.zip` |
+| 2.8.0 | 2026-09-10 | Третий Excel `source` + `output.source_export` (ordered filters, max/min/gt/…); архив `v2_program_files_20260910f.zip` |

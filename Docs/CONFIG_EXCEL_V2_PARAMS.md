@@ -2,7 +2,7 @@
 
 Карточка на **каждый** ключ актуального конфига: объекты, массивы, листья, каждый фильтр и его поля, каждое правило выбросов, каждый variant матрицы, каждый профиль перцентиля, каждое сокращение юрформы.
 
-**Версия документа:** 3.0.0 (2026-09-10). Обзорный гайд: [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md).
+**Версия документа:** 3.1.0 (2026-09-10). Обзорный гайд: [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md).
 
 Регенерация: `python3 scripts/gen_config_excel_v2_params.py` (в репозитории — этот генератор).
 
@@ -3840,10 +3840,10 @@ _Объект (контейнер)._
 
 | | |
 |---|---|
-| **Зачем** | . Параметр пути `output.report_parts` в блоке `output`: задаёт поведение pipeline Excel v2 (чтение, фильтры, агрегация или оформление отчёта) и должен быть согласован с соседними ключами блока. |
-| **Как работает** | Пропуск этапов. Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | 1 или 2 файла. Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `output`. |
-| **От чего зависит** | report_part_suffixes |
+| **Зачем** | Какие выходные Excel строить: analytics / detail / source / both / full. Параметр пути `output.report_parts` в блоке `output`. |
+| **Как работает** | `both` = analytics+detail; `full`/`all`/`все` = три файла; `source` = только исходные строки; список частей допускается. Пропуск тяжёлых этапов по выбранным частям. |
+| **Что даёт / куда влияет** | 1–3 файла `*_analytics_*` / `*_detail_*` / `*_source_*`. |
+| **От чего зависит** | report_part_suffixes; для source — `output.source_export` |
 | **Значение в актуальном config** | `"both"` |
 
 ### `output.report_part_suffixes`
@@ -3853,7 +3853,7 @@ _Объект (контейнер)._
 | | |
 |---|---|
 | **Зачем** | Суффиксы частей в имени. Параметр пути `output.report_part_suffixes` в блоке `output`: задаёт поведение pipeline Excel v2 (чтение, фильтры, агрегация или оформление отчёта) и должен быть согласован с соседними ключами блока. |
-| **Как работает** | analytics/detail. Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
+| **Как работает** | analytics/detail/source. Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Различие файлов. Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `output`. |
 | **От чего зависит** | report_parts; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `см. вложенные ключи` |
@@ -3877,6 +3877,520 @@ _Объект (контейнер)._
 | **Что даёт / куда влияет** | *_detail_*. Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `output`. |
 | **От чего зависит** | —; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `"detail"` |
+
+### `output.report_part_suffixes.source`
+
+| | |
+|---|---|
+| **Зачем** | Суффикс третьего Excel (source). Параметр пути `output.report_part_suffixes.source` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | В имени `{prefix}_{suffix}_{timestamp}.xlsx`. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | *_source_*.xlsx. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | report_parts=source|full; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"source"` |
+
+### `output.source_export`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Отдельный блок фильтров для третьего Excel с исходными строками. Параметр пути `output.source_export` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Не путать с корневым filters: применяется только к source через apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строки листа «Исходные строки» + лидеры/почты. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | report_parts содержит source; team_files; manager_emails; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters_order`
+
+| | |
+|---|---|
+| **Зачем** | Порядок последовательного применения фильтров source. Параметр пути `output.source_export.filters_order` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сначала первый, затем на остатке второй и т.д.; enabled=false пропускается. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Итоговая выборка source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["efs_equals_1", "max_report_date", "status_activation", "label_strategy_kvartal", "label_kvartal_2_or_3"]` |
+
+### `output.source_export.filters`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Словарь именованных фильтров для source_export. Параметр пути `output.source_export.filters` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Ключи — имена; состав — как у универсальных filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор до подливки лидеров. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.efs_equals_1`
+
+_Объект (контейнер)._
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: ЕФС флаг = 1. Параметр пути `output.source_export.filters.efs_equals_1` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.efs_equals_1.enabled`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.efs_equals_1.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.efs_equals_1.column_key`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.efs_equals_1.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"efs_flag"` |
+
+### `output.source_export.filters.efs_equals_1.action`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.efs_equals_1.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"include"` |
+
+### `output.source_export.filters.efs_equals_1.match`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.efs_equals_1.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"equals"` |
+
+### `output.source_export.filters.efs_equals_1.values`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.efs_equals_1.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `[1]` |
+
+### `output.source_export.filters.efs_equals_1.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.efs_equals_1.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.efs_equals_1.value_type`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): string/number/date/auto. Параметр пути `output.source_export.filters.efs_equals_1.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"number"` |
+
+### `output.source_export.filters.efs_equals_1.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр efs_equals_1 (ЕФС флаг = 1): Учитывать регистр строк. Параметр пути `output.source_export.filters.efs_equals_1.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.efs_equals_1; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.max_report_date`
+
+_Объект (контейнер)._
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: максимальная Дата отчета в текущей выборке. Параметр пути `output.source_export.filters.max_report_date` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.max_report_date.enabled`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.max_report_date.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.max_report_date.column_key`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.max_report_date.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"report_date"` |
+
+### `output.source_export.filters.max_report_date.action`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.max_report_date.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"include"` |
+
+### `output.source_export.filters.max_report_date.match`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.max_report_date.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"max"` |
+
+### `output.source_export.filters.max_report_date.values`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.max_report_date.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `[]` |
+
+### `output.source_export.filters.max_report_date.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.max_report_date.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.max_report_date.value_type`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): string/number/date/auto. Параметр пути `output.source_export.filters.max_report_date.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"date"` |
+
+### `output.source_export.filters.max_report_date.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр max_report_date (максимальная Дата отчета в текущей выборке): Учитывать регистр строк. Параметр пути `output.source_export.filters.max_report_date.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.status_activation`
+
+_Объект (контейнер)._
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: статус содержит «Активация продукта». Параметр пути `output.source_export.filters.status_activation` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.status_activation.enabled`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.status_activation.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.status_activation.column_key`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.status_activation.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"current_status"` |
+
+### `output.source_export.filters.status_activation.action`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.status_activation.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"include"` |
+
+### `output.source_export.filters.status_activation.match`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.status_activation.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `output.source_export.filters.status_activation.values`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.status_activation.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Активация продукта"]` |
+
+### `output.source_export.filters.status_activation.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.status_activation.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.status_activation.value_type`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): string/number/date/auto. Параметр пути `output.source_export.filters.status_activation.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `output.source_export.filters.status_activation.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Учитывать регистр строк. Параметр пути `output.source_export.filters.status_activation.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.label_strategy_kvartal`
+
+_Объект (контейнер)._
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: метка содержит «Стратегия» и «квартал» (all). Параметр пути `output.source_export.filters.label_strategy_kvartal` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.label_strategy_kvartal.enabled`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.label_strategy_kvartal.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.label_strategy_kvartal.column_key`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.label_strategy_kvartal.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"label"` |
+
+### `output.source_export.filters.label_strategy_kvartal.action`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.label_strategy_kvartal.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"include"` |
+
+### `output.source_export.filters.label_strategy_kvartal.match`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.label_strategy_kvartal.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `output.source_export.filters.label_strategy_kvartal.values`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.label_strategy_kvartal.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Стратегия", "квартал"]` |
+
+### `output.source_export.filters.label_strategy_kvartal.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.label_strategy_kvartal.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"all"` |
+
+### `output.source_export.filters.label_strategy_kvartal.value_type`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): string/number/date/auto. Параметр пути `output.source_export.filters.label_strategy_kvartal.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `output.source_export.filters.label_strategy_kvartal.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_strategy_kvartal (метка содержит «Стратегия» и «квартал» (all)): Учитывать регистр строк. Параметр пути `output.source_export.filters.label_strategy_kvartal.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.label_kvartal_2_or_3`
+
+_Объект (контейнер)._
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: метка содержит «2» или «3» (any). Параметр пути `output.source_export.filters.label_kvartal_2_or_3` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.enabled`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.column_key`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"label"` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.action`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"include"` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.match`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.values`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.label_kvartal_2_or_3.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["2", "3"]` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.value_type`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): string/number/date/auto. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `output.source_export.filters.label_kvartal_2_or_3.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | Фильтр label_kvartal_2_or_3 (метка содержит «2» или «3» (any)): Учитывать регистр строк. Параметр пути `output.source_export.filters.label_kvartal_2_or_3.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
 
 ### `output.all_tb_label`
 
@@ -4051,6 +4565,16 @@ _Объект (контейнер)._
 | **Что даёт / куда влияет** | Вкладка «Свод ПрПр с отклонениями». Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `output`. |
 | **От чего зависит** | report_parts, max sheet name length |
 | **Значение в актуальном config** | `"Свод ПрПр с отклонениями"` |
+
+### `output.sheets.source`
+
+| | |
+|---|---|
+| **Зачем** | Имя листа третьего Excel. Параметр пути `output.sheets.source` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | export_excel_v2 ключ source → заголовок листа. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Лист с исходными колонками + лидеры/почты. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | report_parts source; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"Исходные строки"` |
 
 ### `output.sheet_freeze`
 
@@ -4382,6 +4906,38 @@ _Объект (контейнер)._
 | **Как работает** | 0=нет; 3=A-C; 7 со статусом. Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Горизонтальный freeze. Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `output`. |
 | **От чего зависит** | sheet_freeze.violations |
+| **Значение в актуальном config** | `0` |
+
+### `output.sheet_freeze.source`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Freeze на листе source. Параметр пути `output.sheet_freeze.source` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | last_row/last_col → freeze_panes + autofilter через format_sheet. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Закреплённая шапка и автофильтр. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | sheets.source; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.sheet_freeze.source.last_row`
+
+| | |
+|---|---|
+| **Зачем** | Последняя закреплённая строка (source). Параметр пути `output.sheet_freeze.source.last_row` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | 1 = шапка. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | freeze. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | sheet_freeze.source; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `1` |
+
+### `output.sheet_freeze.source.last_col`
+
+| | |
+|---|---|
+| **Зачем** | Последний закреплённый столбец (source). Параметр пути `output.sheet_freeze.source.last_col` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
+| **Как работает** | 0 = без фиксации столбцов. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | freeze. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
+| **От чего зависит** | sheet_freeze.source; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `0` |
 
 ### `output.duration_matrix`

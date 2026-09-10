@@ -47,18 +47,19 @@ KANBAN_HTML_Analiz/
 
 ## Пакет Excel v2 (zip)
 
-В корне репозитория: **`v2_program_files_20260910.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
+В корне репозитория: **`v2_program_files_20260910f.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
 
-Только документация: **`docs_20260910c.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
+Только документация: **`docs_20260910f.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
 
-Выход `run_excel.py` — **два файла** (или один, см. `output.report_parts`):
+Выход `run_excel.py` — **до трёх файлов** (см. `output.report_parts`):
 
 | Файл | Листы |
 |------|--------|
 | `*_analytics_*.xlsx` | Нормативы, Статистика, матрицы сроков |
 | `*_detail_*.xlsx` | Уникальные ID (сроки по статусам), менеджеры, нарушения |
+| `*_source_*.xlsx` | Исходные строки Kanban + лидеры/почты (фильтры `output.source_export`) |
 
-`report_parts`: `both` | `analytics` | `detail` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md).
+`report_parts`: `both` | `analytics` | `detail` | `source` | `full` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md).
 
 ## Данные Excel (отдельно)
 
