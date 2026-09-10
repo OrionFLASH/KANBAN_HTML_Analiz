@@ -707,7 +707,8 @@
         "min": "П{p} мин",
         "max": "П{p} макс",
         "le_count": "П{p} лидов ≤",
-        "gt_count": "П{p} лидов >"
+        "gt_count": "П{p} лидов >",
+        "km_count": "П{p} КМ ≥"
       }
     },
     "statistics": {
@@ -749,7 +750,7 @@
           "export_gt_count": true,
           "export_min": false,
           "export_max": false,
-          "export_km_count": true
+          "export_km_count": false
         },
         {
           "p": 80,
@@ -760,7 +761,7 @@
           "export_gt_count": false,
           "export_min": false,
           "export_max": false,
-          "export_km_count": false
+          "export_km_count": true
         }
       ]
     },

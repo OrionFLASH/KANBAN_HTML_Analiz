@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.5.1 (2026-09-10)
+**Версия документа:** 2.6.0 (2026-09-10)
 
 ---
 
@@ -26,7 +26,8 @@
 5.2. [duration_matrix — матрицы сроков](#duration_matrix)
 5.3. [status_duration_columns — сроки по статусам на «Уникальные ID»](#status_duration_columns)
 5.4. [excel_format — даты, текст ID, light-листы](#excel_format)
-5.5. [statistics / column_labels](#55-statistics--column_labels)
+5.5. [statistics — подробный разбор флагов](#55-statistics--подробный-разбор-флагов)
+5.6. [column_labels / percentile_column_labels](#56-column_labels--percentile_column_labels)
 6. [client_display](#6-client_display)
 7. [Производительность](#7-производительность)
 7.1. [progress](#71-progress)
@@ -138,60 +139,64 @@ python -m src.v2.pipeline
 
 ### 2.2. `excel` — чтение Kanban
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `sheet_name` | `"Sheet1"` | Имя листа |
-| `engine` | `"openpyxl"` | Движок pandas |
-| `read_only` | `true` | Режим openpyxl `read_only` (меньше RAM) |
-| `data_only` | `true` | Брать значения ячеек, не формулы |
-| `keep_links` | `false` | Не загружать внешние ссылки |
-| `na_values` | `[""]` | Строки, считающиеся пустыми при чтении |
-| `category_markers.for_sale` | `"К ПРОДАЖЕ"` | Маркер категории «к продаже» (служебный) |
-| `category_markers.in_work` | `"В РАБОТЕ"` | Маркер «в работе» |
-| `category_markers.unknown` | `"UNKNOWN"` | Неизвестный статус/категория |
+Параметры openpyxl/pandas при загрузке файлов из `test_files` / `prod_files`.
+
+| Ключ | По умолчанию | Зачем | Как работает | Что влияет | Пример |
+|------|--------------|-------|--------------|------------|--------|
+| `sheet_name` | `"Sheet1"` | Какой лист читать | Имя вкладки в xlsx | Неверный лист → ошибка/пустые данные | `"Sheet1"` |
+| `engine` | `"openpyxl"` | Движок pandas | Передаётся в `read_excel` | Смена на другой движок не поддерживается штатно | — |
+| `read_only` | `true` | Экономия RAM | openpyxl `read_only=True` | Быстрее/легче на больших файлах; часть свойств книги недоступна | оставить `true` на prod |
+| `data_only` | `true` | Брать **значения**, не формулы | Ячейки с формулами → вычисленный результат (как сохранён в файле) | `false` вернёт текст формулы — сломает числа/даты | всегда `true` для отчётов |
+| `keep_links` | `false` | Не тянуть внешние ссылки | Ускоряет открытие | `true` может тормозить и требовать сеть | `false` |
+| `na_values` | `[""]` | Что считать пустым | Пустая строка → NaN | Доп. маркеры пустоты при чтении | `["", "-"]` |
+| `category_markers.for_sale` | `"К ПРОДАЖЕ"` | Служебный маркер категории | Сопоставление статуса/категории в загрузчике | Влияет на служебную разметку, не на фильтры `filters` | как в Excel |
+| `category_markers.in_work` | `"В РАБОТЕ"` | То же для «в работе» | — | — | — |
+| `category_markers.unknown` | `"UNKNOWN"` | Fallback неизвестной категории | — | — | — |
 
 ### 2.3. `processing`
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `empty_stage_values` | `["", "-", "nan", "None"]` | Пустые стадии: не попадают под терминальный `exclude` |
-| `dedup_same_date_agg` | `"max"` | На одну дату отчёта + стадию: агрегат дней (`max`) |
-| `pick_across_dates` | `"max_days_then_latest_report_date"` | Выбор записи между датами отчёта |
-| `group_only_product_label` | `"—"` | Подпись «Продукт» при `product_analysis_mode: group_only` |
-| `audit_row_counts` | `true` | Писать в лог аудит числа строк (не терять молча) |
-| `duration_fallback_to_columns` | `true` | При `duration_source: dates`: если дата пуста → колонка дней |
+Логика дедупа сроков и аудита после чтения Kanban.
+
+| Ключ | По умолчанию | Зачем | Как работает | Что выходит / зависит |
+|------|--------------|-------|--------------|------------------------|
+| `empty_stage_values` | `["", "-", "nan", "None"]` | Какие стадии считать «пустыми» | Терминальный `exclude` **не** режет такие строки | Связан с фильтрами `exclude_*` |
+| `dedup_same_date_agg` | `"max"` | Несколько строк лида на **одну** дату отчёта + стадию | Берётся `max` дней | Влияет на вход в трекинг/нормативы |
+| `pick_across_dates` | `"max_days_then_latest_report_date"` | Выбор записи между **разными** датами отчёта | Сначала больший срок, при равенстве — более поздняя дата отчёта | Снимок / records |
+| `group_only_product_label` | `"—"` | Подпись в колонке «Продукт», если режим только групп | Пишется эта строка вместо имени продукта | Только при `product_analysis_mode: group_only` |
+| `audit_row_counts` | `true` | Не терять строки молча | В INFO/DEBUG — счётчики до/после этапов | Логи; на Excel-колонки не влияет |
+| `duration_fallback_to_columns` | `true` | Запасной срок | При `duration_source: dates`, если дата пуста → колонка `days_on_stage` | Игнорируется при `duration_source: columns` |
 
 ### 2.4. `dates`
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `dayfirst` | `true` | При неоднозначности парсить как дд.мм.гггг |
-| `excel_origin` | `"1899-12-30"` | Epoch для числовых дат Excel |
-| `formats` | `["%d.%m.%Y", …]` | Список `strptime`-форматов по приоритету |
-| `empty_values` | `["", "-", "nan", …]` | Значения, считающиеся пустой датой |
+Парсинг дат из Excel/текста (`report_date`, `work_start_date`, …).
+
+| Ключ | По умолчанию | Зачем | Как работает | Пример |
+|------|--------------|-------|--------------|--------|
+| `dayfirst` | `true` | Разрешить неоднозначность 01/02/2026 | Сначала день, потом месяц | `01.02.2026` → 1 февраля |
+| `excel_origin` | `"1899-12-30"` | Числовые даты Excel → datetime | Epoch Windows Excel | `44927` → календарная дата |
+| `formats` | `%d.%m.%Y`, `%Y-%m-%d`, … | Порядок проб `strptime` | Первый подошедший формат побеждает | Добавьте свой формат в конец/начало списка |
+| `empty_values` | `""`, `-`, `nan`, … | Что считать «даты нет» | → NaT, дальше fallback/`duration_fallback` | Расширьте список под ваш выгруз |
 
 ### 2.5. Анализ и агрегация
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `duration_source` | `"columns"` | Срок из колонки `days_on_stage`; `"dates"` — из разности дат |
-| `stage_analysis_mode` | `"status"` | Разрез по «Текущий статус» |
-| `product_analysis_mode` | `"group_product"` | Группа + продукт (`group_only` — только группа) |
-| `percentiles` | `[20, 50, 80]` | Перцентили нормативов / матриц / превышения |
-| `exceedance.percentile` | `50` (в актуальном config) | Порог «превышение» на лидах; ∈ `percentiles` |
-| `aggregation.metrics` | `["days_on_stage"]` | Метрики агрегации |
-| `aggregation.group_keys` | `product_group`, `product`, `current_status`, `stage_key` | Ключи группировки нормативов |
+| Ключ | По умолчанию | Зачем | Как / что зависит |
+|------|--------------|-------|-------------------|
+| `duration_source` | `"columns"` | Откуда брать срок | `columns` — поле `days_on_stage`; `dates` — разность дат (+ fallback) |
+| `stage_analysis_mode` | `"status"` | Ось стадии | Разрез по «Текущий статус» (не по стадии сделки) |
+| `product_analysis_mode` | `"group_product"` | Ось продукта | `group_product` — группа+продукт; `group_only` — только группа + `group_only_product_label` |
+| `percentiles` | `[20, 50, 80]` | Какие перцентили считать глобально | Должны согласовываться с `output.statistics.percentiles[].p` и `exceedance.percentile` |
+| `exceedance.percentile` | `50` (в v2-config) | Порог «превышение» на лидах | ∈ `percentiles`; влияет на колонки на «Уникальные ID» и рамку порога на матрице сроков |
+| `aggregation.metrics` | `["days_on_stage"]` | Какие метрики агрегировать | Колонки нормативов строятся по этим ключам |
+| `aggregation.group_keys` | product_group, product, current_status, stage_key | Ключи groupby | Менять осторожно — ломает смысл листов |
 
 ### 2.6. `logging`
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `logger_name` | `"kanban_excel_v2"` | Имя логгера Python |
-| `info_file_prefix` | `"INFO_excel_v2"` | Префикс файла INFO в `paths.log` |
-| `debug_file_prefix` | `"DEBUG_excel_v2"` | Префикс файла DEBUG |
-| `hour_format` | `"%Y%m%d_%H"` | Суффикс часа в имени лог-файла |
-
-Имена: `{info_file_prefix}_{hour}.log`, `{debug_file_prefix}_{hour}.log` (см. также правила проекта в README).
+| Ключ | По умолчанию | Зачем | Что получается |
+|------|--------------|-------|----------------|
+| `logger_name` | `"kanban_excel_v2"` | Имя логгера Python | Фильтр в коде/`logging.getLogger` |
+| `info_file_prefix` | `"INFO_excel_v2"` | Префикс INFO-файла | `{prefix}_{hour}.log` в `paths.log` |
+| `debug_file_prefix` | `"DEBUG_excel_v2"` | Префикс DEBUG | То же для DEBUG |
+| `hour_format` | `"%Y%m%d_%H"` | Кусок имени с часом | Новый файл каждый час |
 
 ---
 
@@ -218,16 +223,17 @@ python -m src.v2.pipeline
 }
 ```
 
-| Поле | Значения | Смысл |
-|------|----------|--------|
-| `column_key` | ключ из `columns` | основная колонка |
-| `column_keys` | массив ключей | доп. колонки; совпадение по **OR** |
-| `action` | `include` \| `exclude` | оставить / убрать совпавшие строки |
-| `match` | `equals` \| `contains` | целое поле / подстрока |
-| `values` | массив | эталоны сравнения |
-| `values_mode` | `any` \| `all` | достаточно одного / нужны все |
-| `value_type` | `string` \| `number` \| `date` \| `auto` | приведение типа |
-| `case_sensitive` | bool | для string |
+| Поле | Значения | Зачем | Как работает | Пример эффекта |
+|------|----------|-------|--------------|----------------|
+| `enabled` | bool | Вкл/выкл фильтра | `false` — фильтр не участвует в AND | Выключить стратегию на время |
+| `column_key` | ключ из `columns` | Основная колонка | Берётся заголовок через `columns` | `"label"` → «Метка» |
+| `column_keys` | массив ключей | Доп. колонки | Совпадение по **OR** с основной | искать метку ещё в другой колонке |
+| `action` | `include` \| `exclude` | Оставить / убрать | `include` — оставить совпавшие; `exclude` — убрать | терминальные стадии — `exclude` |
+| `match` | `equals` \| `contains` | Тип сравнения | Целое поле / подстрока | `contains` + «Стратегия» |
+| `values` | массив | Эталоны | Сравниваются с ячейкой | `[1]` для ЕФС |
+| `values_mode` | `any` \| `all` | Логика по values | `any` — достаточно одного; `all` — все подстроки | «Стратегия» **и** «2026» |
+| `value_type` | `string` \| `number` \| `date` \| `auto` | Приведение типа | Числа не сравниваются как текст | ЕФС = number |
+| `case_sensitive` | bool | Регистр | `false` — «отказ» = «ОТКАЗ» | обычно `false` |
 
 Терминальные `action: exclude` применяются после inclusion (`filter_terminal_deal_stage_rows`).  
 Пустые стадии (`processing.empty_stage_values`) **не** попадают под exclude.
@@ -738,44 +744,168 @@ Excel закрепляет всё слева и выше первой незак
 
 `light_format_sheets` ускоряет экспорт ПРОД на больших листах.
 
-### 5.5. statistics / column_labels
+### 5.5. statistics — подробный разбор флагов
 
-Корневые ключи `output` помимо листов:
+Блок `output.statistics` управляет **колонками метрик** на листе **«Нормативы»** (файл analytics).  
+Реализация: `src/statistics_config.py`, расчёт — `src/percentile_stats.py` + `src/aggregator.py`.
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `report_prefix` | `kanban_excel_v2` | Префикс имён выходных xlsx |
-| `timestamp_format` | `%Y%m%d_%H%M%S` | Суффикс времени в имени файла |
-| `report_parts` / `report_part_suffixes` | см. §5.1 | Какие файлы строить |
-| `all_tb_label` | `"все тб"` | Подпись агрегата «все ТБ» в нормативах / воронке |
-| `excel_max_sheet_name_length` | `31` | Лимит длины имени листа Excel |
-| `excel_max_rows_per_sheet` / `csv_overflow` | см. ниже | Overflow больших листов в CSV |
+#### Общая модель
 
-#### `output.statistics`
+1. Берётся группа (ТБ × группа продукта × продукт × стадия).
+2. Сроки лидов (`days_on_stage`) сортируются по возрастанию.
+3. Считаются min / max / число лидов и набор перцентилей из `percentiles[]` с `compute: true`.
+4. Флаги `export*` решают, **какие** из посчитанных величин попадут в Excel (и в JSON у v1).  
+   `compute: false` у перцентиля — величина **не считается** и не экспортируется.
 
-Управление экспортом метрик на «Нормативы» / связанных сводах (расчёт может быть полным даже если `export: false`).
+Корневые ключи `output` рядом со statistics:
 
-| Ключ | Описание |
-|------|----------|
-| `attach_counts_left` | `true` — счётчики `≤` слева от границы перцентиля |
-| `min` / `max` / `total_count` | Флаги `compute`, `export`, опционально `export_le_count` / `export_gt_count` |
-| `percentiles[]` | По каждому `p`: `compute`, `export_days`, `export_count`, `export_le_count`, `export_gt_count`, `export_min`, `export_max`, `export_km_count` |
+| Ключ | По умолчанию | Зачем | Эффект |
+|------|--------------|-------|--------|
+| `report_prefix` | `kanban_excel_v2` | Имя выходных файлов | `{prefix}_{analytics\|detail}_{timestamp}.xlsx` |
+| `timestamp_format` | `%Y%m%d_%H%M%S` | Суффикс времени | Меняет только имя файла |
+| `report_parts` / `report_part_suffixes` | §5.1 | Какие части отчёта строить | Пропуск расчётов |
+| `all_tb_label` | `"все тб"` | Подпись агрегата без разреза по ТБ | Строка «все тб» в нормативах / воронке |
+| `excel_max_sheet_name_length` | `31` | Лимит Excel на имя листа | Обрезка длинных имён (матрицы со статусом) |
+| `excel_max_rows_per_sheet` / `csv_overflow` | § ниже | Overflow больших листов | CSV вместо вкладки |
 
-Актуальные флаги экспорта — в `config_excel_v2.json` → `output.statistics` (часто: P50 с le/gt и km_count; P20/P80 — в основном граница дней).
+#### `attach_counts_left`
 
-#### `output.column_labels` / `percentile_column_labels`
+| | |
+|--|--|
+| **Зачем** | Порядок колонок вокруг границы перцентиля: сначала «сколько лидов ≤», потом «порог в днях», потом «сколько >». |
+| **Как** | `true` → суффиксы `le_count`, `days`, `gt_count`, …; `false` → сначала `days`, потом счётчики. |
+| **Вывод** | Только порядок колонок на «Нормативах»; сами числа не меняются. |
+| **Пример** | При `true` и P50 с le/gt: `П50 лидов ≤` \| `П50 дней` \| `П50 лидов >`. |
+| **Зависит от** | Какие `export_*` включены у перцентиля. |
 
-| Группа ключей | Примеры | Назначение |
-|---------------|---------|------------|
-| Оси таблицы | `product_group`, `product`, `tb`, `current_status` | Заголовки осей на «Нормативах» |
-| Метрики срока | `days_on_stage_min`, `_max`, `_count` | «Мин/Макс срок дней», «Число лидов» |
-| Аудит фильтров/выбросов | `filter_before`, `filter_after`, `outlier_*`, `outlier_rule_<name>` | Подписи колонок аудита (имя правила → ключ `outlier_rule_<name>`) |
-| Маркеры темы | `min_header_marker`, `max_header_marker` | Подстроки для заливки «Мин»/«Макс» |
-| `percentile_column_labels` | шаблоны `П{p} дней`, `П{p} лидов ≤`, … | Подписи перцентилей |
+#### Блок `min` / `max` / `total_count`
+
+Общий минимум / максимум срока и число лидов **в группе** (не внутри перцентильной доли).
+
+| Ключ | Тип | Зачем | Что выводит на «Нормативах» | Зависит от |
+|------|-----|-------|-----------------------------|------------|
+| `min.compute` | bool | Считать минимум срока в группе | Без `true` колонки min пустые/не считаются | `aggregation.metrics` |
+| `min.export` | bool | Показать колонку минимума | Заголовок из `column_labels.days_on_stage_min` («Мин срок дней») | `min.compute` |
+| `min.export_le_count` | bool | Сколько лидов с сроком ≤ минимума | Обычно = числу лидов с этим мин. значением | `min.export` |
+| `min.export_gt_count` | bool | Сколько лидов с сроком > минимума | `count − le` | `min.export` |
+| `max.compute` / `max.export` / `export_le_count` / `export_gt_count` | bool | То же для максимума | «Макс срок дней»; `max_le_count` обычно = всем лидам группы | аналогично |
+| `total_count.compute` | bool | Считать число лидов в группе | — | — |
+| `total_count.export` | bool | Колонка «Число лидов» | Внутреннее имя `days_on_stage_count` | `column_labels.days_on_stage_count` |
+
+**Пример** (как в актуальном `config_excel_v2.json`):
+
+```json
+"min": { "compute": true, "export": true, "export_le_count": false, "export_gt_count": false },
+"max": { "compute": true, "export": true, "export_le_count": false, "export_gt_count": false },
+"total_count": { "compute": true, "export": true }
+```
+
+→ на листе: **Мин срок дней** | **Макс срок дней** | **Число лидов**.
+
+#### Блок `percentiles[]` — один профиль на каждый `p`
+
+Каждый элемент — объект с числом перцентиля и флагами.  
+Модель расчёта (эмпирическая по лидам): сортируем сроки; в «нижние p%» входит `ceil(p/100 × N)` лидов; **порог `days`** = срок последнего из них (макс среди нижней доли).
+
+Числовой пример для **P50**, N = 10 лидов, сроки `10,20,…,100`:
+
+| Поле | Значение | Смысл |
+|------|----------|-------|
+| `days` | 50 | граница: нижние 50% лидов заканчиваются на сроке 50 |
+| `count` | 5 | сколько лидов вошло в «нижние 50%» по формуле (`ceil`) |
+| `min` / `max` | 10 / 50 | мин и макс срока **внутри** этой нижней доли |
+| `le_count` | ≥5 | сколько лидов во **всей** группе имеют срок ≤ `days` (может быть больше `count`, если есть равные сроки) |
+| `gt_count` | N − le_count | лиды со сроком **строго больше** порога |
+
+| Ключ | Зачем | Что появляется в Excel | Внутреннее имя | Типичный заголовок |
+|------|-------|------------------------|----------------|--------------------|
+| `p` | Какой перцентиль | — | — | — |
+| `compute` | Считать этот перцентиль при агрегации | без `true` — нет данных | — | — |
+| `export_days` | Показать **порог в днях** | колонка границы | `days_on_stage_p{p}_days` | `П{p} дней` |
+| `export_count` | Показать размер нижней доли (`ceil`) | число лидов в доле | `…_p{p}_count` | `П{p} лидов` |
+| `export_le_count` | Сколько лидов ≤ порога | счётчик слева/справа от days | `…_p{p}_le_count` | `П{p} лидов ≤` |
+| `export_gt_count` | Сколько лидов > порога | счётчик | `…_p{p}_gt_count` | `П{p} лидов >` |
+| `export_min` | Мин срок среди нижней доли | колонка | `…_p{p}_min` | `П{p} мин` |
+| `export_max` | Макс срок среди нижней доли (= `days`) | колонка | `…_p{p}_max` | `П{p} макс` |
+| **`export_km_count`** | Число **уникальных КМ**, у которых срок **≥ порога** этого перцентиля | колонка «П{p} КМ ≥» | `…_p{p}_km_count` | `П{p} КМ ≥` |
+
+##### `export_km_count` — подробно
+
+| | |
+|--|--|
+| **Зачем** | Понять, сколько разных менеджеров (КМ) «сидят» на сроках не ниже порога перцентиля — нагрузка/хвост, а не просто число лидов. |
+| **Как считается** | В группе: лиды с `days_on_stage ≥ threshold`, где `threshold` = `…_p{p}_days`; по колонке КМ — `nunique` (пустые/`-` отбрасываются). Код: `count_unique_km_at_or_above_p80` в `percentile_stats.py`. |
+| **Ограничение реализации** | Значение **заполняется только для P80** (`aggregator` смотрит на перцентиль 80). Для P20/P50 флаг `export_km_count: true` добавит колонку в список экспорта, но **ячейки будут пустыми**, если расчёт для этого `p` не сделан. Ставьте `export_km_count: true` на профиль `"p": 80`. |
+| **Что выводит** | Целое число уникальных ФИО КМ. Заголовок из `percentile_column_labels.days_on_stage.km_count` (`"П{p} КМ ≥"` → «П80 КМ ≥»). |
+| **От чего зависит** | `columns.km` / наличие колонки «КМ» в данных; `optional_column_keys` должен включать `km`; `compute: true` и `export_days` у того же `p` (нужен порог); `export_km_count: true` у **P80**. |
+| **Не путать с** | `export_count` / `export_le_count` — это **лиды**, не менеджеры. |
+
+Пример включения только порога P80 + КМ:
+
+```json
+{ "p": 80, "compute": true, "export_days": true, "export_km_count": true }
+```
+
+Актуальный `config_excel_v2.json` (схема колонок на «Нормативах» по метрике срока):
+
+| Профиль | Включено | Колонки |
+|---------|----------|---------|
+| P20 | `export_days` | П20 дней |
+| P50 | `export_days`, `export_le_count`, `export_gt_count` | П50 лидов ≤ \| П50 дней \| П50 лидов > |
+| P80 | `export_days`, `export_km_count` | П80 дней \| П80 КМ ≥ |
+| + min/max/count | `export: true` | Мин / Макс / Число лидов |
+
+Полный пример блока:
+
+```json
+"statistics": {
+  "attach_counts_left": true,
+  "min": { "compute": true, "export": true },
+  "max": { "compute": true, "export": true },
+  "total_count": { "compute": true, "export": true },
+  "percentiles": [
+    { "p": 20, "compute": true, "export_days": true },
+    {
+      "p": 50,
+      "compute": true,
+      "export_days": true,
+      "export_le_count": true,
+      "export_gt_count": true
+    },
+    {
+      "p": 80,
+      "compute": true,
+      "export_days": true,
+      "export_km_count": true
+    }
+  ]
+}
+```
+
+Не указанные `export_*` по умолчанию `false` (кроме `export_days` у дефолтных профилей в коде).
+
+### 5.6. column_labels / percentile_column_labels
+
+| Группа | Ключи | Зачем | Пример эффекта |
+|--------|-------|-------|----------------|
+| Оси | `product_group`, `product`, `tb`, `current_status` | Заголовки измерений на «Нормативах» | «Группа продукта», «Стадия работы с лидом» |
+| Метрики | `days_on_stage_min`, `_max`, `_count` | Подписи min/max/числа лидов | «Мин срок дней» |
+| Аудит | `filter_before`, `filter_after`, `outlier_*`, `outlier_rule_<name>` | Подписи колонок воронки/выбросов; `<name>` = `rules[].name` | «Отсечено: global_max_500» |
+| Тема | `min_header_marker`, `max_header_marker` | Подстрока в заголовке → заливка green_red | «Мин» / «Макс» |
+| Перцентили | `percentile_column_labels.<metric>.{days,count,min,max,le_count,gt_count,km_count}` | Шаблоны с `{p}` | `"km_count": "П{p} КМ ≥"` → «П80 КМ ≥» |
+
+Без строки `km_count` в `percentile_column_labels` колонка `…_km_count` может уйти в Excel **без нормального заголовка** (или с внутренним именем).
 
 #### `output.exceedance_columns`
 
-Заголовки колонок превышения на «Уникальные ID» (см. § exceedance): `p80_norm`, `current_days`, `exceedance_flag`, `exceedance_days`. В `p80_norm` плейсхолдер `{p}` заменяется на `exceedance.percentile`.
+Заголовки колонок превышения на «Уникальные ID» (см. § exceedance).
+
+| Ключ | Зачем | Пример заголовка | Зависит от |
+|------|-------|------------------|------------|
+| `p80_norm` | Норматив порога для лида | `Норматив P{p}` → «Норматив P50» если `exceedance.percentile=50` | `exceedance.percentile` |
+| `current_days` | Текущий срок лида | «Текущий срок» | снимок / `_days_on_stage` |
+| `exceedance_flag` | Признак превышения | «превышение» = `ДА` или пусто | порог нормы |
+| `exceedance_days` | На сколько дней выше нормы | «дней отклонения» | `current − norm` |
 
 ### Большие листы → CSV
 
@@ -859,12 +989,12 @@ Excel закрепляет всё слева и выше первой незак
 
 ### 7.1. `progress`
 
-| Ключ | По умолчанию | Описание |
-|------|--------------|----------|
-| `enabled` | `true` | Консольный прогресс этапов |
-| `log_every_seconds` | `3` | Heartbeat в лог при долгих операциях |
-| `show_timing_summary` | `true` | Сводная таблица времени по этапам в конце |
-| `debug_detail` | `true` | Тайминги подэтапов в DEBUG-логе |
+| Ключ | По умолчанию | Зачем | Что выводит | Зависит от |
+|------|--------------|-------|-------------|------------|
+| `enabled` | `true` | Консольный прогресс этапов | Строки прогресса в stdout | — |
+| `log_every_seconds` | `3` | Heartbeat при долгих операциях | Сообщение в лог не чаще раза в N сек | Долгие этапы загрузки/агрегации |
+| `show_timing_summary` | `true` | Сводка времени в конце | Таблица «этап → секунды» в логе/консоли | — |
+| `debug_detail` | `true` | Тайминги подэтапов | Доп. строки в DEBUG-логе | `logging.debug_file_prefix` |
 
 ---
 

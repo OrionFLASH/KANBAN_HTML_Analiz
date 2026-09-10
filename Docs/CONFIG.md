@@ -197,8 +197,10 @@
 |------|-------|------------------------|
 | `min` / `max` | `export`, `export_le_count`, `export_gt_count` | не выводятся |
 | `total_count` | `export` | **да** — число лидов в группе |
-| `percentiles[]` | `p`, `export_days`, `export_le_count`, `export_gt_count`, `export_min`, `export_max`, `export_km_count` | P20/P50: только `days`; P80: `days` + le/gt/min/max |
+| `percentiles[]` | `p`, `export_days`, `export_count`, `export_le_count`, `export_gt_count`, `export_min`, `export_max`, **`export_km_count`** | P20/P50: только `days`; P80: `days` + le/gt/min/max (+ km) |
 | `attach_counts_left` | bool | `true` — счётчики `≤` слева от границы перцентиля |
+
+**`export_km_count`:** колонка «П{p} КМ ≥» — число **уникальных КМ** со сроком ≥ порога перцентиля. Значение в коде заполняется **только для P80**; нужен `columns.km` в данных и шаблон `percentile_column_labels.*.km_count`. Подробно (примеры, зависимости): [CONFIG_EXCEL_V2.md §5.5](CONFIG_EXCEL_V2.md#55-statistics--подробный-разбор-флагов).
 
 Пример (P80 с полным набором):
 
@@ -210,12 +212,20 @@
   "max": { "compute": true, "export": false },
   "percentiles": [
     { "p": 20, "export_days": true, "export_le_count": false },
-    { "p": 80, "export_days": true, "export_le_count": true, "export_gt_count": true, "export_min": true, "export_max": true }
+    {
+      "p": 80,
+      "export_days": true,
+      "export_le_count": true,
+      "export_gt_count": true,
+      "export_min": true,
+      "export_max": true,
+      "export_km_count": true
+    }
   ]
 }
 ```
 
-Заголовки колонок — в `output.percentile_column_labels` (шаблон `{p}` → 20, 50, 80).
+Заголовки колонок — в `output.percentile_column_labels` (шаблон `{p}` → 20, 50, 80; для КМ — ключ `km_count`).
 
 ### Проверка входных файлов перед запуском
 
