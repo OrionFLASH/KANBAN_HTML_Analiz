@@ -42,7 +42,7 @@ python -m src.v1.main config.json
 python run_excel.py
 ```
 
-Конфиг: `config_excel_v2.json` — полный справочник: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md)
+Конфиг: `config_excel_v2.json` — обзор: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md); **каждый ключ:** [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md)
 
 Ключевые блоки v2: `filters` (универсальная схема), `exceedance.percentile` (порог превышения, по умолчанию 80), `outlier_clipping` (выбросы срока перед нормативами, `min_remaining`), `team_files`, `output.sheet_freeze`, `output.statistics`.
 
@@ -55,9 +55,9 @@ python run_excel.py
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
-Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.6.0.
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.7.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
 
-Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910b.zip`**.
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910c.zip`**.
 
 ## Структура проекта
 
@@ -71,7 +71,8 @@ src/                 # общие модули + пакеты pipeline
   v2/                # Excel-only (run_excel.py / config_excel_v2.json)
   Tests/             # pytest
 Docs/CONFIG.md       # справочник config.json
-Docs/CONFIG_EXCEL_V2.md  # справочник config_excel_v2.json
+Docs/CONFIG_EXCEL_V2.md  # обзорный справочник config_excel_v2.json
+Docs/CONFIG_EXCEL_V2_PARAMS.md  # карточка на каждый ключ config
 IN/TEST/             # test Kanban + команды (run.py и run_excel.py)
 IN/PROD/             # prod Kanban + команды
 OUT/                 # результаты run.py
@@ -295,3 +296,4 @@ cd HTML && python -m http.server 8080
 | 2.5.2 | 2026-09-10 | Архив документации `docs_20260910.zip` (Docs + README + ROADMAP) |
 | 2.6.0 | 2026-09-10 | Подробные описания statistics/`export_km_count` и др.; km_count на P80 |
 | 2.6.1 | 2026-09-10 | Архив документации `docs_20260910b.zip` (v2.6.0 docs) |
+| 2.7.0 | 2026-09-10 | CONFIG_EXCEL_V2_PARAMS: карточка на каждый ключ config (603); архив `docs_20260910c.zip` |
