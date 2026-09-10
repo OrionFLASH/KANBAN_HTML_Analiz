@@ -278,6 +278,15 @@ src/
 | 11.49 | Листы матрицы сроков с разрезом по статусу; client_id текстом; даты YYYY-MM-DD; без source_deal_id/tb_code | `duration_matrix`, exporter, excel_format, loader, config | `[v]` |
 | 11.50 | Два выходных Excel + `report_parts` (analytics/detail/both) с пропуском лишних расчётов | `pipeline`, config, docs | `[v]` |
 | 11.51 | На «Уникальные ID»: колонки сроков по каждому «Текущий статус» (порядок из config) | `status_durations`, snapshot, pipeline, config | `[v]` |
+| 11.52 | Обновить Docs (CONFIG_EXCEL_V2 v2.5.0) + архив `v2_program_files_20260910.zip` | Docs, README, zip | `[v]` |
+
+### 11.52 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.52.1 | Актуализация CONFIG_EXCEL_V2 / DEPLOY / README | `[v]` |
+| 11.52.2 | Сборка zip (код+config+docs, без Tests) | `[v]` |
+| 11.52.3 | Удалить старый `v2_program_files_20260908e.zip` | `[v]` |
 
 ### 11.51 — Декомпозиция
 
