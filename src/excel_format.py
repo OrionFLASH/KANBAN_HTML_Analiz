@@ -14,6 +14,7 @@ from openpyxl.utils.cell import column_index_from_string
 from src.date_utils import parse_date_column
 from src.excel_sanitize import sanitize_dataframe
 from src.tab_number import format_tab_number_columns, tab_number_column_labels
+from src.text_ids import format_text_id_columns, text_id_column_labels
 
 # Ключи config.columns / snapshot_columns, которые являются датами
 _DATE_COLUMN_KEYS: tuple[str, ...] = (
@@ -69,8 +70,9 @@ def coerce_date_columns(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataF
 
 
 def prepare_excel_frame(frame: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Санитизация, даты и нормализация табельных номеров перед записью в Excel."""
+    """Санитизация, даты, текстовые ID и нормализация табельных номеров перед записью в Excel."""
     prepared: pd.DataFrame = coerce_date_columns(frame, config)
+    prepared = format_text_id_columns(prepared, config)
     prepared = format_tab_number_columns(prepared, config)
     return sanitize_dataframe(prepared)
 
@@ -233,19 +235,39 @@ def format_sheet(
         cell.font = header_font
         cell.alignment = header_align
 
+    date_fmt: str = str(fmt_cfg.get("date_format", "YYYY-MM-DD"))
+    tab_cols: set[str] = set(tab_number_column_labels(config))
+    text_cols: set[str] = set(text_id_column_labels(config))
+    date_cols: set[str] = set(date_column_labels(config))
+    headers_map: dict[int, str] = {idx: str(header or "") for idx, header in enumerate(headers, start=1)}
+    special_col_idxs: list[int] = [
+        idx
+        for idx, name in headers_map.items()
+        if name in tab_cols or name in text_cols or name in date_cols
+    ]
+
     if light:
+        # Облегчённый режим: только даты и текстовые ID (без green_red / полного обхода)
+        if special_col_idxs:
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+                for col_idx in special_col_idxs:
+                    cell = row[col_idx - 1]
+                    header_name = headers_map.get(col_idx, "")
+                    if header_name in date_cols and isinstance(cell.value, (datetime, date)):
+                        cell.number_format = date_fmt
+                    elif header_name in tab_cols or header_name in text_cols:
+                        if cell.value is not None:
+                            cell.number_format = "@"
+                            if not isinstance(cell.value, str):
+                                cell.value = str(cell.value)
         return
 
     float_fmt: str = fmt_cfg.get("float_format", "0.00")
     int_fmt: str = fmt_cfg.get("int_format", "0")
-    date_fmt: str = str(fmt_cfg.get("date_format", "DD.MM.YYYY"))
-    tab_cols: set[str] = set(tab_number_column_labels(config))
-    date_cols: set[str] = set(date_column_labels(config))
-    headers_map: dict[int, str] = {idx: str(header or "") for idx, header in enumerate(headers, start=1)}
 
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
         for col_idx, cell in enumerate(row, start=1):
-            header_name: str = headers_map.get(col_idx, "")
+            header_name = headers_map.get(col_idx, "")
             if isinstance(cell.value, (datetime, date)):
                 cell.number_format = date_fmt
             elif isinstance(cell.value, float):
@@ -254,6 +276,10 @@ def format_sheet(
                 cell.number_format = int_fmt
             if header_name in tab_cols and cell.value is not None:
                 cell.number_format = "@"
+            elif header_name in text_cols and cell.value is not None:
+                cell.number_format = "@"
+                if not isinstance(cell.value, str):
+                    cell.value = str(cell.value)
             elif header_name in date_cols and isinstance(cell.value, (datetime, date)):
                 cell.number_format = date_fmt
             wrap: bool = bool(cell.alignment.wrap_text) if cell.alignment else False

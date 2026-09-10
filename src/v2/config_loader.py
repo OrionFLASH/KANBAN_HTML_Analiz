@@ -50,6 +50,10 @@ def _validate_excel_v2_config(config: dict[str, Any]) -> None:
             raise ValueError(
                 f"exceedance.percentile={p_val} должен входить в percentiles={percentiles}"
             )
+    # report_parts — ранняя проверка синтаксиса
+    from src.v2.report_parts import resolve_report_parts
+
+    resolve_report_parts(config)
 
 
 def config_for_shared_modules(config: dict[str, Any]) -> dict[str, Any]:

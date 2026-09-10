@@ -33,20 +33,26 @@ def run_snapshot_records_teams_parallel(
     filtered_df: pd.DataFrame,
     config: dict[str, Any],
     shared_config: dict[str, Any],
+    *,
+    load_teams: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Снимок и трекинг — последовательно в основном процессе (без pickle DataFrame).
     Файлы команд — в ThreadPool (I/O), один проход (единый комплект или legacy).
+    load_teams=False — пустые кадры команд (когда детализация не нужна).
     Возвращает (snapshot, records, lead_team_df, deal_team_df).
     """
     workers: int = stage_workers(config, 2)
     terminal_applied: bool = True
-    parallel_io: bool = parallel_pipeline_enabled(config) and workers > 1
+    parallel_io: bool = (
+        load_teams and parallel_pipeline_enabled(config) and workers > 1
+    )
     debug_event(
         logger,
         "snapshot/records/teams start",
         rows_in=len(filtered_df),
         parallel_io=parallel_io,
+        load_teams=load_teams,
         workers=workers,
     )
 
@@ -78,8 +84,13 @@ def run_snapshot_records_teams_parallel(
                 None,
                 terminal_filters_already_applied=terminal_applied,
             )
-        with procedure(logger, "load_team_frames"):
-            lead_team_df, deal_team_df = load_team_frames(shared_config)
+        if load_teams:
+            with procedure(logger, "load_team_frames"):
+                lead_team_df, deal_team_df = load_team_frames(shared_config)
+        else:
+            logger.info("Загрузка команд пропущена (report_parts без detail)")
+            lead_team_df = pd.DataFrame()
+            deal_team_df = pd.DataFrame()
 
     debug_event(
         logger,

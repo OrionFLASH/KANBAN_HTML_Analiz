@@ -110,3 +110,69 @@ def test_norms_is_plain_table_statistics_has_funnel(tmp_path: Path) -> None:
         if found_thousands:
             break
     assert found_thousands
+
+
+def test_export_split_analytics_and_detail_files(tmp_path: Path) -> None:
+    """Два независимых xlsx: analytics без leads, detail без norms."""
+    config: dict = {
+        "excel": {"engine": "openpyxl"},
+        "output": {
+            "sheets": {
+                "norms": "Нормативы",
+                "statistics": "Статистика",
+                "duration_matrix": "Распределение сроков",
+                "leads": "Уникальные ID",
+                "managers": "Свод по менеджеру",
+                "violations": "Свод ПрПр с отклонениями",
+            },
+            "sheet_freeze": {"default": {"last_row": 1, "last_col": 0}},
+            "column_labels": {"min_header_marker": "Мин", "max_header_marker": "Макс"},
+            "excel_format": {
+                "freeze_panes": "A2",
+                "min_column_width": 10,
+                "max_column_width": 40,
+                "sample_rows_for_width": 50,
+                "float_format": "0.00",
+                "int_format": "0",
+                "thousands_format": "# ##0",
+                "colors": {"min": "C6EFCE", "max": "FFC7CE"},
+            },
+            "excel_max_rows_per_sheet": 900000,
+            "csv_overflow": {"enabled": False},
+        },
+        "excel_theme": "green_red",
+    }
+    analytics_path = tmp_path / "a.xlsx"
+    detail_path = tmp_path / "d.xlsx"
+    export_excel_v2(
+        analytics_path,
+        {
+            "norms": pd.DataFrame({"ТБ": ["x"]}),
+            "statistics": pd.DataFrame(),
+        },
+        config,
+        funnel_frame=pd.DataFrame(
+            {"Этап": ["Загрузка"], "До (строк)": [1], "После (строк)": [1]}
+        ),
+        outlier_summary=pd.DataFrame({"Показатель": ["x"], "Значение": [0]}),
+    )
+    export_excel_v2(
+        detail_path,
+        {
+            "leads": pd.DataFrame({"ID": ["L1"]}),
+            "managers": pd.DataFrame({"ФИО": ["A"]}),
+            "violations": pd.DataFrame({"ID": ["L1"]}),
+        },
+        config,
+    )
+    from openpyxl import load_workbook
+
+    wb_a = load_workbook(analytics_path)
+    assert "Нормативы" in wb_a.sheetnames
+    assert "Статистика" in wb_a.sheetnames
+    assert "Уникальные ID" not in wb_a.sheetnames
+
+    wb_d = load_workbook(detail_path)
+    assert "Уникальные ID" in wb_d.sheetnames
+    assert "Свод по менеджеру" in wb_d.sheetnames
+    assert "Нормативы" not in wb_d.sheetnames

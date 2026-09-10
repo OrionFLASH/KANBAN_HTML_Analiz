@@ -39,7 +39,7 @@ def _config() -> dict:
                 "max_header_marker": "Макс",
             },
             "excel_format": {
-                "date_format": "DD.MM.YYYY",
+                "date_format": "YYYY-MM-DD",
                 "float_format": "0.00",
                 "int_format": "0",
                 "min_column_width": 12,
@@ -100,15 +100,17 @@ def test_format_sheet_applies_date_number_format(tmp_path: Path) -> None:
     ws = wb.active
     format_sheet(ws, cfg, sheet_key="norms")
     assert isinstance(ws.cell(2, 2).value, datetime)
-    assert ws.cell(2, 2).number_format == "DD.MM.YYYY"
+    assert ws.cell(2, 2).number_format == "YYYY-MM-DD"
     assert isinstance(ws.cell(2, 3).value, datetime)
-    assert ws.cell(2, 3).number_format == "DD.MM.YYYY"
+    assert ws.cell(2, 3).number_format == "YYYY-MM-DD"
 
 
-def test_light_format_sheets_skips_per_cell_theme(tmp_path: Path) -> None:
-    """leads/violations в light_format_sheets — без обхода ячеек (даты без спец. формата)."""
+def test_light_format_sheets_applies_date_and_skips_theme(tmp_path: Path) -> None:
+    """leads/violations в light_format_sheets — без green_red, но даты/ID форматируются."""
     cfg: dict = _config()
     cfg["output"]["excel_format"]["light_format_sheets"] = ["leads", "violations"]
+    cfg["output"]["snapshot_columns"]["client_id"] = "Идентификатор клиента"
+    cfg["columns"]["client_id"] = "Идентификатор клиента"
     frame: pd.DataFrame = coerce_date_columns(
         pd.DataFrame(
             {
@@ -116,6 +118,7 @@ def test_light_format_sheets_skips_per_cell_theme(tmp_path: Path) -> None:
                 "Мин дней": [1],
                 "Макс дней": [9],
                 "Дата начала работы": ["01.09.2026"],
+                "Идентификатор клиента": ["12345678901234567890"],
             }
         ),
         cfg,
@@ -126,7 +129,10 @@ def test_light_format_sheets_skips_per_cell_theme(tmp_path: Path) -> None:
     wb = load_workbook(path)
     ws = wb.active
     format_sheet(ws, cfg, sheet_key="leads")
-    # Шапка оформлена; поклеточная тема/формат DD.MM.YYYY не навешиваются
+    # Шапка оформлена; min/max заливка не навешивается
     assert ws.cell(1, 1).font.bold is True
-    assert ws.cell(2, 2).number_format != "DD.MM.YYYY"
-    assert ws.cell(2, 4).number_format != "DD.MM.YYYY"
+    assert ws.cell(2, 2).fill.fgColor is None or ws.cell(2, 2).fill.fill_type is None
+    # Дата и текстовый ID — форматы применяются даже в light
+    assert ws.cell(2, 4).number_format == "YYYY-MM-DD"
+    assert ws.cell(2, 5).number_format == "@"
+    assert isinstance(ws.cell(2, 5).value, str)
