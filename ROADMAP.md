@@ -284,6 +284,15 @@ src/
 | 11.55 | Подробные описания параметров config (statistics/`export_km_count` и др.) | Docs, config | `[v]` |
 | 11.56 | Архив документации `docs_20260910b.zip`; удалить `docs_20260910.zip` | корень репо | `[v]` |
 | 11.57 | Полный справочник: подробное описание **каждого** ключа `config_excel_v2.json` | Docs | `[v]` |
+| 11.59 | Третий Excel: исходные строки + лидеры/почты; отдельные фильтры; report_parts source | `source_export`, filters, pipeline, docs, zip | `[v]` |
+
+### 11.59 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.59.1 | Расширить match: starts_with, gt/gte/lt/lte, max/min | `[v]` |
+| 11.59.2 | `output.source_export` + ordered filters; report_parts source/full | `[v]` |
+| 11.59.3 | Экспорт xlsx (freeze+autofilter), тесты, docs, полный zip | `[v]` |
 
 ### 11.57 — Декомпозиция
 

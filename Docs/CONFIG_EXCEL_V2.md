@@ -4,10 +4,10 @@
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
 > **Полный перечень без исключений:** на **каждый** ключ актуального `config_excel_v2.json` есть отдельная карточка (зачем / как / что даёт / от чего зависит / значение) в  
-> **[CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)** (603 пути, проверка: `python3 scripts/check_config_excel_v2_params.py`).  
+> **[CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)** (656 путей, проверка: `python3 scripts/check_config_excel_v2_params.py`).  
 > Этот файл — обзорный гайд по блокам и сценариям.
 
-**Версия документа:** 2.7.0 (2026-09-10)
+**Версия документа:** 2.8.0 (2026-09-10)
 
 ---
 
@@ -27,7 +27,8 @@
 4. [team_files](#4-team_files)
 4.1. [manager_emails](#manager_emails)
 5. [output — листы и колонки](#5-output--листы-и-колонки)
-5.1. [report_parts — два файла и пропуск расчётов](#report_parts)
+5.1. [report_parts — файлы analytics/detail/source](#report_parts)
+5.2. [source_export — третий Excel с исходными строками](#source_export)
 5.2. [duration_matrix — матрицы сроков](#duration_matrix)
 5.3. [status_duration_columns — сроки по статусам на «Уникальные ID»](#status_duration_columns)
 5.4. [excel_format — даты, текст ID, light-листы](#excel_format)
@@ -59,7 +60,7 @@ python -m src.v2.pipeline
 | `test_files` | массив имён xlsx | Файлы Kanban для test |
 | `prod_files` | массив имён xlsx | Файлы Kanban для prod |
 
-**Выход — два Excel-файла** (см. [`report_parts`](#report_parts)):
+**Выход — до трёх Excel-файлов** (см. [`report_parts`](#report_parts)): analytics, detail и опционально **source** (исходные строки + лидеры/почты).
 
 | Часть | Имя файла | Листы |
 |-------|-----------|--------|
@@ -234,7 +235,7 @@ python -m src.v2.pipeline
 | `column_key` | ключ из `columns` | Основная колонка | Берётся заголовок через `columns` | `"label"` → «Метка» |
 | `column_keys` | массив ключей | Доп. колонки | Совпадение по **OR** с основной | искать метку ещё в другой колонке |
 | `action` | `include` \| `exclude` | Оставить / убрать | `include` — оставить совпавшие; `exclude` — убрать | терминальные стадии — `exclude` |
-| `match` | `equals` \| `contains` | Тип сравнения | Целое поле / подстрока | `contains` + «Стратегия» |
+| `match` | `equals` \| `contains` \| `starts_with` \| `ends_with` \| `gt` \| `gte` \| `lt` \| `lte` \| `max` \| `min` | Тип сравнения | Равенство / подстрока / префикс / суффикс / числовые и даты сравнения / экстремум по текущей выборке | `max` + `report_date`; `gt` + `[5]` |
 | `values` | массив | Эталоны | Сравниваются с ячейкой | `[1]` для ЕФС |
 | `values_mode` | `any` \| `all` | Логика по values | `any` — достаточно одного; `all` — все подстроки | «Стратегия» **и** «2026» |
 | `value_type` | `string` \| `number` \| `date` \| `auto` | Приведение типа | Числа не сравниваются как текст | ЕФС = number |
@@ -475,7 +476,8 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
   "report_parts": "both",
   "report_part_suffixes": {
     "analytics": "analytics",
-    "detail": "detail"
+    "detail": "detail",
+    "source": "source"
   },
   "report_prefix": "kanban_excel_v2",
   "timestamp_format": "%Y%m%d_%H%M%S"
@@ -484,15 +486,90 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 
 | Значение `report_parts` | Файлы | Что **считается** | Что **пропускается** |
 |-------------------------|-------|-------------------|----------------------|
-| `both` (default) | analytics + detail | полный pipeline | — |
-| `analytics` | `*_analytics_*.xlsx` | фильтры, records, нормативы, воронка, матрицы сроков | загрузка команд, почты, exceedance на лидах, своды менеджеров, лист Уникальные ID |
-| `detail` | `*_detail_*.xlsx` | фильтры, снимок, команды, почты, нормативы→P80, exceedance, своды, колонки сроков по статусам | матрицы сроков, лист «Статистика» / воронка на экспорт |
+| `both` (default) | analytics + detail | полный pipeline без source | source_export |
+| `analytics` | `*_analytics_*.xlsx` | фильтры, records, нормативы, воронка, матрицы сроков | команды, почты, detail, source |
+| `detail` | `*_detail_*.xlsx` | фильтры, снимок, команды, почты, P80, exceedance, своды | матрицы / воронка на экспорт; source |
+| `source` | `*_source_*.xlsx` | загрузка Kanban → фильтры `output.source_export` → лидеры/почты | analytics и detail целиком |
+| `full` / `all` / `все` | все три | полный pipeline + source | — |
 
-Допустимы список `["analytics","detail"]` и синонимы (`нормативы`, `лиды`, `1`/`2`, `оба`).
+Допустимы список `["analytics","detail","source"]` и синонимы (`нормативы`, `лиды`, `исходные`, `1`/`2`/`3`, `оба`, `все`).
 
 Имена файлов: `{report_prefix}_{suffix}_{timestamp}.xlsx`.
 
-> **Зачем:** на prod матрицы и воронка тяжелее по CPU; команды/почты — по I/O. Если нужна только одна часть — ставьте `analytics` или `detail`.
+> **Зачем:** на prod матрицы и воронка тяжелее по CPU; команды/почты — по I/O. Source — отдельная выгрузка «как в файле» с своими фильтрами.
+
+### source_export
+
+Третий Excel: **все колонки как после загрузки** Kanban + колонки лидеров лида/сделки и их почт. Фильтры **не** из корневого `filters`, а из `output.source_export`.
+
+```json
+"output": {
+  "source_export": {
+    "filters_order": [
+      "efs_equals_1",
+      "max_report_date",
+      "status_activation",
+      "label_strategy_kvartal",
+      "label_kvartal_2_or_3"
+    ],
+    "filters": {
+      "efs_equals_1": {
+        "enabled": true,
+        "column_key": "efs_flag",
+        "action": "include",
+        "match": "equals",
+        "values": [1],
+        "values_mode": "any",
+        "value_type": "number"
+      },
+      "max_report_date": {
+        "enabled": true,
+        "column_key": "report_date",
+        "action": "include",
+        "match": "max",
+        "values": [],
+        "value_type": "date"
+      },
+      "status_activation": {
+        "enabled": true,
+        "column_key": "current_status",
+        "action": "include",
+        "match": "contains",
+        "values": ["Активация продукта"],
+        "value_type": "string"
+      },
+      "label_strategy_kvartal": {
+        "enabled": true,
+        "column_key": "label",
+        "action": "include",
+        "match": "contains",
+        "values": ["Стратегия", "квартал"],
+        "values_mode": "all",
+        "value_type": "string"
+      },
+      "label_kvartal_2_or_3": {
+        "enabled": true,
+        "column_key": "label",
+        "action": "include",
+        "match": "contains",
+        "values": ["2", "3"],
+        "values_mode": "any",
+        "value_type": "string"
+      }
+    }
+  }
+}
+```
+
+| Поле блока | Смысл |
+|------------|--------|
+| `filters_order` | Порядок шагов: каждый следующий фильтр — на **остатке** предыдущего |
+| `filters.<имя>.enabled` | Вкл/выкл шага без удаления из order |
+| `filters.<имя>.*` | Та же универсальная схема, что в §3 (`action`, `match`, `values`, `values_mode`, `value_type`, …) |
+
+`match=max` / `min` — оставить строки с экстремумом колонки **в текущей выборке** (после предыдущих шагов). Для даты отчёта задайте `value_type: "date"`.
+
+Лист: `output.sheets.source` («Исходные строки»). Закрепление шапки и автофильтр — через `sheet_freeze.source` + `format_sheet`.
 
 ### sheets
 
@@ -506,7 +583,8 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
   "duration_matrix_by_group_status": "Распред. сроков (группы+статус)",
   "leads": "Уникальные ID",
   "managers": "Свод по менеджеру",
-  "violations": "Свод ПрПр с отклонениями"
+  "violations": "Свод ПрПр с отклонениями",
+  "source": "Исходные строки"
 }
 ```
 
@@ -519,6 +597,7 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 | `duration_matrix_by_status` | Матрица с разрезом по «Текущий статус» (колонка после продукта) |
 | `duration_matrix_by_group_status` | Группы А→Я + статус; имя листа ≤31 символа |
 | `leads` / `managers` / `violations` | См. §1 |
+| `source` | Третий файл: исходные колонки Kanban + лидеры/почты; см. [`source_export`](#source_export) |
 
 ### sheet_freeze
 
@@ -769,6 +848,7 @@ Excel закрепляет всё слева и выше первой незак
 | `report_prefix` | `kanban_excel_v2` | Имя выходных файлов | `{prefix}_{analytics\|detail}_{timestamp}.xlsx` |
 | `timestamp_format` | `%Y%m%d_%H%M%S` | Суффикс времени | Меняет только имя файла |
 | `report_parts` / `report_part_suffixes` | §5.1 | Какие части отчёта строить | Пропуск расчётов |
+| `source_export` | §5.2 | Фильтры третьего Excel | Исходные строки + лидеры |
 | `all_tb_label` | `"все тб"` | Подпись агрегата без разреза по ТБ | Строка «все тб» в нормативах / воронке |
 | `excel_max_sheet_name_length` | `31` | Лимит Excel на имя листа | Обрезка длинных имён (матрицы со статусом) |
 | `excel_max_rows_per_sheet` / `csv_overflow` | § ниже | Overflow больших листов | CSV вместо вкладки |
@@ -1023,6 +1103,8 @@ Excel закрепляет всё слева и выше первой незак
 |--------|------|
 | Только нормативы и матрицы | `"report_parts": "analytics"` |
 | Только уникальные ID / менеджеры | `"report_parts": "detail"` |
+| Только исходные строки + лидеры | `"report_parts": "source"` |
+| Все три файла | `"report_parts": "full"` |
 | Порог превышения = медиана | `"exceedance": { "percentile": 50 }` |
 | Порядок статусов на «Уникальные ID» | `output.status_duration_columns.order` |
 | Формат дат | `output.excel_format.date_format` (`YYYY-MM-DD`) |
@@ -1049,7 +1131,7 @@ Excel закрепляет всё слева и выше первой незак
 | Teams | `team_files.*` вкл. `pick_report_date`, `columns.*`, `output_columns.*` | §4 |
 | Emails | `manager_emails.*` | §4.1 |
 | Client | `client_display.enabled`, `abbreviations[]` | §6 |
-| Output core | `report_prefix`, `timestamp_format`, `report_parts`, `report_part_suffixes`, `all_tb_label`, `excel_max_sheet_name_length`, `excel_max_rows_per_sheet`, `csv_overflow` | §5 / §5.5 |
+| Output core | `report_prefix`, `timestamp_format`, `report_parts`, `report_part_suffixes`, `source_export`, `all_tb_label`, `excel_max_sheet_name_length`, `excel_max_rows_per_sheet`, `csv_overflow` | §5 / §5.5 |
 | Sheets | `sheets.*`, `sheet_freeze.*` | §5 |
 | Matrix | `duration_matrix.*` (variants, widths, heights, fills, `color_scale`) | §5.2 |
 | Snapshot | `snapshot_columns`, `status_duration_columns.*`, `exceedance_columns` | §5 |

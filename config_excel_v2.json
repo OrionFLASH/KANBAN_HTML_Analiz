@@ -566,7 +566,69 @@
     "report_parts": "both",
     "report_part_suffixes": {
       "analytics": "analytics",
-      "detail": "detail"
+      "detail": "detail",
+      "source": "source"
+    },
+    "source_export": {
+      "filters_order": [
+        "efs_equals_1",
+        "max_report_date",
+        "status_activation",
+        "label_strategy_kvartal",
+        "label_kvartal_2_or_3"
+      ],
+      "filters": {
+        "efs_equals_1": {
+          "enabled": true,
+          "column_key": "efs_flag",
+          "action": "include",
+          "match": "equals",
+          "values": [1],
+          "values_mode": "any",
+          "value_type": "number",
+          "case_sensitive": false
+        },
+        "max_report_date": {
+          "enabled": true,
+          "column_key": "report_date",
+          "action": "include",
+          "match": "max",
+          "values": [],
+          "values_mode": "any",
+          "value_type": "date",
+          "case_sensitive": false
+        },
+        "status_activation": {
+          "enabled": true,
+          "column_key": "current_status",
+          "action": "include",
+          "match": "contains",
+          "values": ["Активация продукта"],
+          "values_mode": "any",
+          "value_type": "string",
+          "case_sensitive": false
+        },
+        "label_strategy_kvartal": {
+          "enabled": true,
+          "column_key": "label",
+          "action": "include",
+          "match": "contains",
+          "values": ["Стратегия", "квартал"],
+          "values_mode": "all",
+          "value_type": "string",
+          "case_sensitive": false
+        },
+        "label_kvartal_2_or_3": {
+          "enabled": true,
+          "column_key": "label",
+          "action": "include",
+          "match": "contains",
+          "values": ["2", "3"],
+          "values_mode": "any",
+          "value_type": "string",
+          "case_sensitive": false
+        }
+      }
     },
     "all_tb_label": "все тб",
     "excel_max_sheet_name_length": 31,
@@ -585,7 +647,8 @@
       "duration_matrix_by_group_status": "Распред. сроков (группы+статус)",
       "leads": "Уникальные ID",
       "managers": "Свод по менеджеру",
-      "violations": "Свод ПрПр с отклонениями"
+      "violations": "Свод ПрПр с отклонениями",
+      "source": "Исходные строки"
     },
     "sheet_freeze": {
       "default": {
@@ -625,6 +688,10 @@
         "last_col": 2
       },
       "violations": {
+        "last_row": 1,
+        "last_col": 0
+      },
+      "source": {
         "last_row": 1,
         "last_col": 0
       }
@@ -775,7 +842,7 @@
       "min_column_width": 12,
       "sample_rows_for_width": 200,
       "hotspots_column_width": 55,
-      "light_format_sheets": ["leads", "violations"],
+      "light_format_sheets": ["leads", "violations", "source"],
       "colors": {
         "min": "C6EFCE",
         "max": "FFC7CE"

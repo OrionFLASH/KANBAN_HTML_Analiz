@@ -14,9 +14,49 @@ from src.settings import filter_column_name, filter_column_names
 
 logger: logging.Logger = logging.getLogger("kanban.filters")
 
-_UNIVERSAL_KEYS: frozenset[str] = frozenset(
-    {"action", "match", "values", "values_mode", "value_type"}
+_MATCH_ALIASES: dict[str, str] = {
+    "startswith": "starts_with",
+    "starts": "starts_with",
+    "endswith": "ends_with",
+    "ends": "ends_with",
+    "greater": "gt",
+    "greater_than": "gt",
+    "greater_or_equal": "gte",
+    "ge": "gte",
+    "less": "lt",
+    "less_than": "lt",
+    "less_or_equal": "lte",
+    "le": "lte",
+    "eq": "equals",
+    "equal": "equals",
+    "==": "equals",
+    ">": "gt",
+    ">=": "gte",
+    "<": "lt",
+    "<=": "lte",
+}
+
+_ALLOWED_MATCH: frozenset[str] = frozenset(
+    {
+        "equals",
+        "contains",
+        "starts_with",
+        "ends_with",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "max",
+        "min",
+    }
 )
+
+
+def _normalize_match(match: Any) -> str:
+    """Синонимы match → каноническое имя (equals/contains/gt/…/max)."""
+    match_norm: str = str(match or "equals").strip().casefold().replace("-", "_")
+    match_norm = _MATCH_ALIASES.get(match_norm, match_norm)
+    return match_norm if match_norm in _ALLOWED_MATCH else "equals"
 
 
 def _has_legacy_match_keys(flt: dict[str, Any]) -> bool:
@@ -76,6 +116,11 @@ def normalize_filter(flt: dict[str, Any]) -> dict[str, Any]:
         out.setdefault("values_mode", "any")
         out.setdefault("value_type", "auto")
         out.setdefault("case_sensitive", False)
+        out["match"] = _normalize_match(out.get("match"))
+        vt: str = str(out.get("value_type", "auto"))
+        out["value_type"] = vt if vt in {"string", "number", "date", "auto"} else "auto"
+        vm: str = str(out.get("values_mode", "any"))
+        out["values_mode"] = vm if vm in {"any", "all"} else "any"
         if "column_keys" not in out and out.get("also_column_keys"):
             out["column_keys"] = list(out["also_column_keys"])
         return out
@@ -161,9 +206,11 @@ def normalize_filter(flt: dict[str, Any]) -> dict[str, Any]:
         value_type = str(flt["value_type"])
 
     out["values"] = values
-    out["match"] = match if match in {"equals", "contains"} else "equals"
+    out["match"] = _normalize_match(match)
     out["values_mode"] = values_mode if values_mode in {"any", "all"} else "any"
-    out["value_type"] = value_type if value_type in {"string", "number", "date", "auto"} else "auto"
+    out["value_type"] = (
+        value_type if value_type in {"string", "number", "date", "auto"} else "auto"
+    )
     return out
 
 
@@ -184,7 +231,15 @@ def _resolve_value_type(flt: dict[str, Any]) -> str:
     """Итоговый value_type после auto."""
     declared: str = str(flt.get("value_type", "auto"))
     values: list[Any] = list(flt.get("values") or [])
+    match: str = str(flt.get("match", "equals")).strip().casefold()
     if declared == "auto":
+        # max/min без values: эвристика по column_key (дата / дни)
+        if match in {"max", "min"} and not values:
+            ck: str = str(flt.get("column_key", "")).casefold()
+            if "date" in ck or ck.endswith("_dt"):
+                return "date"
+            if any(tok in ck for tok in ("days", "count", "flag", "efs", "score")):
+                return "number"
         return _infer_value_type(values)
     if declared in {"string", "number", "date"}:
         return declared
@@ -236,7 +291,20 @@ def _match_string(
         else:
             folded: pd.Series = text.str.strip().str.casefold()
             parts = [folded == t.casefold() for t in tokens]
+    elif match == "starts_with":
+        if case_sensitive:
+            parts = [text.str.strip().str.startswith(t, na=False) for t in tokens]
+        else:
+            folded = text.str.strip().str.casefold()
+            parts = [folded.str.startswith(t.casefold(), na=False) for t in tokens]
+    elif match == "ends_with":
+        if case_sensitive:
+            parts = [text.str.strip().str.endswith(t, na=False) for t in tokens]
+        else:
+            folded = text.str.strip().str.casefold()
+            parts = [folded.str.endswith(t.casefold(), na=False) for t in tokens]
     else:
+        # contains (и неизвестный match, пришедший сюда)
         parts = [
             text.str.contains(t, case=case_sensitive, na=False, regex=False) for t in tokens
         ]
@@ -257,13 +325,13 @@ def _match_number(
     match: str,
     values_mode: str,
 ) -> pd.Series:
-    """Маска совпадения для числового типа (equals; contains → как string)."""
-    if match == "contains":
-        logger.warning("value_type=number с match=contains: сравнение как string")
+    """Маска для чисел: equals / gt / gte / lt / lte; contains/starts → string."""
+    if match in {"contains", "starts_with", "ends_with"}:
+        logger.warning("value_type=number с match=%s: сравнение как string", match)
         return _match_string(
             series,
             values,
-            match="contains",
+            match=match,
             values_mode=values_mode,
             case_sensitive=False,
         )
@@ -278,7 +346,14 @@ def _match_number(
         return pd.Series(True, index=series.index)
 
     col_num: pd.Series = pd.to_numeric(series, errors="coerce")
-    parts: list[pd.Series] = [col_num == n for n in nums]
+    op = {
+        "equals": lambda s, n: s == n,
+        "gt": lambda s, n: s > n,
+        "gte": lambda s, n: s >= n,
+        "lt": lambda s, n: s < n,
+        "lte": lambda s, n: s <= n,
+    }.get(match, lambda s, n: s == n)
+    parts: list[pd.Series] = [op(col_num, n) for n in nums]
     result: pd.Series = parts[0].fillna(False)
     for part in parts[1:]:
         if values_mode == "all":
@@ -296,13 +371,13 @@ def _match_date(
     match: str,
     values_mode: str,
 ) -> pd.Series:
-    """Маска совпадения для дат (equals по календарному дню; contains → string)."""
-    if match == "contains":
-        logger.warning("value_type=date с match=contains: сравнение как string")
+    """Маска для дат: equals / gt / gte / lt / lte по календарному дню."""
+    if match in {"contains", "starts_with", "ends_with"}:
+        logger.warning("value_type=date с match=%s: сравнение как string", match)
         return _match_string(
             series,
             values,
-            match="contains",
+            match=match,
             values_mode=values_mode,
             case_sensitive=False,
         )
@@ -320,7 +395,14 @@ def _match_date(
     if not ref_days:
         return pd.Series(True, index=series.index)
 
-    parts: list[pd.Series] = [(day_col == d) for d in ref_days]
+    op = {
+        "equals": lambda s, d: s == d,
+        "gt": lambda s, d: s > d,
+        "gte": lambda s, d: s >= d,
+        "lt": lambda s, d: s < d,
+        "lte": lambda s, d: s <= d,
+    }.get(match, lambda s, d: s == d)
+    parts: list[pd.Series] = [op(day_col, d) for d in ref_days]
     result: pd.Series = parts[0].fillna(False)
     for part in parts[1:]:
         if values_mode == "all":
@@ -330,6 +412,45 @@ def _match_date(
     return result
 
 
+def _match_extreme(
+    series: pd.Series,
+    *,
+    match: str,
+    value_type: str,
+    config: dict[str, Any] | None,
+) -> pd.Series:
+    """
+    Оставить строки, где значение колонки = max или min по текущей выборке.
+    Для date — по календарному дню; для number — numeric; иначе — как строки.
+    """
+    want_max: bool = match == "max"
+    cfg: dict[str, Any] = config or {}
+
+    if value_type == "date":
+        parsed: pd.Series = parse_date_column(series, cfg, "filter_extreme_date")
+        day: pd.Series = parsed.dt.normalize()
+        valid = day.dropna()
+        if valid.empty:
+            return pd.Series(False, index=series.index)
+        extreme = valid.max() if want_max else valid.min()
+        return (day == extreme).fillna(False)
+
+    if value_type == "number":
+        col_num: pd.Series = pd.to_numeric(series, errors="coerce")
+        valid_n = col_num.dropna()
+        if valid_n.empty:
+            return pd.Series(False, index=series.index)
+        extreme_n = valid_n.max() if want_max else valid_n.min()
+        return (col_num == extreme_n).fillna(False)
+
+    text: pd.Series = _string_series(series).str.strip()
+    nonempty = text[text != ""]
+    if nonempty.empty:
+        return pd.Series(False, index=series.index)
+    extreme_s = nonempty.max() if want_max else nonempty.min()
+    return text == extreme_s
+
+
 def build_match_mask(
     series: pd.Series,
     flt: dict[str, Any],
@@ -337,18 +458,22 @@ def build_match_mask(
 ) -> pd.Series:
     """
     Маска строк, совпавших с критериями универсального фильтра
-    (после normalize_filter). Пустой values → всё True (не отсекает).
+    (после normalize_filter). Пустой values → всё True (не отсекает),
+    кроме match=max|min (values не нужны).
     """
     uni: dict[str, Any] = normalize_filter(flt)
     values: list[Any] = list(uni.get("values") or [])
-    if not values:
-        logger.warning("Фильтр без values — строки не отсекаются")
-        return pd.Series(True, index=series.index)
-
     match: str = str(uni.get("match", "equals"))
     values_mode: str = str(uni.get("values_mode", "any"))
     case_sensitive: bool = bool(uni.get("case_sensitive", False))
     value_type: str = _resolve_value_type(uni)
+
+    if match in {"max", "min"}:
+        return _match_extreme(series, match=match, value_type=value_type, config=config)
+
+    if not values:
+        logger.warning("Фильтр без values — строки не отсекаются")
+        return pd.Series(True, index=series.index)
 
     if value_type == "number":
         return _match_number(series, values, match=match, values_mode=values_mode)
@@ -712,3 +837,54 @@ def apply_config_only_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.Da
         logger.info("Config-only фильтры (AND): %s", ", ".join(active))
 
     return result
+
+
+def apply_ordered_filters(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+    filters_cfg: dict[str, Any],
+    order: list[str],
+    *,
+    audit_each_filter: bool = False,
+) -> pd.DataFrame:
+    """
+    Последовательная фильтрация: каждый следующий фильтр — на остатке предыдущего.
+    Порядок = `order` (имена ключей). Учитываются и include, и exclude.
+    Фильтры с enabled=false пропускаются. Имена не из order в конце не применяются
+    (только явно перечисленные).
+    """
+    if df.empty or not filters_cfg:
+        return df
+
+    # Уникальный порядок: сначала order, без дублей
+    seen: set[str] = set()
+    names: list[str] = []
+    for name in order:
+        key: str = str(name).strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        names.append(key)
+
+    unknown: list[str] = [n for n in names if n not in filters_cfg]
+    if unknown:
+        logger.warning("apply_ordered_filters: нет фильтров с именами %s", unknown)
+
+    def _pred(name: str, flt: dict[str, Any]) -> bool:
+        return name in seen and bool(flt.get("enabled", False))
+
+    # Применяем строго в порядке names, не в порядке dict
+    result: pd.DataFrame = df
+    for name in names:
+        flt = filters_cfg.get(name)
+        if not isinstance(flt, dict) or not _pred(name, flt):
+            continue
+        subset_cfg: dict[str, Any] = {name: flt}
+        result, _active = _apply_filter_subset(
+            result,
+            config,
+            subset_cfg,
+            include_filter=lambda _n, f: bool(f.get("enabled", False)),
+            audit_each_filter=audit_each_filter,
+        )
+    return result.reset_index(drop=True)

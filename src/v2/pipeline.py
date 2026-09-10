@@ -42,11 +42,14 @@ from src.v2.parallel_utils import run_snapshot_records_teams_parallel
 from src.v2.report_parts import (
     REPORT_PART_ANALYTICS,
     REPORT_PART_DETAIL,
+    REPORT_PART_SOURCE,
     build_report_path,
     resolve_report_parts,
     want_analytics,
     want_detail,
+    want_source,
 )
+from src.v2.source_export import build_source_export_frame
 from src.v2.snapshot import snapshot_to_export_frame
 from src.v2.status_durations import attach_status_duration_columns
 from src.v2.team_enrich import enrich_snapshot_with_team_dfs
@@ -58,6 +61,7 @@ from src.performance import resolve_parallel_workers
 from src.progress import ProgressReporter
 from src.statistics_config import filter_and_order_statistics_frame
 from src.debug_trace import debug_event
+from src.team_loader import load_team_frames
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.pipeline")
 
@@ -76,11 +80,82 @@ def _enabled_filter_names(config: dict[str, Any]) -> list[str]:
     return names
 
 
+def _run_source_only_pipeline(
+    *,
+    config: dict[str, Any],
+    shared_config: dict[str, Any],
+    log: logging.Logger,
+    progress: ProgressReporter,
+    raw_df: pd.DataFrame,
+    output_dir: Path,
+    timestamp: str,
+    t_start: float,
+) -> list[Path]:
+    """
+    Только третий Excel: исходные строки + фильтры source_export + лидеры/почты.
+    Без нормативов, снимка и analytics/detail.
+    """
+    progress.stage("Source-only: команды и почты", f"{len(raw_df):,} строк")
+    with progress.timed("load_team_frames"):
+        lead_team_df, deal_team_df = load_team_frames(shared_config)
+    progress.step(
+        f"Команда: лид={len(lead_team_df):,} строк, сделка={len(deal_team_df):,} строк"
+    )
+
+    email_lookup = None
+    if manager_emails_enabled(config):
+        with progress.timed("load_manager_email_lookup"):
+            email_lookup = load_manager_email_lookup(config)
+    else:
+        progress.debug("manager_emails: выключены в config")
+
+    with progress.timed("build_source_export_frame", rows_in=len(raw_df)):
+        source_frame: pd.DataFrame = build_source_export_frame(
+            raw_df,
+            config,
+            lead_team_df=lead_team_df,
+            deal_team_df=deal_team_df,
+            email_lookup=email_lookup,
+        )
+    progress.done(f"Source export: {len(source_frame):,} строк")
+
+    del raw_df
+    del lead_team_df
+    del deal_team_df
+    _maybe_free_memory(config)
+
+    source_path: Path = build_report_path(
+        output_dir, config, REPORT_PART_SOURCE, timestamp
+    )
+    progress.stage("Экспорт source", str(source_path.name))
+    with progress.timed("export_excel_v2_source", rows=len(source_frame)):
+        _, csv_paths = export_excel_v2(
+            source_path,
+            {"source": source_frame},
+            config,
+        )
+    if csv_paths:
+        progress.step(f"CSV overflow: {', '.join(p.name for p in csv_paths)}")
+    progress.done(f"Excel source: {source_path.name}")
+
+    elapsed: float = time.monotonic() - t_start
+    progress.timing_summary(total_wall=elapsed)
+    log.info("Excel v2 (source-only) завершён за %.1f с: %s", elapsed, source_path.name)
+    debug_event(
+        logger,
+        "pipeline finished",
+        elapsed_sec=round(elapsed, 2),
+        files=1,
+        parts=REPORT_PART_SOURCE,
+    )
+    return [source_path]
+
+
 def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list[Path]:
     """
     Запускает Excel v2 pipeline.
 
-    Возвращает список созданных xlsx (1 или 2 файла в зависимости от report_parts).
+    Возвращает список созданных xlsx (1–3 файла в зависимости от report_parts).
     """
     t_start: float = time.monotonic()
     config: dict[str, Any] = load_excel_v2_config(config_path)
@@ -91,6 +166,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     report_parts: frozenset[str] = resolve_report_parts(config)
     need_analytics: bool = want_analytics(report_parts)
     need_detail: bool = want_detail(report_parts)
+    need_source: bool = want_source(report_parts)
 
     input_dir: Path = get_excel_v2_input_dir(config)
     filenames: list[str] = get_excel_v2_file_list(config)
@@ -136,6 +212,22 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     rows_loaded: int = len(raw_df)
     progress.debug(f"После загрузки Kanban: rows={rows_loaded:,}, cols={raw_df.shape[1]}")
     _maybe_free_memory(config)
+
+    # Копия для source-файла (фильтры analytics/detail на неё не влияют)
+    raw_for_source: pd.DataFrame | None = raw_df.copy() if need_source else None
+
+    # Только source — без нормативов/снимка
+    if need_source and not need_analytics and not need_detail:
+        return _run_source_only_pipeline(
+            config=config,
+            shared_config=shared_config,
+            log=log,
+            progress=progress,
+            raw_df=raw_df,
+            output_dir=output_dir,
+            timestamp=timestamp,
+            t_start=t_start,
+        )
 
     progress.stage("Фильтрация", f"{rows_loaded:,} строк")
     enabled_filters: list[str] = _enabled_filter_names(config)
@@ -192,8 +284,8 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     del after_inclusion
     _maybe_free_memory(config)
 
-    # Команды / почты нужны только для detail (лидеры на Unique ID / менеджеры)
-    load_teams: bool = need_detail
+    # Команды / почты — для detail и/или source
+    load_teams: bool = need_detail or need_source
     progress.stage(
         "Снимок + нормативы",
         f"{len(filtered_df):,} строк; teams={'да' if load_teams else 'нет'}",
@@ -220,36 +312,53 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     )
 
     email_lookup = None
-    if need_detail:
-        progress.substage("enrich_snapshot_with_team_dfs")
-        with progress.timed(
-            "enrich_snapshot_with_team_dfs",
-            snapshot_rows=len(snapshot),
-            lead_rows=len(lead_team_df),
-            deal_rows=len(deal_team_df),
-        ):
-            snapshot = enrich_snapshot_with_team_dfs(
-                snapshot, lead_team_df, deal_team_df, config
-            )
+    if need_detail or need_source:
+        if need_detail:
+            progress.substage("enrich_snapshot_with_team_dfs")
+            with progress.timed(
+                "enrich_snapshot_with_team_dfs",
+                snapshot_rows=len(snapshot),
+                lead_rows=len(lead_team_df),
+                deal_rows=len(deal_team_df),
+            ):
+                snapshot = enrich_snapshot_with_team_dfs(
+                    snapshot, lead_team_df, deal_team_df, config
+                )
 
         if manager_emails_enabled(config):
             progress.substage("manager_emails")
             with progress.timed("load_manager_email_lookup"):
                 email_lookup = load_manager_email_lookup(config)
-            with progress.timed(
-                "enrich_snapshot_with_manager_emails", snapshot_rows=len(snapshot)
-            ):
-                snapshot = enrich_snapshot_with_manager_emails(
-                    snapshot, config, email_lookup
-                )
+            if need_detail:
+                with progress.timed(
+                    "enrich_snapshot_with_manager_emails", snapshot_rows=len(snapshot)
+                ):
+                    snapshot = enrich_snapshot_with_manager_emails(
+                        snapshot, config, email_lookup
+                    )
         else:
             progress.debug("manager_emails: выключены в config")
     else:
-        progress.debug("Детализация выключена — лидеры и почты пропущены")
+        progress.debug("Детализация/source выключены — лидеры и почты пропущены")
 
     with progress.timed("audit_snapshot_coverage"):
         audit_snapshot_coverage(filtered_df, snapshot, config)
     progress.done(f"Уникальных ID: {len(snapshot):,}, записей стадий: {len(records):,}")
+
+    # Source export до удаления team frames
+    source_export_frame: pd.DataFrame = pd.DataFrame()
+    if need_source and raw_for_source is not None:
+        progress.stage("Исходные строки (source)", f"{len(raw_for_source):,} строк")
+        with progress.timed("build_source_export_frame", rows_in=len(raw_for_source)):
+            source_export_frame = build_source_export_frame(
+                raw_for_source,
+                config,
+                lead_team_df=lead_team_df,
+                deal_team_df=deal_team_df,
+                email_lookup=email_lookup,
+            )
+        progress.done(f"Source export: {len(source_export_frame):,} строк")
+        del raw_for_source
 
     del lead_team_df
     del deal_team_df
@@ -415,6 +524,23 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         created_paths.append(detail_path)
         all_csv_paths.extend(csv_d)
         progress.done(f"Excel detail: {detail_path.name}")
+
+    if need_source:
+        source_path: Path = build_report_path(
+            output_dir, config, REPORT_PART_SOURCE, timestamp
+        )
+        progress.stage("Экспорт source", str(source_path.name))
+        progress.debug(f"Source лист: rows={len(source_export_frame):,}")
+        with progress.timed("export_excel_v2_source", rows=len(source_export_frame)):
+            _, csv_s = export_excel_v2(
+                source_path,
+                {"source": source_export_frame},
+                config,
+            )
+        created_paths.append(source_path)
+        all_csv_paths.extend(csv_s)
+        progress.done(f"Excel source: {source_path.name}")
+        del source_export_frame
 
     if all_csv_paths:
         progress.step(f"CSV overflow: {', '.join(p.name for p in all_csv_paths)}")
