@@ -57,7 +57,7 @@ python run_excel.py
 
 Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.6.0.
 
-Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910.zip`**.
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910b.zip`**.
 
 ## Структура проекта
 
