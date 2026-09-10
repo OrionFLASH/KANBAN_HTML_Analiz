@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.5.0 (2026-09-10)
+**Версия документа:** 2.5.1 (2026-09-10)
 
 ---
 
@@ -11,17 +11,27 @@
 
 1. [Запуск и пути](#1-запуск-и-пути)
 2. [Карта корневых ключей](#2-карта-корневых-ключей)
+2.1. [columns](#21-columns--имена-колонок-kanban)
+2.2. [excel](#22-excel--чтение-kanban)
+2.3. [processing](#23-processing)
+2.4. [dates](#24-dates)
+2.5. [Анализ и агрегация](#25-анализ-и-агрегация)
+2.6. [logging](#26-logging)
 3. [Фильтры v2](#3-фильтры-v2)
 3.1. [Отсечение выбросов](#31-отсечение-выбросов-outlier_clipping)
 4. [team_files](#4-team_files)
+4.1. [manager_emails](#manager_emails)
 5. [output — листы и колонки](#5-output--листы-и-колонки)
 5.1. [report_parts — два файла и пропуск расчётов](#report_parts)
 5.2. [duration_matrix — матрицы сроков](#duration_matrix)
 5.3. [status_duration_columns — сроки по статусам на «Уникальные ID»](#status_duration_columns)
 5.4. [excel_format — даты, текст ID, light-листы](#excel_format)
+5.5. [statistics / column_labels](#55-statistics--column_labels)
 6. [client_display](#6-client_display)
 7. [Производительность](#7-производительность)
+7.1. [progress](#71-progress)
 8. [Минимальный config](#8-минимальный-config)
+9. [Чек-лист ключей config_excel_v2.json](#9-чек-лист-ключей-config_excel_v2json)
 
 ---
 
@@ -72,36 +82,116 @@ python -m src.v2.pipeline
 
 | Ключ | Назначение |
 |------|------------|
-| `columns`, `required_column_keys`, `optional_column_keys` | Имена колонок Kanban (см. [CONFIG.md §4](CONFIG.md#4-колонки-excel-columns)) |
-| `excel` | Лист Sheet1 с заголовком, openpyxl `read_only` |
-| `processing` | Дедупликация, аудит, fallback сроков |
-| `dates` | Парсинг дат |
-| `duration_source` | `"columns"` (по умолчанию) или `"dates"` |
-| `stage_analysis_mode` | `"status"` — только «Текущий статус» |
-| `product_analysis_mode` | `"group_product"` |
-| `percentiles` | `[20, 50, 80]` |
-| `exceedance.percentile` | Порог превышения на лидах (по умолчанию `80`; должен входить в `percentiles`) |
-| `aggregation.metrics` | `["days_on_stage"]` — только срок на стадии |
+| `columns`, `required_column_keys`, `optional_column_keys` | Имена колонок Kanban — §2.1 |
+| `excel` | Чтение xlsx Kanban — §2.2 |
+| `processing` | Дедупликация, аудит, fallback сроков — §2.3 |
+| `dates` | Парсинг дат — §2.4 |
+| `duration_source` | `"columns"` (по умолчанию) или `"dates"` — §2.5 |
+| `stage_analysis_mode` | `"status"` — только «Текущий статус» — §2.5 |
+| `product_analysis_mode` | `"group_product"` — §2.5 |
+| `percentiles` | `[20, 50, 80]` — §2.5 |
+| `exceedance.percentile` | Порог превышения на лидах (в актуальном config часто `50`; должен входить в `percentiles`) |
+| `aggregation` | `group_keys` + `metrics` — §2.5 |
 | `filters` | См. §3 |
 | `outlier_clipping` | Отсечение выбросов срока перед нормативами, см. §3.1 |
 | `team_files` | Файлы команд лида/сделки, см. §4 |
-| `manager_emails` | CSV почт Альфа/Сигма по ТН (`IN/` + filename), см. §4 |
+| `manager_emails` | CSV почт Альфа/Сигма по ТН (`IN/` + filename), см. §4.1 |
 | `client_display` | Сокращение юрформ в «Клиент», см. §6 |
 | `output` | Префикс, **report_parts**, листы, подписи, оформление Excel — §5 |
 | `performance` | Workers, память, параллель этапов, см. §7 |
-| `progress` | Консольный прогресс; `debug_detail` (default true) — тайминги подэтапов в DEBUG |
-| `logging` | `logger_name: kanban_excel_v2` |
+| `progress` | Консольный прогресс — §7.1 |
+| `logging` | Префиксы файлов логов — §2.6 |
 | `parallel_workers` | `0` = авто (CPU − reserve) |
 | `excel_theme` | `"green_red"` — заливка колонок «Мин»/«Макс» |
 
-Дополнительные колонки v2 (в `columns`; не все попадают в снимок):
+### 2.1. `columns` — имена колонок Kanban
 
-| Ключ | Колонка Excel | В снимке «Уникальные ID»? |
-|------|---------------|---------------------------|
-| `client_id` | Идентификатор клиента | да (как **текст**) |
-| `gosb` | ГОСБ | да |
-| `source_deal_id` | ID сделки в исходной системе | **нет** (не выводится) |
-| `tb_code` | Код ТБ | **нет** (не выводится) |
+Ключ → заголовок в Excel. Обязательные — в `required_column_keys`, остальные — в `optional_column_keys` (отсутствие optional не останавливает pipeline).
+
+| Ключ | Типичный заголовок | Обязательный? | В снимке «Уникальные ID»? |
+|------|--------------------|---------------|---------------------------|
+| `report_date` | Дата отчета | да | служебный (не колонка снимка) |
+| `lead_id` | ID ПрПр | да | ключ строки |
+| `product_group` | Группа продукта | да | да |
+| `product` | Продукт | да | да |
+| `current_status` | Текущий статус | да | да (как «Стадия работы с лидом») |
+| `days_on_stage` | Количество дней на текущей стадии | да | через exceedance / status_duration |
+| `tb` | ТБ | да | да |
+| `efs_flag` | ЕФС флаг | да | нет (фильтр) |
+| `change_conditions` | _Изменение условий | да | нет (фильтр) |
+| `label` | Метка | да | нет (фильтр) |
+| `inn` | ИНН | нет | да |
+| `client_id` | Идентификатор клиента | нет | да (**текст**) |
+| `client` | Клиент | нет | да |
+| `work_start_date` | Дата начала работы | нет | да |
+| `deal_id` | ID сделки | нет | да |
+| `source_deal_id` | ID сделки в исходной системе | нет | **нет** |
+| `deal_created_date` | Дата создания сделки | нет | да |
+| `deal_stage` | Стадия сделки | нет | да |
+| `days_since_deal` | Количество дней с создания сделки | нет | нет |
+| `tb_code` | Код ТБ | нет | **нет** |
+| `gosb` | ГОСБ | нет | да |
+| `km` | КМ | нет | да |
+| `vks` | ВКС | нет | да |
+
+Полный список актуальных заголовков — в `config_excel_v2.json` → `columns`. Подробнее про общие правила — [CONFIG.md §4](CONFIG.md#4-колонки-excel-columns).
+
+### 2.2. `excel` — чтение Kanban
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `sheet_name` | `"Sheet1"` | Имя листа |
+| `engine` | `"openpyxl"` | Движок pandas |
+| `read_only` | `true` | Режим openpyxl `read_only` (меньше RAM) |
+| `data_only` | `true` | Брать значения ячеек, не формулы |
+| `keep_links` | `false` | Не загружать внешние ссылки |
+| `na_values` | `[""]` | Строки, считающиеся пустыми при чтении |
+| `category_markers.for_sale` | `"К ПРОДАЖЕ"` | Маркер категории «к продаже» (служебный) |
+| `category_markers.in_work` | `"В РАБОТЕ"` | Маркер «в работе» |
+| `category_markers.unknown` | `"UNKNOWN"` | Неизвестный статус/категория |
+
+### 2.3. `processing`
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `empty_stage_values` | `["", "-", "nan", "None"]` | Пустые стадии: не попадают под терминальный `exclude` |
+| `dedup_same_date_agg` | `"max"` | На одну дату отчёта + стадию: агрегат дней (`max`) |
+| `pick_across_dates` | `"max_days_then_latest_report_date"` | Выбор записи между датами отчёта |
+| `group_only_product_label` | `"—"` | Подпись «Продукт» при `product_analysis_mode: group_only` |
+| `audit_row_counts` | `true` | Писать в лог аудит числа строк (не терять молча) |
+| `duration_fallback_to_columns` | `true` | При `duration_source: dates`: если дата пуста → колонка дней |
+
+### 2.4. `dates`
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `dayfirst` | `true` | При неоднозначности парсить как дд.мм.гггг |
+| `excel_origin` | `"1899-12-30"` | Epoch для числовых дат Excel |
+| `formats` | `["%d.%m.%Y", …]` | Список `strptime`-форматов по приоритету |
+| `empty_values` | `["", "-", "nan", …]` | Значения, считающиеся пустой датой |
+
+### 2.5. Анализ и агрегация
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `duration_source` | `"columns"` | Срок из колонки `days_on_stage`; `"dates"` — из разности дат |
+| `stage_analysis_mode` | `"status"` | Разрез по «Текущий статус» |
+| `product_analysis_mode` | `"group_product"` | Группа + продукт (`group_only` — только группа) |
+| `percentiles` | `[20, 50, 80]` | Перцентили нормативов / матриц / превышения |
+| `exceedance.percentile` | `50` (в актуальном config) | Порог «превышение» на лидах; ∈ `percentiles` |
+| `aggregation.metrics` | `["days_on_stage"]` | Метрики агрегации |
+| `aggregation.group_keys` | `product_group`, `product`, `current_status`, `stage_key` | Ключи группировки нормативов |
+
+### 2.6. `logging`
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `logger_name` | `"kanban_excel_v2"` | Имя логгера Python |
+| `info_file_prefix` | `"INFO_excel_v2"` | Префикс файла INFO в `paths.log` |
+| `debug_file_prefix` | `"DEBUG_excel_v2"` | Префикс файла DEBUG |
+| `hour_format` | `"%Y%m%d_%H"` | Суффикс часа в имени лог-файла |
+
+Имена: `{info_file_prefix}_{hour}.log`, `{debug_file_prefix}_{hour}.log` (см. также правила проекта в README).
 
 ---
 
@@ -267,6 +357,7 @@ python -m src.v2.pipeline
 ```json
 "team_files": {
   "enabled": true,
+  "pick_report_date": "latest",
   "files": {
     "test": ["Кбан К Л и С  (А 2Т2Г) __ 07-09-2026.xlsx"],
     "prod": [
@@ -280,7 +371,18 @@ python -m src.v2.pipeline
   "team_type_values": { "lead": [1, "1"], "deal": [2, "2"], "unassigned": ["-", "—", ""] },
   "leader_values": ["Да", "да", "yes", "YES", "true", "True", "1"],
   "keep_leaders_only": true,
-  "columns": { "...": "...", "team_type": "Тип команды" },
+  "columns": {
+    "report_date": "Дата отчета",
+    "team_added_date": "Дата добавления в команду",
+    "lead_id": "ID ПрПр",
+    "deal_id": "ID сделки",
+    "member_tab_number": "Табельный номер участника команды",
+    "member": "Участник команды",
+    "role": "Роль участника команды",
+    "is_leader": "Лидер",
+    "tb": "ТБ",
+    "team_type": "Тип команды"
+  },
   "output_columns": {
     "lead": {
       "member_tab_number": "TN Лидера лида",
@@ -288,13 +390,29 @@ python -m src.v2.pipeline
       "role": "Роль Лидера лида",
       "tb": "ТБ Лидера лида"
     },
-    "deal": { "...": "..." }
+    "deal": {
+      "member_tab_number": "TN Лидера сделки",
+      "member": "ФИО Лидера сделки",
+      "role": "Роль Лидера сделки",
+      "tb": "ТБ Лидера сделки"
+    }
   }
 }
 ```
 
-- `keep_leaders_only: true` (по умолчанию) — сразу после чтения каждого файла команды остаются только строки с `Лидер` ∈ `leader_values`. Участники без флага «Лидер» в Excel v2 **нигде не используются** (lookup → снимок/почты/своды); отсев безопасен и снижает RAM до concat.
-- После склейки `files` строки делятся по «Тип команды»; лидер — `Лидер` ∈ `leader_values` на max(`Дата отчета`), затем max(`Дата добавления в команду`); если `Дата отчета` нет — весь файл считается одной датой отчёта (не ошибка), дальше обычный отбор по дате добавления; равные даты — все через `\n`.
+| Ключ | Описание |
+|------|----------|
+| `enabled` | Вкл/выкл подтягивание команд |
+| `pick_report_date` | `"latest"` — брать лидеров на максимальной дате отчёта в файле |
+| `files` / `lead_team` / `deal_team` | Списки xlsx по `mode`; приоритет у `files` |
+| `team_type_values` | Значения колонки «Тип команды»: лид / сделка / не взят |
+| `leader_values` | Значения колонки «Лидер», считающиеся истиной |
+| `keep_leaders_only` | `true` — сразу после чтения оставить только строки-лидеры |
+| `columns.*` | Имена колонок во входном xlsx команд |
+| `output_columns.lead` / `.deal` | Заголовки колонок лидеров на листах detail |
+
+- `keep_leaders_only: true` (по умолчанию) — участники без флага «Лидер» в Excel v2 **нигде не используются** (lookup → снимок/почты/своды); отсев снижает RAM до concat.
+- После склейки `files` строки делятся по «Тип команды»; лидер — `is_leader` ∈ `leader_values` на max(`report_date`), затем max(`team_added_date`); если `Дата отчета` нет — весь файл считается одной датой отчёта; равные даты — все через `\n`.
 - Отсутствие любого файла из списка — ошибка.
 - Если нет лидеров (в т.ч. Тип/ТН = «-») — в своде менеджеров используются **КМ** (роль «ВКО») и **ВКС** из канбана.
 
@@ -332,10 +450,6 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 ```
 
 На листах «Свод по менеджеру» почты вставляются сразу после «ФИО»; на «Уникальные ID» — сразу после «ФИО Лидера …»; на «Свод ПрПр…» — после «Табельный номер».
-
-### output.statistics
-
-Управление экспортом min/max/перцентилей (расчёт всегда полный). По умолчанию: число лидов — да; min/max — нет; P20/P50 — только граница; P80 — граница + le/gt/min/max. См. [CONFIG.md](CONFIG.md).
 
 ---
 
@@ -473,12 +587,22 @@ Excel закрепляет всё слева и выше первой незак
 | `enabled` | `true` | Выключить лист без удаления ключа из `sheets` |
 | `sort_mode` | `by_volume` | Режим основного листа, если `variants` нет |
 | `variants` | — | Список `{sheet_key, sort_mode, include_status?}`: несколько листов |
+| `variants[].sheet_key` | — | Ключ имени листа из `output.sheets` |
 | `include_status` | `false` | В variant: колонка текущего статуса после продукта |
+| `total_column_label` | `"Всего"` | Подпись столбца итога |
+| `day_column_width` | `4.5` | Ширина колонок дней |
+| `percentile_column_width` | `8` | Ширина колонок P20/P50/P80 |
 | `max_day_span` | `3000` | Лимит числа колонок дней |
 | `row_height` | `28` | Высота строк продуктов |
+| `header_row_height` | `22` | Высота строки заголовков |
+| `filter_row_height` | `16` | Высота строки «Всего» / фильтра |
 | `counts_font_size` | `14` | Размер шрифта чисел лидов (ячейки и «Всего») |
+| `header_fill` | `FFF2CC` | Заливка шапки / подписей продуктов |
+| `filter_row_font_color` | `D9D9D9` | Цвет шрифта служебной строки фильтра |
 | `grid_border_color` | `BFBFBF` | Цвет пунктирной границы |
 | `threshold_border_color` | `C65911` | Цвет жирной рамки ячейки порога превышения |
+| `label_column_widths` | `A`…`D`, `total` | Ширины колонок подписей и «Всего» |
+| `color_scale.start` / `.mid` / `.end` | зел./жёлт./красн. | Градиент заливки ячеек числа лидов |
 
 **Режимы `sort_mode`:**
 
@@ -581,40 +705,77 @@ Excel закрепляет всё слева и выше первой незак
 
 ### excel_format
 
-Те же правила, что в `config.json` → `output.excel_format`:
-
-- `freeze_panes: A2` в `excel_format` — fallback, если нет `sheet_freeze`
-- `sheet_freeze` — закрепление **по листам** (`last_row` / `last_col`), см. выше
-- автофильтр, ширина колонок
-- `date_format: "YYYY-MM-DD"` — колонки дат (`Дата начала работы`, `Дата создания сделки`, …) пишутся как даты Excel
-- `hotspots_column_width: 55` — многострочные колонки (лидеры, «Группа + Продукт», «Клиент»)
-- `thousands_format: "# ##0"` — разделитель разрядов (пробел) для чисел на листе **«Статистика»**
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `freeze_panes` | `"A2"` | Fallback закрепления, если нет `sheet_freeze` для листа |
+| `float_format` | `"0.00"` | Числовой формат float |
+| `int_format` | `"0"` | Числовой формат целых |
+| `date_format` | `"YYYY-MM-DD"` | Даты Excel (`Дата начала работы`, `Дата создания сделки`, …) |
+| `thousands_format` | `"# ##0"` | Разделитель разрядов (пробел) на листе «Статистика» |
+| `max_column_width` | `45` | Потолок автоширины |
+| `min_column_width` | `12` | Минимум автоширины |
+| `sample_rows_for_width` | `200` | Сколько строк смотреть при оценке ширины |
+| `hotspots_column_width` | `55` | Ширина многострочных колонок (лидеры, «Клиент», …) |
+| `light_format_sheets` | `["leads","violations"]` | Листы без полного поклеточного оформления |
+| `colors.min` / `colors.max` | `C6EFCE` / `FFC7CE` | Заливка заголовков «Мин»/«Макс» при теме `green_red` |
 
 #### Текстовые идентификаторы
 
 «Идентификатор клиента» (и связанные ID) читаются и пишутся как **текст** (`number_format=@`), чтобы длинные значения не обрезались в Excel как числа.
 
-В `snapshot_columns` **не выводятся** `source_deal_id` (ID сделки в исходной системе) и `tb_code` (Код ТБ).
+В `snapshot_columns` **не выводятся** `source_deal_id` и `tb_code`.
 
 #### `excel_theme` и `light_format_sheets`
 
-Тема `green_red` **не отключена глобально**. В `format_sheet` заголовки, содержащие маркеры `min_header_marker` / `max_header_marker` (по умолчанию «Мин» / «Макс»), получают заливку из `excel_format.colors` (зелёный / красный). Пример на «Нормативах»: **«Мин срок дней»**, **«Макс срок дней»**.
+Тема `green_red` **не отключена глобально**. В `format_sheet` заголовки с маркерами `column_labels.min_header_marker` / `max_header_marker` (по умолчанию «Мин» / «Макс») получают заливку из `excel_format.colors`.
 
 | Лист (ключ) | `green_red` min/max | Полное поклеточное оформление |
 |-------------|---------------------|-------------------------------|
 | `norms`, `managers`, … | да | да |
-| `leads`, `violations` (список `light_format_sheets`) | **нет** | только даты/`@` для ID + freeze / автофильтр / шапка / ширина |
-| `duration_matrix*` | своё оформление листа матрицы | не через `format_sheet` |
+| `leads`, `violations` (`light_format_sheets`) | **нет** | только даты/`@` для ID + freeze / автофильтр / шапка / ширина |
+| `duration_matrix*` | своё оформление | не через `format_sheet` |
 | `statistics` | своё оформление | не через `format_sheet` |
 
-```json
-"excel_format": {
-  "light_format_sheets": ["leads", "violations"],
-  "colors": { "min": "C6EFCE", "max": "FFC7CE" }
-}
-```
+`light_format_sheets` ускоряет экспорт ПРОД на больших листах.
 
-`light_format_sheets` ускоряет экспорт ПРОД на больших листах: без обхода каждой ячейки для заливки и number_format.
+### 5.5. statistics / column_labels
+
+Корневые ключи `output` помимо листов:
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `report_prefix` | `kanban_excel_v2` | Префикс имён выходных xlsx |
+| `timestamp_format` | `%Y%m%d_%H%M%S` | Суффикс времени в имени файла |
+| `report_parts` / `report_part_suffixes` | см. §5.1 | Какие файлы строить |
+| `all_tb_label` | `"все тб"` | Подпись агрегата «все ТБ» в нормативах / воронке |
+| `excel_max_sheet_name_length` | `31` | Лимит длины имени листа Excel |
+| `excel_max_rows_per_sheet` / `csv_overflow` | см. ниже | Overflow больших листов в CSV |
+
+#### `output.statistics`
+
+Управление экспортом метрик на «Нормативы» / связанных сводах (расчёт может быть полным даже если `export: false`).
+
+| Ключ | Описание |
+|------|----------|
+| `attach_counts_left` | `true` — счётчики `≤` слева от границы перцентиля |
+| `min` / `max` / `total_count` | Флаги `compute`, `export`, опционально `export_le_count` / `export_gt_count` |
+| `percentiles[]` | По каждому `p`: `compute`, `export_days`, `export_count`, `export_le_count`, `export_gt_count`, `export_min`, `export_max`, `export_km_count` |
+
+Актуальные флаги экспорта — в `config_excel_v2.json` → `output.statistics` (часто: P50 с le/gt и km_count; P20/P80 — в основном граница дней).
+
+#### `output.column_labels` / `percentile_column_labels`
+
+| Группа ключей | Примеры | Назначение |
+|---------------|---------|------------|
+| Оси таблицы | `product_group`, `product`, `tb`, `current_status` | Заголовки осей на «Нормативах» |
+| Метрики срока | `days_on_stage_min`, `_max`, `_count` | «Мин/Макс срок дней», «Число лидов» |
+| Аудит фильтров/выбросов | `filter_before`, `filter_after`, `outlier_*`, `outlier_rule_<name>` | Подписи колонок аудита (имя правила → ключ `outlier_rule_<name>`) |
+| Маркеры темы | `min_header_marker`, `max_header_marker` | Подстроки для заливки «Мин»/«Макс» |
+| `percentile_column_labels` | шаблоны `П{p} дней`, `П{p} лидов ≤`, … | Подписи перцентилей |
+
+#### `output.exceedance_columns`
+
+Заголовки колонок превышения на «Уникальные ID» (см. § exceedance): `p80_norm`, `current_days`, `exceedance_flag`, `exceedance_days`. В `p80_norm` плейсхолдер `{p}` заменяется на `exceedance.percentile`.
 
 ### Большие листы → CSV
 
@@ -631,10 +792,6 @@ Excel закрепляет всё слева и выше первой незак
 
 Если **все** листы ушли в CSV, в xlsx остаётся служебный лист «Экспорт CSV» со списком файлов.
 
-### percentile_column_labels
-
-Подписи перцентилей на листе «Нормативы» (`П20 дней`, `П20 лидов ≤`, …).
-
 ---
 
 ## 6. client_display
@@ -642,11 +799,16 @@ Excel закрепляет всё слева и выше первой незак
 Сокращение полных юрформ в колонке «Клиент» (ООО, АО, **СЗ** и др.).  
 Правила — от длинной формы к короткой; замена только префикса, остаток названия сохраняется.
 
+| Ключ | Описание |
+|------|----------|
+| `enabled` | `false` — выводить исходный текст из Excel |
+| `abbreviations[]` | Список `{ "match": "…", "replace": "…" }` (без учёта регистра при сопоставлении префикса) |
+
 ```json
 {"match": "специализированный застройщик", "replace": "СЗ"}
 ```
 
-`enabled: false` — выводить исходный текст из Excel.
+Полный список сокращений — в `config_excel_v2.json` → `client_display.abbreviations`.
 
 ---
 
@@ -654,35 +816,55 @@ Excel закрепляет всё слева и выше первой незак
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
-| `parallel_workers` | `0` | Параллельная загрузка Kanban-файлов (`ProcessPoolExecutor`) |
-| `performance.max_parallel_workers` | `4` | Потолок workers |
+| `parallel_workers` | `0` | Параллельная загрузка Kanban-файлов (`ProcessPoolExecutor`); `0` = авто |
+| `performance.max_parallel_workers` | `8` | Потолок workers |
 | `performance.reserve_cpu_cores` | `1` | Ядра, оставляемые системе |
 | `performance.read_only_required_columns` | `true` | Читать только нужные колонки |
 | `performance.downcast_numeric` | `true` | Сжатие типов флагов |
 | `performance.free_memory_between_stages` | `true` | `gc.collect()` между этапами |
 | `performance.parallel_pipeline_stages` | `true` | Параллельно: снимок + трекинг стадий + загрузка команд |
 | `performance.parallel_stage_workers` | `0` | Workers для параллельных этапов (`0` = как `parallel_workers`) |
+| `performance.parallel_team_files` | `true` | Параллельное чтение файлов команд |
+| `performance.compact_distribution_series` | `true` | Legacy/совместимость с HTML+JSON: компактные серии в JSON |
+| `performance.precompute_pivot_matrices` | `false` | Legacy: предрасчёт pivot для HTML; в Excel v2 обычно выкл. |
 
 ### `performance.adaptive_resources`
 
 | Ключ | По умолчанию | Описание |
 |------|--------------|----------|
-| `enabled` | `true` | Мониторинг RAM и автоснижение workers (см. `CONFIG.md` §8) |
+| `enabled` | `true` | Мониторинг RAM и автоснижение workers |
 | `min_available_ram_gb` | `3.0` | Порог warn (ГБ свободной RAM) |
-| `critical_available_ram_gb` | `1.5` | Порог critical |
+| `critical_available_ram_gb` | `1.5` | Порог critical по свободной RAM |
+| `warn_used_ram_percent` | `80.0` | warn, если занято ≥ % RAM |
+| `critical_used_ram_percent` | `92.0` | critical по % занятой RAM |
 | `sequential_load_below_total_ram_gb` | `16.0` | При общей RAM &lt; порога — осторожный режим |
 | `low_ram_max_workers` | `2` | Потолок workers в осторожном режиме |
+| `low_ram_disable_parallel_stages` | `true` | Выкл. `parallel_pipeline_stages` в low-RAM |
+| `low_ram_disable_parallel_teams` | `true` | Выкл. `parallel_team_files` в low-RAM |
 | `warn_max_workers` | `2` | Потолок workers при warn |
+| `warn_disable_parallel_stages` | `true` | Выкл. параллельные этапы при warn |
 | `critical_max_workers` | `1` | Потолок workers при critical |
+| `critical_disable_parallel_stages` | `true` | Выкл. параллельные этапы при critical |
+| `critical_disable_parallel_teams` | `true` | Выкл. параллельную загрузку команд при critical |
+| `input_size_per_worker_gb` | `1.2` | Оценка: размер входа на worker при выборе числа процессов |
 | `gc_on_pressure` | `true` | `gc.collect()` между файлами при warn/critical |
 | `override_explicit_workers_on_critical` | `true` | Ограничение явного `parallel_workers` при critical |
+| `disable_html_slices_on_critical` | `true` | Legacy HTML: отключить срезы при critical (на Excel v2 не влияет) |
 
 При `parallel_pipeline_stages: true` одновременно выполняются:
 
 1. `build_lead_snapshot` (CPU)
 2. `build_lead_stage_records` (CPU)
 3. загрузка «Команда лида и сделки» (I/O, единый комплект + split по типу)
-4. ~~загрузка «Команда сделки»~~ (входит в п.3)
+
+### 7.1. `progress`
+
+| Ключ | По умолчанию | Описание |
+|------|--------------|----------|
+| `enabled` | `true` | Консольный прогресс этапов |
+| `log_every_seconds` | `3` | Heartbeat в лог при долгих операциях |
+| `show_timing_summary` | `true` | Сводная таблица времени по этапам в конце |
+| `debug_detail` | `true` | Тайминги подэтапов в DEBUG-логе |
 
 ---
 
@@ -711,6 +893,37 @@ Excel закрепляет всё слева и выше первой незак
 | Формат дат | `output.excel_format.date_format` (`YYYY-MM-DD`) |
 
 Для листов менеджеров нужны файлы команд в `team_files` и колонки `km` / `vks` в Kanban.
+
+---
+
+## 9. Чек-лист ключей `config_excel_v2.json`
+
+Сверка «есть в config → описано в этом документе (или явно отсылается к CONFIG.md)».
+
+| Блок | Ключи (верхний уровень / важные вложенные) | Раздел |
+|------|--------------------------------------------|--------|
+| Пути / режим | `mode`, `paths.*`, `test_files`, `prod_files` | §1 |
+| Колонки | `columns.*`, `required_column_keys`, `optional_column_keys` | §2.1 |
+| Excel I/O | `excel.sheet_name`, `engine`, `read_only`, `data_only`, `keep_links`, `na_values`, `category_markers.*` | §2.2 |
+| Processing | `empty_stage_values`, `dedup_same_date_agg`, `pick_across_dates`, `group_only_product_label`, `audit_row_counts`, `duration_fallback_to_columns` | §2.3 |
+| Dates | `dayfirst`, `excel_origin`, `formats`, `empty_values` | §2.4 |
+| Анализ | `duration_source`, `stage_analysis_mode`, `product_analysis_mode`, `percentiles`, `exceedance`, `aggregation.group_keys`, `aggregation.metrics` | §2.5 |
+| Logging | `logger_name`, `info_file_prefix`, `debug_file_prefix`, `hour_format` | §2.6 |
+| Filters | `filters.*` (универсальная схема) | §3 |
+| Outliers | `outlier_clipping.*`, `rules[]` | §3.1 |
+| Teams | `team_files.*` вкл. `pick_report_date`, `columns.*`, `output_columns.*` | §4 |
+| Emails | `manager_emails.*` | §4.1 |
+| Client | `client_display.enabled`, `abbreviations[]` | §6 |
+| Output core | `report_prefix`, `timestamp_format`, `report_parts`, `report_part_suffixes`, `all_tb_label`, `excel_max_sheet_name_length`, `excel_max_rows_per_sheet`, `csv_overflow` | §5 / §5.5 |
+| Sheets | `sheets.*`, `sheet_freeze.*` | §5 |
+| Matrix | `duration_matrix.*` (variants, widths, heights, fills, `color_scale`) | §5.2 |
+| Snapshot | `snapshot_columns`, `status_duration_columns.*`, `exceedance_columns` | §5 |
+| Labels / stats | `column_labels.*`, `percentile_column_labels`, `statistics.*` | §5.5 |
+| Excel format | `excel_format.*`, `excel_theme` | §5.4 |
+| Perf | `parallel_workers`, `performance.*`, `adaptive_resources.*` | §7 |
+| Progress | `progress.*` | §7.1 |
+
+Если добавили новый ключ в `config_excel_v2.json` — допишите строку в этот чек-лист и таблицу соответствующего раздела.
 
 ---
 

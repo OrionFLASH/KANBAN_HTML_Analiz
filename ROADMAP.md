@@ -279,6 +279,15 @@ src/
 | 11.50 | Два выходных Excel + `report_parts` (analytics/detail/both) с пропуском лишних расчётов | `pipeline`, config, docs | `[v]` |
 | 11.51 | На «Уникальные ID»: колонки сроков по каждому «Текущий статус» (порядок из config) | `status_durations`, snapshot, pipeline, config | `[v]` |
 | 11.52 | Обновить Docs (CONFIG_EXCEL_V2 v2.5.0) + архив `v2_program_files_20260910.zip` | Docs, README, zip | `[v]` |
+| 11.53 | Закрыть пробелы документации: все ключи `config_excel_v2.json` в CONFIG_EXCEL_V2 | Docs, README | `[v]` |
+
+### 11.53 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.53.1 | Сверка config ↔ docs, список GAP | `[v]` |
+| 11.53.2 | Секции columns/excel/processing/dates/logging/perf/progress + чек-лист | `[v]` |
+| 11.53.3 | README / DEPLOY / ROADMAP | `[v]` |
 
 ### 11.52 — Декомпозиция
 
