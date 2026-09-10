@@ -796,6 +796,19 @@
       "km": "КМ",
       "vks": "ВКС"
     },
+    "status_duration_columns": {
+      "enabled": true,
+      "include_others": true,
+      "others_sort": "alpha",
+      "order": [
+        "К продаже",
+        "Выявление потребности",
+        "Обсуждение условий",
+        "Реализация сделки",
+        "Активация продукта",
+        "Продажа завершена"
+      ]
+    },
     "exceedance_columns": {
       "p80_norm": "Норматив P{p}",
       "current_days": "Текущий срок",

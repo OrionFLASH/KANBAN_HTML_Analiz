@@ -109,8 +109,18 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
     return result.reset_index(drop=True)
 
 
-def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
-    """Переименовывает ключи снимка в Excel-заголовки."""
+def snapshot_to_export_frame(
+    snapshot: pd.DataFrame,
+    config: dict[str, Any],
+    *,
+    status_duration_columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Переименовывает ключи снимка в Excel-заголовки.
+
+    status_duration_columns — колонки сроков по статусам (уже с Excel-именами),
+    вставляются сразу после «Стадия работы с лидом» / current_status.
+    """
     if snapshot.empty:
         return snapshot
 
@@ -123,6 +133,21 @@ def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
 
     export_cols: list[str] = [lead_label] + [mapping[k] for k in mapping if k in snapshot.columns]
     renamed: pd.DataFrame = snapshot.rename(columns=rename)
+
+    # Сроки по статусам — после колонки текущего статуса
+    status_cols: list[str] = [
+        str(c) for c in (status_duration_columns or []) if str(c) in renamed.columns
+    ]
+    if status_cols:
+        status_label: str = str(mapping.get("current_status") or "")
+        insert_at: int = len(export_cols)
+        if status_label and status_label in export_cols:
+            insert_at = export_cols.index(status_label) + 1
+        for offset, name in enumerate(status_cols):
+            if name in export_cols:
+                export_cols.remove(name)
+            export_cols.insert(insert_at + offset, name)
+
     exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     extra_cols: list[str] = [
         exc_cfg["p80_norm"],
@@ -159,4 +184,6 @@ def snapshot_to_export_frame(snapshot: pd.DataFrame, config: dict[str, Any]) -> 
                 export_cols.append(str(label))
 
     present: list[str] = [c for c in export_cols if c in renamed.columns]
+    # На случай если колонки статусов не попали в export_cols из-за порядка —
+    # они уже вставлены выше; остальные колонки снимка не тащим
     return renamed[present].copy()

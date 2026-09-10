@@ -277,6 +277,15 @@ src/
 | 11.48 | Второй лист матрицы сроков: группы А→Я, продукты по объёму (`variants`) | `duration_matrix.py`, exporter, config | `[v]` |
 | 11.49 | Листы матрицы сроков с разрезом по статусу; client_id текстом; даты YYYY-MM-DD; без source_deal_id/tb_code | `duration_matrix`, exporter, excel_format, loader, config | `[v]` |
 | 11.50 | Два выходных Excel + `report_parts` (analytics/detail/both) с пропуском лишних расчётов | `pipeline`, config, docs | `[v]` |
+| 11.51 | На «Уникальные ID»: колонки сроков по каждому «Текущий статус» (порядок из config) | `status_durations`, snapshot, pipeline, config | `[v]` |
+
+### 11.51 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.51.1 | Pivot lead×статус → колонки дней; порядок + «прочие» | `[v]` |
+| 11.51.2 | Вставка в экспорт снимка detail | `[v]` |
+| 11.51.3 | Config / тесты / docs | `[v]` |
 
 ### 11.50 — Декомпозиция
 

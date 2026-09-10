@@ -48,6 +48,7 @@ from src.v2.report_parts import (
     want_detail,
 )
 from src.v2.snapshot import snapshot_to_export_frame
+from src.v2.status_durations import attach_status_duration_columns
 from src.v2.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
 from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
@@ -270,14 +271,21 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
             )
 
     # Exceedance нужен для detail (лиды / менеджеры / нарушения)
+    status_duration_cols: list[str] = []
     if need_detail:
         progress.substage("build_p80_lookup + exceedance")
         with progress.timed("build_p80_lookup_frames"):
             tb_p80, all_p80 = build_p80_lookup_frames(by_tb, overall, config)
         with progress.timed("attach_p80_exceedance", snapshot_rows=len(snapshot)):
             snapshot = attach_p80_exceedance(snapshot, tb_p80, all_p80, config)
+        progress.substage("attach_status_duration_columns")
+        with progress.timed("attach_status_duration_columns", snapshot_rows=len(snapshot)):
+            snapshot, status_duration_cols = attach_status_duration_columns(
+                snapshot, records, config
+            )
+        progress.debug(f"Колонки сроков по статусам: {len(status_duration_cols)}")
     else:
-        progress.debug("Exceedance пропущен (detail выключен)")
+        progress.debug("Exceedance / сроки по статусам пропущены (detail выключен)")
     progress.done(f"Нормативных групп: {len(combined_norms):,}")
 
     del records
@@ -306,7 +314,11 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         )
         progress.substage("snapshot_to_export_frame")
         with progress.timed("snapshot_to_export_frame", rows=len(snapshot)):
-            leads_export = snapshot_to_export_frame(snapshot, config)
+            leads_export = snapshot_to_export_frame(
+                snapshot,
+                config,
+                status_duration_columns=status_duration_cols,
+            )
     else:
         progress.debug("Своды менеджеров и экспорт лидов пропущены")
 
