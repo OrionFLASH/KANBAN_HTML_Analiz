@@ -57,6 +57,8 @@ python run_excel.py
 
 Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.5.1.
 
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910.zip`**.
+
 ## Структура проекта
 
 ```
@@ -290,3 +292,4 @@ cd HTML && python -m http.server 8080
 | 2.4.2 | 2026-09-10 | «Уникальные ID»: колонки сроков по каждому «Текущий статус» (`status_duration_columns`) |
 | 2.5.0 | 2026-09-10 | Docs CONFIG_EXCEL_V2 v2.5.0; архив `v2_program_files_20260910.zip` |
 | 2.5.1 | 2026-09-10 | Docs: полный разбор ключей config_excel_v2 (logging/excel/processing/dates/perf/checklist) |
+| 2.5.2 | 2026-09-10 | Архив документации `docs_20260910.zip` (Docs + README + ROADMAP) |
