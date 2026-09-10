@@ -257,20 +257,23 @@ python -m src.v2.pipeline
 
 | Имя | action | match | values | values_mode | value_type |
 |-----|--------|-------|--------|-------------|------------|
-| `efs_flag` | include | equals | `[1]` | any | number |
-| `change_conditions` | include | equals | `[0]` | any | number |
-| `strategy_label` | include | contains | `["Стратегия"]` | any | string (**вкл.**) |
-| `strategy_label_2026` | include | contains | оба варианта «Стратегия 2 квар*тал* 2026» | any | string (`enabled: false`) |
+| `efs_flag` | include | equals | `[1]` | any | number (**вкл.**) |
+| `change_conditions` | include | equals | `[0]` | any | number (**вкл.**) |
+| `data_entry` | include | equals | `[0]` | any | number (`enabled: false`) |
+| `strategy_label` | include | contains | `["Стратегия"]` | any | string (`enabled: false`) |
+| `strategy_label_2026` | include | contains | «Стратегия 2/3 квартал 2026» | any | string (`enabled: false`) |
 | `strategy_label_and_2026` | include | contains | `["Стратегия", "2026"]` | **all** | string (`enabled: false`) |
 | `current_status_activation` | include | contains | `["АКТИВАЦИЯ ПРОДУКТА"]` | any | string (`enabled: false`) |
-| `exclude_current_otkaz` | exclude | contains | `["отказ"]` | any | string |
-| `exclude_current_for_sale` | exclude | equals | `["К ПРОДАЖЕ"]` | any | string |
-| `exclude_deal_otkaz` | exclude | contains | `["отказ"]` | any | string |
-| `exclude_deal_zakryta` | exclude | contains | `["закрыта"]` | any | string |
-| `exclude_deal_zaklyuchen` | exclude | contains | `["заключен"]` | any | string |
-| `data_entry` | include | equals | `[0]` | any | number (`enabled: false`) |
+| `exclude_current_otkaz` | exclude | contains | `["отказ"]` | any | string (**вкл.**) |
+| `exclude_current_for_sale` | exclude | equals | `["К ПРОДАЖЕ"]` | any | string (**вкл.**) |
+| `exclude_deal_otkaz` | exclude | contains | `["отказ"]` | any | string (**вкл.**) |
+| `exclude_deal_otklonen` | exclude | contains | `["Отклонена"]` | any | string (**вкл.**) |
+| `exclude_deal_annulirovana` | exclude | contains | `["Аннулирован"]` | any | string (**вкл.**) |
+| `exclude_deal_rastorgnuta` | exclude | contains | `["Расторгнут"]` | any | string (**вкл.**) |
+| `exclude_deal_zakryta` | exclude | contains | `["закрыта"]` | any | string (`enabled: false`) |
+| `exclude_deal_zaklyuchen` | exclude | contains | `["заключен"]` | any | string (`enabled: false`) |
 
-По умолчанию из меток активен только `strategy_label` (подстрока «Стратегия»). Варианты `*_2026` и фильтр стадии «АКТИВАЦИЯ ПРОДУКТА» выключены — включаются в config при необходимости.
+Корневой набор для перцентилей: ЕФС=1, изменение условий=0, плюс exclude терминальных стадий (отказ / к продаже / отклонена / аннулирован / расторгнут). Метки стратегии в корневом `filters` выключены — для source см. `output.source_export`.
 
 ---
 
@@ -516,8 +519,10 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
   "source_export": {
     "filters_order": [
       "efs_equals_1",
+      "cng_equals_0",
       "max_report_date",
-      "status_activation",
+      "status_prpr_otkaz",
+      "stage_deal_otkaz",
       "label_strategy_kvartal",
       "label_kvartal_2_or_3"
     ],
@@ -528,7 +533,14 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
         "action": "include",
         "match": "equals",
         "values": [1],
-        "values_mode": "any",
+        "value_type": "number"
+      },
+      "cng_equals_0": {
+        "enabled": true,
+        "column_key": "change_conditions",
+        "action": "exclude",
+        "match": "equals",
+        "values": [1],
         "value_type": "number"
       },
       "max_report_date": {
@@ -539,12 +551,20 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
         "values": [],
         "value_type": "date"
       },
-      "status_activation": {
+      "status_prpr_otkaz": {
         "enabled": true,
         "column_key": "current_status",
-        "action": "include",
+        "action": "exclude",
         "match": "contains",
-        "values": ["Активация продукта"],
+        "values": ["Отказ"],
+        "value_type": "string"
+      },
+      "stage_deal_otkaz": {
+        "enabled": true,
+        "column_key": "deal_stage",
+        "action": "exclude",
+        "match": "contains",
+        "values": ["Отказ", "Отклонена", "Аннулирован", "Расторгнут"],
         "value_type": "string"
       },
       "label_strategy_kvartal": {
@@ -552,7 +572,7 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
         "column_key": "label",
         "action": "include",
         "match": "contains",
-        "values": ["Стратегия", "квартал"],
+        "values": ["Стратегия", "квартал", "2026"],
         "values_mode": "all",
         "value_type": "string"
       },
@@ -561,7 +581,7 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
         "column_key": "label",
         "action": "include",
         "match": "contains",
-        "values": ["2", "3"],
+        "values": ["1", "2", "3", "4"],
         "values_mode": "any",
         "value_type": "string"
       }
