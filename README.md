@@ -294,3 +294,4 @@ cd HTML && python -m http.server 8080
 | 2.5.1 | 2026-09-10 | Docs: полный разбор ключей config_excel_v2 (logging/excel/processing/dates/perf/checklist) |
 | 2.5.2 | 2026-09-10 | Архив документации `docs_20260910.zip` (Docs + README + ROADMAP) |
 | 2.6.0 | 2026-09-10 | Подробные описания statistics/`export_km_count` и др.; km_count на P80 |
+| 2.6.1 | 2026-09-10 | Архив документации `docs_20260910b.zip` (v2.6.0 docs) |
