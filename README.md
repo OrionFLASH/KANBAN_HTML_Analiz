@@ -48,7 +48,7 @@ python run_excel.py
 
 | Режим | Каталог входа | Выход |
 |-------|---------------|-------|
-| `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_*.xlsx` |
+| `test` | `IN/TEST` | `OUT/excel_v2/kanban_excel_v2_{analytics\|detail}_*.xlsx` |
 | `prod` | `IN/PROD` | то же |
 
 В `IN/TEST` / `IN/PROD` — Kanban и файлы команд (`team_files` в config). Перед запуском проверяется наличие **всех** файлов для выбранного `mode`; при prod — **15 файлов** (11 Kanban ЕФС + 4 объединённых «команда лида и сделки»).
@@ -156,7 +156,12 @@ log/                 # логи INFO/DEBUG
 
 ### Excel v2 (`run_excel.py`)
 
-`OUT/excel_v2/kanban_excel_v2_YYYYMMDD_HHMMSS.xlsx`:
+Два файла (управляется `output.report_parts`: `both` / `analytics` / `detail`):
+
+| Файл | Листы |
+|------|--------|
+| `kanban_excel_v2_analytics_*.xlsx` | Нормативы, Статистика, все матрицы «Распределение сроков» |
+| `kanban_excel_v2_detail_*.xlsx` | Уникальные ID, Свод по менеджеру, Свод ПрПр с отклонениями |
 
 | Лист | Содержание |
 |------|------------|
@@ -169,6 +174,8 @@ log/                 # логи INFO/DEBUG
 | **Уникальные ID** | Снимок лидов, лидеры (+ почты Альфа/Сигма по ТН), норматив P{n}, превышение; лёгкое оформление (`light_format_sheets`) |
 | **Свод по менеджеру** | ФИО/ТН/почты, число нарушений, разрез «Группа + Продукт» |
 | **Свод ПрПр с отклонениями** | Детализация каждого превышения; лёгкое оформление (`light_format_sheets`) |
+
+Ненужная часть не считается: `analytics` — без команд/почт/менеджеров; `detail` — без матриц сроков и воронки.
 
 Если на листе **больше 900 000** строк, вкладка в xlsx не создаётся — данные сохраняются в отдельный CSV (`;`, UTF-8 BOM) рядом с отчётом. Настройки: `output.excel_max_rows_per_sheet`, `output.csv_overflow`.
 
@@ -279,3 +286,4 @@ cd HTML && python -m http.server 8080
 | 2.3.8 | 2026-09-08 | Лёгкое оформление leads/violations (`light_format_sheets`; `green_red` на Нормативах остаётся); `keep_leaders_only` |
 | 2.3.9 | 2026-09-08 | Второй лист матрицы сроков: группы А→Я, внутри — продукты по объёму (`variants`) |
 | 2.4.0 | 2026-09-10 | Матрица сроков со статусом; client_id текстом; даты `YYYY-MM-DD`; без source_deal_id/tb_code в снимке |
+| 2.4.1 | 2026-09-10 | Два Excel-файла (`analytics` / `detail`) + `output.report_parts` с пропуском ненужных расчётов |

@@ -39,6 +39,14 @@ from src.manager_emails import (
 )
 from src.v2.norms import build_norms_tables, build_p80_lookup_frames, norms_to_export_frame
 from src.v2.parallel_utils import run_snapshot_records_teams_parallel
+from src.v2.report_parts import (
+    REPORT_PART_ANALYTICS,
+    REPORT_PART_DETAIL,
+    build_report_path,
+    resolve_report_parts,
+    want_analytics,
+    want_detail,
+)
 from src.v2.snapshot import snapshot_to_export_frame
 from src.v2.team_enrich import enrich_snapshot_with_team_dfs
 from src.filters import apply_filters, filter_terminal_deal_stage_rows
@@ -67,13 +75,21 @@ def _enabled_filter_names(config: dict[str, Any]) -> list[str]:
     return names
 
 
-def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path:
-    """Запускает полный Excel v2 pipeline и возвращает путь к отчёту."""
+def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list[Path]:
+    """
+    Запускает Excel v2 pipeline.
+
+    Возвращает список созданных xlsx (1 или 2 файла в зависимости от report_parts).
+    """
     t_start: float = time.monotonic()
     config: dict[str, Any] = load_excel_v2_config(config_path)
     shared_config: dict[str, Any] = config_for_shared_modules(config)
     log = setup_logger(config)
     progress = ProgressReporter(config, log)
+
+    report_parts: frozenset[str] = resolve_report_parts(config)
+    need_analytics: bool = want_analytics(report_parts)
+    need_detail: bool = want_detail(report_parts)
 
     input_dir: Path = get_excel_v2_input_dir(config)
     filenames: list[str] = get_excel_v2_file_list(config)
@@ -82,6 +98,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     progress.debug(
         f"Инициализация: mode={config.get('mode')}, "
         f"kanban_files={len(filenames)}, "
+        f"report_parts={sorted(report_parts)}, "
         f"team_enabled={bool((config.get('team_files') or {}).get('enabled'))}, "
         f"debug_detail={progress.debug_detail}"
     )
@@ -96,7 +113,12 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     with progress.timed("apply_adaptive_resources"):
         apply_adaptive_resources(config, input_dir, filenames, log)
     workers: int = resolve_parallel_workers(config)
-    log.info("Старт Excel v2 pipeline (режим=%s, workers=%d)", config["mode"], workers)
+    log.info(
+        "Старт Excel v2 pipeline (режим=%s, workers=%d, report_parts=%s)",
+        config["mode"],
+        workers,
+        ",".join(sorted(report_parts)),
+    )
     progress.debug(
         f"Ресурсы: workers={workers}, "
         f"parallel_stages={bool(config.get('performance', {}).get('parallel_pipeline_stages', True))}"
@@ -104,8 +126,6 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
 
     out_cfg: dict[str, Any] = config["output"]
     timestamp: str = datetime.now().strftime(out_cfg.get("timestamp_format", "%Y%m%d_%H%M%S"))
-    prefix: str = out_cfg.get("report_prefix", "kanban_excel_v2")
-    excel_path: Path = output_dir / f"{prefix}_{timestamp}.xlsx"
 
     log.info("Режим: %s, файлов: %d, workers: %d", config["mode"], len(filenames), workers)
 
@@ -123,24 +143,28 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         f"включено={len(enabled_filters)}: {', '.join(enabled_filters) or '—'}",
     )
     audit_filters: bool = bool(config.get("processing", {}).get("audit_row_counts", True))
+    # Воронка и аудит по группам нужны только для analytics (лист «Статистика» / колонки на Нормативах)
     funnel_steps: list[dict[str, Any]] = []
-    group_auditor: GroupFilterAuditor = GroupFilterAuditor(config)
-    append_funnel_step(
-        funnel_steps,
-        stage="Загрузка Kanban",
-        before_df=raw_df,
-        after_df=raw_df,
-        config=config,
-        kind="load",
-        group_auditor=group_auditor,
+    group_auditor: GroupFilterAuditor | None = (
+        GroupFilterAuditor(config) if need_analytics else None
     )
+    if need_analytics:
+        append_funnel_step(
+            funnel_steps,
+            stage="Загрузка Kanban",
+            before_df=raw_df,
+            after_df=raw_df,
+            config=config,
+            kind="load",
+            group_auditor=group_auditor,
+        )
     progress.substage("apply_filters", f"вход={rows_loaded:,}")
     with progress.timed("apply_filters", rows_in=rows_loaded, filters=len(enabled_filters)):
         after_inclusion: pd.DataFrame = apply_filters(
             raw_df,
             config,
             audit_each_filter=audit_filters,
-            funnel=funnel_steps,
+            funnel=funnel_steps if need_analytics else None,
             group_auditor=group_auditor,
         )
     progress.debug(f"После inclusion-фильтров: rows={len(after_inclusion):,}")
@@ -150,7 +174,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
             after_inclusion,
             config,
             audit_each_filter=audit_filters,
-            funnel=funnel_steps,
+            funnel=funnel_steps if need_analytics else None,
             group_auditor=group_auditor,
         )
     filters_active: bool = bool(enabled_filters)
@@ -167,16 +191,23 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     del after_inclusion
     _maybe_free_memory(config)
 
-    progress.stage("Снимок + нормативы (параллельно)", f"{len(filtered_df):,} строк")
+    # Команды / почты нужны только для detail (лидеры на Unique ID / менеджеры)
+    load_teams: bool = need_detail
+    progress.stage(
+        "Снимок + нормативы",
+        f"{len(filtered_df):,} строк; teams={'да' if load_teams else 'нет'}",
+    )
     progress.substage("snapshot + records + team_files")
     with progress.timed(
         "run_snapshot_records_teams_parallel",
         rows_in=len(filtered_df),
+        load_teams=load_teams,
     ):
         snapshot, records, lead_team_df, deal_team_df = run_snapshot_records_teams_parallel(
             filtered_df,
             config,
             shared_config,
+            load_teams=load_teams,
         )
     progress.step(
         f"Команда: лид={len(lead_team_df):,} строк, сделка={len(deal_team_df):,} строк"
@@ -187,24 +218,33 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
         f"deal_team={len(deal_team_df):,}"
     )
 
-    progress.substage("enrich_snapshot_with_team_dfs")
-    with progress.timed(
-        "enrich_snapshot_with_team_dfs",
-        snapshot_rows=len(snapshot),
-        lead_rows=len(lead_team_df),
-        deal_rows=len(deal_team_df),
-    ):
-        snapshot = enrich_snapshot_with_team_dfs(snapshot, lead_team_df, deal_team_df, config)
-
     email_lookup = None
-    if manager_emails_enabled(config):
-        progress.substage("manager_emails")
-        with progress.timed("load_manager_email_lookup"):
-            email_lookup = load_manager_email_lookup(config)
-        with progress.timed("enrich_snapshot_with_manager_emails", snapshot_rows=len(snapshot)):
-            snapshot = enrich_snapshot_with_manager_emails(snapshot, config, email_lookup)
+    if need_detail:
+        progress.substage("enrich_snapshot_with_team_dfs")
+        with progress.timed(
+            "enrich_snapshot_with_team_dfs",
+            snapshot_rows=len(snapshot),
+            lead_rows=len(lead_team_df),
+            deal_rows=len(deal_team_df),
+        ):
+            snapshot = enrich_snapshot_with_team_dfs(
+                snapshot, lead_team_df, deal_team_df, config
+            )
+
+        if manager_emails_enabled(config):
+            progress.substage("manager_emails")
+            with progress.timed("load_manager_email_lookup"):
+                email_lookup = load_manager_email_lookup(config)
+            with progress.timed(
+                "enrich_snapshot_with_manager_emails", snapshot_rows=len(snapshot)
+            ):
+                snapshot = enrich_snapshot_with_manager_emails(
+                    snapshot, config, email_lookup
+                )
+        else:
+            progress.debug("manager_emails: выключены в config")
     else:
-        progress.debug("manager_emails: выключены в config")
+        progress.debug("Детализация выключена — лидеры и почты пропущены")
 
     with progress.timed("audit_snapshot_coverage"):
         audit_snapshot_coverage(filtered_df, snapshot, config)
@@ -223,13 +263,21 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     progress.substage("build_norms_tables", f"records={len(records):,}")
     with progress.timed("build_norms_tables", records=len(records)):
         combined_norms, by_tb, overall = build_norms_tables(records, config)
-    with progress.timed("merge_filter_audit_into_norms", norms=len(combined_norms)):
-        combined_norms = merge_filter_audit_into_norms(combined_norms, group_auditor, config)
-    progress.substage("build_p80_lookup + exceedance")
-    with progress.timed("build_p80_lookup_frames"):
-        tb_p80, all_p80 = build_p80_lookup_frames(by_tb, overall, config)
-    with progress.timed("attach_p80_exceedance", snapshot_rows=len(snapshot)):
-        snapshot = attach_p80_exceedance(snapshot, tb_p80, all_p80, config)
+    if need_analytics and group_auditor is not None:
+        with progress.timed("merge_filter_audit_into_norms", norms=len(combined_norms)):
+            combined_norms = merge_filter_audit_into_norms(
+                combined_norms, group_auditor, config
+            )
+
+    # Exceedance нужен для detail (лиды / менеджеры / нарушения)
+    if need_detail:
+        progress.substage("build_p80_lookup + exceedance")
+        with progress.timed("build_p80_lookup_frames"):
+            tb_p80, all_p80 = build_p80_lookup_frames(by_tb, overall, config)
+        with progress.timed("attach_p80_exceedance", snapshot_rows=len(snapshot)):
+            snapshot = attach_p80_exceedance(snapshot, tb_p80, all_p80, config)
+    else:
+        progress.debug("Exceedance пропущен (detail выключен)")
     progress.done(f"Нормативных групп: {len(combined_norms):,}")
 
     del records
@@ -237,90 +285,137 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> Path
     del overall
     _maybe_free_memory(config)
 
-    progress.stage("Своды по менеджерам", "")
-    progress.substage("build_manager_reports", f"snapshot={len(snapshot):,}")
-    with progress.timed("build_manager_reports", snapshot_rows=len(snapshot)):
-        manager_summary, violations_detail = build_manager_reports(snapshot, config)
-    if email_lookup is not None:
-        with progress.timed("attach_emails_managers_violations"):
-            manager_summary = attach_emails_by_tab_column(
-                manager_summary, config, lookup=email_lookup
-            )
-            violations_detail = attach_emails_by_tab_column(
-                violations_detail, config, lookup=email_lookup
-            )
-    progress.done(
-        f"Менеджеров: {len(manager_summary):,}, нарушений: {len(violations_detail):,}"
-    )
-
-    progress.substage("подготовка кадров к экспорту")
-    with progress.timed("snapshot_to_export_frame", rows=len(snapshot)):
-        leads_export: pd.DataFrame = snapshot_to_export_frame(snapshot, config)
-    # Внутренний кадр с outlier_* до rename — для свода выбросов
-    with progress.timed("filter_and_order_statistics_frame", norms=len(combined_norms)):
-        norms_internal: pd.DataFrame = filter_and_order_statistics_frame(combined_norms, config)
-    with progress.timed("norms_to_export_frame"):
-        norms_export: pd.DataFrame = norms_to_export_frame(combined_norms, config)
-    with progress.timed("build_filter_funnel_frame", steps=len(funnel_steps)):
-        funnel_frame: pd.DataFrame = build_filter_funnel_frame(funnel_steps)
-    with progress.timed("build_outlier_audit_summary"):
-        outlier_summary: pd.DataFrame = build_outlier_audit_summary(norms_internal, config)
-    duration_matrices: dict = {}
-    if duration_matrix_enabled(config):
-        progress.substage("build_duration_matrix")
-        with progress.timed("build_duration_matrix", snapshot_rows=len(snapshot)):
-            duration_matrices = build_all_duration_matrices(snapshot, config)
-        n_matrix_rows: int = 0
-        for mtx in duration_matrices.values():
-            if mtx is not None and not mtx.empty:
-                n_matrix_rows = max(n_matrix_rows, len(mtx.rows))
-        progress.debug(
-            f"Матрица сроков: sheets={len(duration_matrices)}, rows={n_matrix_rows:,}"
+    manager_summary: pd.DataFrame = pd.DataFrame()
+    violations_detail: pd.DataFrame = pd.DataFrame()
+    leads_export: pd.DataFrame = pd.DataFrame()
+    if need_detail:
+        progress.stage("Своды по менеджерам", "")
+        progress.substage("build_manager_reports", f"snapshot={len(snapshot):,}")
+        with progress.timed("build_manager_reports", snapshot_rows=len(snapshot)):
+            manager_summary, violations_detail = build_manager_reports(snapshot, config)
+        if email_lookup is not None:
+            with progress.timed("attach_emails_managers_violations"):
+                manager_summary = attach_emails_by_tab_column(
+                    manager_summary, config, lookup=email_lookup
+                )
+                violations_detail = attach_emails_by_tab_column(
+                    violations_detail, config, lookup=email_lookup
+                )
+        progress.done(
+            f"Менеджеров: {len(manager_summary):,}, нарушений: {len(violations_detail):,}"
         )
+        progress.substage("snapshot_to_export_frame")
+        with progress.timed("snapshot_to_export_frame", rows=len(snapshot)):
+            leads_export = snapshot_to_export_frame(snapshot, config)
     else:
-        progress.debug("Матрица сроков: выключена")
+        progress.debug("Своды менеджеров и экспорт лидов пропущены")
+
+    norms_export: pd.DataFrame = pd.DataFrame()
+    funnel_frame: pd.DataFrame = pd.DataFrame()
+    outlier_summary: pd.DataFrame = pd.DataFrame()
+    duration_matrices: dict = {}
+    if need_analytics:
+        progress.substage("подготовка analytics к экспорту")
+        with progress.timed("filter_and_order_statistics_frame", norms=len(combined_norms)):
+            norms_internal: pd.DataFrame = filter_and_order_statistics_frame(
+                combined_norms, config
+            )
+        with progress.timed("norms_to_export_frame"):
+            norms_export = norms_to_export_frame(combined_norms, config)
+        with progress.timed("build_filter_funnel_frame", steps=len(funnel_steps)):
+            funnel_frame = build_filter_funnel_frame(funnel_steps)
+        with progress.timed("build_outlier_audit_summary"):
+            outlier_summary = build_outlier_audit_summary(norms_internal, config)
+        if duration_matrix_enabled(config):
+            progress.substage("build_duration_matrix")
+            with progress.timed("build_duration_matrix", snapshot_rows=len(snapshot)):
+                duration_matrices = build_all_duration_matrices(snapshot, config)
+            n_matrix_rows: int = 0
+            for mtx in duration_matrices.values():
+                if mtx is not None and not mtx.empty:
+                    n_matrix_rows = max(n_matrix_rows, len(mtx.rows))
+            progress.debug(
+                f"Матрица сроков: sheets={len(duration_matrices)}, rows={n_matrix_rows:,}"
+            )
+        else:
+            progress.debug("Матрица сроков: выключена")
+    else:
+        progress.debug("Analytics выключен — нормативы/матрицы/воронка не экспортируются")
 
     del filtered_df
     del combined_norms
     del snapshot
     _maybe_free_memory(config)
 
-    progress.stage("Экспорт Excel", str(excel_path.name))
-    # Пустой кадр-плейсхолдер: содержимое листа «Статистика» пишется из funnel/summary
-    statistics_placeholder: pd.DataFrame = pd.DataFrame()
-    sheets_payload: dict[str, pd.DataFrame] = {
-        "norms": norms_export,
-        "statistics": statistics_placeholder,
-        "leads": leads_export,
-        "managers": manager_summary,
-        "violations": violations_detail,
-    }
-    for m_key, mtx in duration_matrices.items():
-        if mtx is not None and not mtx.empty:
-            sheets_payload[m_key] = pd.DataFrame()
-    sheet_sizes: dict[str, int] = {
-        key: (0 if frame is None else len(frame)) for key, frame in sheets_payload.items()
-    }
-    progress.debug(f"Листы к записи (строк): {sheet_sizes}")
-    progress.substage("export_excel_v2", f"sheets={len(sheets_payload)}")
-    with progress.timed("export_excel_v2", sheets=len(sheets_payload)):
-        _, csv_paths = export_excel_v2(
-            excel_path,
-            sheets_payload,
-            config,
-            funnel_frame=funnel_frame,
-            outlier_summary=outlier_summary,
-            duration_matrices=duration_matrices,
+    created_paths: list[Path] = []
+    all_csv_paths: list[Path] = []
+
+    if need_analytics:
+        analytics_path: Path = build_report_path(
+            output_dir, config, REPORT_PART_ANALYTICS, timestamp
         )
-    if csv_paths:
-        progress.done(
-            f"Excel: {excel_path.name}; CSV: {', '.join(p.name for p in csv_paths)}"
+        progress.stage("Экспорт analytics", str(analytics_path.name))
+        statistics_placeholder: pd.DataFrame = pd.DataFrame()
+        analytics_sheets: dict[str, pd.DataFrame] = {
+            "norms": norms_export,
+            "statistics": statistics_placeholder,
+        }
+        for m_key, mtx in duration_matrices.items():
+            if mtx is not None and not mtx.empty:
+                analytics_sheets[m_key] = pd.DataFrame()
+        progress.debug(
+            f"Analytics листы (строк): "
+            f"{ {k: (0 if v is None else len(v)) for k, v in analytics_sheets.items()} }"
         )
-    else:
-        progress.done(f"Excel: {excel_path.name}")
+        with progress.timed("export_excel_v2_analytics", sheets=len(analytics_sheets)):
+            _, csv_a = export_excel_v2(
+                analytics_path,
+                analytics_sheets,
+                config,
+                funnel_frame=funnel_frame,
+                outlier_summary=outlier_summary,
+                duration_matrices=duration_matrices,
+            )
+        created_paths.append(analytics_path)
+        all_csv_paths.extend(csv_a)
+        progress.done(f"Excel analytics: {analytics_path.name}")
+
+    if need_detail:
+        detail_path: Path = build_report_path(
+            output_dir, config, REPORT_PART_DETAIL, timestamp
+        )
+        progress.stage("Экспорт detail", str(detail_path.name))
+        detail_sheets: dict[str, pd.DataFrame] = {
+            "leads": leads_export,
+            "managers": manager_summary,
+            "violations": violations_detail,
+        }
+        progress.debug(
+            f"Detail листы (строк): "
+            f"{ {k: (0 if v is None else len(v)) for k, v in detail_sheets.items()} }"
+        )
+        with progress.timed("export_excel_v2_detail", sheets=len(detail_sheets)):
+            _, csv_d = export_excel_v2(
+                detail_path,
+                detail_sheets,
+                config,
+            )
+        created_paths.append(detail_path)
+        all_csv_paths.extend(csv_d)
+        progress.done(f"Excel detail: {detail_path.name}")
+
+    if all_csv_paths:
+        progress.step(f"CSV overflow: {', '.join(p.name for p in all_csv_paths)}")
 
     elapsed: float = time.monotonic() - t_start
     progress.timing_summary(total_wall=elapsed)
-    log.info("Excel v2 завершён за %.1f с: %s", elapsed, excel_path)
-    debug_event(logger, "pipeline finished", elapsed_sec=round(elapsed, 2))
-    return excel_path
+    names: str = ", ".join(p.name for p in created_paths) or "(нет файлов)"
+    log.info("Excel v2 завершён за %.1f с: %s", elapsed, names)
+    debug_event(
+        logger,
+        "pipeline finished",
+        elapsed_sec=round(elapsed, 2),
+        files=len(created_paths),
+        parts=",".join(sorted(report_parts)),
+    )
+    return created_paths

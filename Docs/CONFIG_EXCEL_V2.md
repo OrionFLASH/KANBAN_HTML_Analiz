@@ -3,7 +3,7 @@
 Отдельная конфигурация для **Excel-only pipeline v2** (`run_excel.py`).  
 Не связана с `config.json` / `run.py` (HTML+JSON). Общие модули (`excel_loader`, `filters`, `lead_tracker`, `aggregator`) читают те же ключи, что описаны в [CONFIG.md](CONFIG.md), если они присутствуют в `config_excel_v2.json`.
 
-**Версия документа:** 2.4.0 (2026-09-10)
+**Версия документа:** 2.4.1 (2026-09-10)
 
 ---
 
@@ -39,7 +39,14 @@ python -m src.v2.pipeline
 | `test_files` | массив имён xlsx | Файлы Kanban для test |
 | `prod_files` | массив имён xlsx | Файлы Kanban для prod |
 
-**Выход:** `OUT/excel_v2/kanban_excel_v2_YYYYMMDD_HHMMSS.xlsx` — **только Excel**, JSON не создаётся.
+**Выход (два файла, `output.report_parts`):**
+
+| Часть | Имя файла | Листы |
+|-------|-----------|--------|
+| `analytics` | `kanban_excel_v2_analytics_YYYYMMDD_HHMMSS.xlsx` | Нормативы, Статистика, все «Распределение сроков» |
+| `detail` | `kanban_excel_v2_detail_YYYYMMDD_HHMMSS.xlsx` | Уникальные ID, Свод по менеджеру, Свод ПрПр с отклонениями |
+
+`report_parts`: `"both"` (по умолчанию) | `"analytics"` | `"detail"` — ненужная часть **не считается и не пишется** (экономия: команды/почты/менеджеры или матрицы/воронка).
 
 ### Листы отчёта (`output.sheets`)
 
@@ -329,6 +336,32 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 ---
 
 ## 5. output — листы и колонки
+
+### report_parts
+
+Какие выходные файлы строить и какие тяжёлые этапы запускать.
+
+```json
+"output": {
+  "report_parts": "both",
+  "report_part_suffixes": {
+    "analytics": "analytics",
+    "detail": "detail"
+  },
+  "report_prefix": "kanban_excel_v2",
+  "timestamp_format": "%Y%m%d_%H%M%S"
+}
+```
+
+| Значение `report_parts` | Файлы | Что считается |
+|-------------------------|-------|----------------|
+| `both` (default) | analytics + detail | полный pipeline |
+| `analytics` | только `*_analytics_*.xlsx` | нормативы, воронка, матрицы сроков; **без** команд/почт/менеджеров/exceedance на лидах |
+| `detail` | только `*_detail_*.xlsx` | снимок+лидеры+превышения+своды; **без** матриц сроков и листа «Статистика» |
+
+Допустимы список `["analytics","detail"]` и синонимы (`нормативы`, `лиды`, `1`/`2`).
+
+Имена: `{report_prefix}_{suffix}_{timestamp}.xlsx`.
 
 ### sheets
 

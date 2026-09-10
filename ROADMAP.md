@@ -276,6 +276,17 @@ src/
 | 11.47 | `keep_leaders_only`: фильтр лидеров сразу при чтении team-файлов | `team_loader.py`, config | `[v]` |
 | 11.48 | Второй лист матрицы сроков: группы А→Я, продукты по объёму (`variants`) | `duration_matrix.py`, exporter, config | `[v]` |
 | 11.49 | Листы матрицы сроков с разрезом по статусу; client_id текстом; даты YYYY-MM-DD; без source_deal_id/tb_code | `duration_matrix`, exporter, excel_format, loader, config | `[v]` |
+| 11.50 | Два выходных Excel + `report_parts` (analytics/detail/both) с пропуском лишних расчётов | `pipeline`, config, docs | `[v]` |
+
+### 11.50 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.50.1 | Config `output.report_parts` + суффиксы имён файлов | `[v]` |
+| 11.50.2 | Файл analytics: нормативы, статистика, матрицы сроков | `[v]` |
+| 11.50.3 | Файл detail: уникальные ID, менеджеры, нарушения | `[v]` |
+| 11.50.4 | Условный расчёт (teams/emails/managers/matrix/funnel) | `[v]` |
+| 11.50.5 | Тесты и документация | `[v]` |
 
 ### 11.49 — Декомпозиция
 
