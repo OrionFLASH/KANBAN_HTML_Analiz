@@ -281,6 +281,15 @@ src/
 | 11.52 | Обновить Docs (CONFIG_EXCEL_V2 v2.5.0) + архив `v2_program_files_20260910.zip` | Docs, README, zip | `[v]` |
 | 11.53 | Закрыть пробелы документации: все ключи `config_excel_v2.json` в CONFIG_EXCEL_V2 | Docs, README | `[v]` |
 | 11.54 | Архив документации `docs_20260910.zip` | корень репо | `[v]` |
+| 11.55 | Подробные описания параметров config (statistics/`export_km_count` и др.) | Docs, config | `[v]` |
+
+### 11.55 — Декомпозиция
+
+| # | Подзадача | Статус |
+|---|-----------|--------|
+| 11.55.1 | Разбор `output.statistics` + `export_km_count` (зачем/как/пример/зависимости) | `[v]` |
+| 11.55.2 | Углубить excel/processing/dates/filters/progress | `[v]` |
+| 11.55.3 | Починить config: km_count на P80 + label; обновить zip docs | `[v]` |
 
 ### 11.54 — Декомпозиция
 
