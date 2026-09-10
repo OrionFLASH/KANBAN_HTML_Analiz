@@ -1,5 +1,5 @@
 {
-  "mode": "test",
+  "mode": "prod",
   "paths": {
     "input_test": "IN/TEST",
     "input_prod": "IN/PROD",
@@ -16,17 +16,15 @@
     "Кбан (А 2Т2Г) __ 07-09-2026.xlsx"
   ],
   "prod_files": [
-    "Канбан ЕФС0 (SberX-НКД) __ 07-09-2026.xlsx",
-    "Канбан ЕФС0 (Активы-Пассивы-ФОТ) __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (НКД) -кроме К продаже-Отказ- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (НКД) -К продаже-Отказ- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (ФОТ) -Реализация- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (ФОТ) -Активация-Выявление-Обсуждение-Завершение- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (ФОТ) -К продаже-Отказ- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (Пассивы) -кроме К продаже-Отказ- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (Пассивы) -К продаже-Отказ- __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (Активы) __ 07-09-2026.xlsx",
-    "Канбан ЕФС1 (SberX) __ 07-09-2026.xlsx"
+    "Канбан ЕФС0 (04_09-09-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС0 (31-07 14_21_28_31-08-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (09-09-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (04-09-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (31-08-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (28-08-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (21-08-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (14-08-2026) __ 10-09-2026.xlsx",
+    "Канбан ЕФС1 (31-07-2026) __ 10-09-2026.xlsx"
   ],
   "columns": {
     "report_date": "Дата отчета",
@@ -138,7 +136,7 @@
     80
   ],
   "exceedance": {
-    "percentile": 50
+    "percentile": 80
   },
   "aggregation": {
     "group_keys": [
@@ -325,6 +323,42 @@
       "value_type": "string",
       "case_sensitive": false
     },
+    "exclude_deal_otklonen": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "action": "exclude",
+      "match": "contains",
+      "values": [
+        "Отклонена"
+      ],
+      "values_mode": "any",
+      "value_type": "string",
+      "case_sensitive": false
+    },
+    "exclude_deal_annulirovana": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "action": "exclude",
+      "match": "contains",
+      "values": [
+        "Аннулирован"
+      ],
+      "values_mode": "any",
+      "value_type": "string",
+      "case_sensitive": false
+    },
+    "exclude_deal_rastorgnuta": {
+      "enabled": true,
+      "column_key": "deal_stage",
+      "action": "exclude",
+      "match": "contains",
+      "values": [
+        "Расторгнут"
+      ],
+      "values_mode": "any",
+      "value_type": "string",
+      "case_sensitive": false
+    },
     "exclude_deal_zakryta": {
       "enabled": false,
       "column_key": "deal_stage",
@@ -402,23 +436,20 @@
         "Кбан К Л и С  (А 2Т2Г) __ 07-09-2026.xlsx"
       ],
       "prod": [
-        "Канбан ЕФС1 команда лида и сделки ЮЗБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки ЦЧБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки УБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки СибБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки СЗБ (ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки СЗБ (Активы-НКД-Пассивы) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки ПБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки ВВБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки ББ-ДВБ (Активы-НКД-Пассивы-ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки СРБ (ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки СРБ (Активы-НКД-Пассивы) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки МБ (ФОТ) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки МБ (Активы-НКД-Пассивы) __08-09-2026.xlsx",
-        "Канбан ЕФС1 команда лида и сделки (SberX) __08-09-2026.xlsx",
-        "Канбан ЕФС0 команда лида и сделки МБ-ББ-ВВБ-ДВБ-ПБ-СибБ __08-09-2026.xlsx",
-        "Канбан ЕФС0 команда лида и сделки СЗБ-СРБ-УБ-ЦЧБ __08-09-2026.xlsx",
-        "Канбан ЕФС0 команда лида и сделки ЮЗБ __08-09-2026.xlsx"
+        "Канбан Лидер_Нет команда лида и сделки (09-09-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (04-09-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (31-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (28-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (21-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (14-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Нет команда лида и сделки (31-07-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (09-09-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (04-09-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (31-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (28-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (21-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (14-08-2026) __10-09-2026.xlsx",
+        "Канбан Лидер_Да команда лида и сделки (31-07-2026) __10-09-2026.xlsx"
       ]
     },
     "team_type_values": {
@@ -563,7 +594,7 @@
   "output": {
     "report_prefix": "kanban_excel_v2",
     "timestamp_format": "%Y%m%d_%H%M%S",
-    "report_parts": "both",
+    "report_parts": "all",
     "report_part_suffixes": {
       "analytics": "analytics",
       "detail": "detail",
@@ -572,8 +603,10 @@
     "source_export": {
       "filters_order": [
         "efs_equals_1",
+        "cng_equals_0",
         "max_report_date",
-        "status_activation",
+        "status_prpr_otkaz",
+        "stage_deal_otkaz",
         "label_strategy_kvartal",
         "label_kvartal_2_or_3"
       ],
@@ -583,7 +616,21 @@
           "column_key": "efs_flag",
           "action": "include",
           "match": "equals",
-          "values": [1],
+          "values": [
+            1
+          ],
+          "values_mode": "any",
+          "value_type": "number",
+          "case_sensitive": false
+        },
+        "cng_equals_0": {
+          "enabled": true,
+          "column_key": "change_conditions",
+          "action": "exclude",
+          "match": "equals",
+          "values": [
+            1
+          ],
           "values_mode": "any",
           "value_type": "number",
           "case_sensitive": false
@@ -598,12 +645,29 @@
           "value_type": "date",
           "case_sensitive": false
         },
-        "status_activation": {
+        "status_prpr_otkaz": {
           "enabled": true,
           "column_key": "current_status",
-          "action": "include",
+          "action": "exclude",
           "match": "contains",
-          "values": ["Активация продукта"],
+          "values": [
+            "Отказ"
+          ],
+          "values_mode": "any",
+          "value_type": "string",
+          "case_sensitive": false
+        },
+        "stage_deal_otkaz": {
+          "enabled": true,
+          "column_key": "deal_stage",
+          "action": "exclude",
+          "match": "contains",
+          "values": [
+            "Отказ",
+            "Отклонена",
+            "Аннулирован",
+            "Расторгнут"
+          ],
           "values_mode": "any",
           "value_type": "string",
           "case_sensitive": false
@@ -613,7 +677,11 @@
           "column_key": "label",
           "action": "include",
           "match": "contains",
-          "values": ["Стратегия", "квартал"],
+          "values": [
+            "Стратегия",
+            "квартал",
+            "2026"
+          ],
           "values_mode": "all",
           "value_type": "string",
           "case_sensitive": false
@@ -623,7 +691,12 @@
           "column_key": "label",
           "action": "include",
           "match": "contains",
-          "values": ["2", "3"],
+          "values": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
           "values_mode": "any",
           "value_type": "string",
           "case_sensitive": false
@@ -813,8 +886,8 @@
           "compute": true,
           "export_days": true,
           "export_count": false,
-          "export_le_count": true,
-          "export_gt_count": true,
+          "export_le_count": false,
+          "export_gt_count": false,
           "export_min": false,
           "export_max": false,
           "export_km_count": false
@@ -824,8 +897,8 @@
           "compute": true,
           "export_days": true,
           "export_count": false,
-          "export_le_count": false,
-          "export_gt_count": false,
+          "export_le_count": true,
+          "export_gt_count": true,
           "export_min": false,
           "export_max": false,
           "export_km_count": true
@@ -842,7 +915,11 @@
       "min_column_width": 12,
       "sample_rows_for_width": 200,
       "hotspots_column_width": 55,
-      "light_format_sheets": ["leads", "violations", "source"],
+      "light_format_sheets": [
+        "leads",
+        "violations",
+        "source"
+      ],
       "colors": {
         "min": "C6EFCE",
         "max": "FFC7CE"

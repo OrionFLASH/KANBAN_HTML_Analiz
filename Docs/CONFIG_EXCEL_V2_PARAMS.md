@@ -48,7 +48,7 @@
 | **Как работает** | Выбирает каталог paths.input_* и списки test_files/prod_files (и team files). |
 | **Что даёт / куда влияет** | Какие файлы читаются при запуске run_excel.py. |
 | **От чего зависит** | paths, test_files, prod_files, team_files |
-| **Значение в актуальном config** | `"test"` |
+| **Значение в актуальном config** | `"prod"` |
 
 ### `paths`
 
@@ -752,7 +752,7 @@ _Объект (контейнер)._
 | **Как работает** | Должен быть в percentiles (часто 50). Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Норматив P{p}, флаг превышения, рамка дня на матрице. |
 | **От чего зависит** | exceedance_columns, duration_matrix |
-| **Значение в актуальном config** | `50` |
+| **Значение в актуальном config** | `80` |
 
 ### `aggregation`
 
@@ -2194,6 +2194,282 @@ _Массив_ (элементов в config: **1**).
 | **Как работает** | Обычно false. Значение читается при загрузке/нормализации config и передаётся в соответствующий модуль (loader / filters / aggregator / exporter / resource_guard). Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | ОТКАЗ=отказ. Итог видно в выходных xlsx (`analytics`/`detail`), в логах или в составе читаемых колонок — в зависимости от блока `filters`. |
 | **От чего зависит** | string match; соседние ключи `filters.*` и актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `filters.exclude_deal_otklonen`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр analytics/detail: исключить стадию сделки «Отклонена». Путь `filters.exclude_deal_otklonen`. |
+| **Как работает** | Участвует при enabled=true в корневом filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Выборка для перцентилей / снимка. |
+| **От чего зависит** | columns; не влияет на source_export; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `filters.exclude_deal_otklonen.enabled`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): Вкл/выкл. Путь `filters.exclude_deal_otklonen.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `filters.exclude_deal_otklonen.column_key`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): Ключ колонки. Путь `filters.exclude_deal_otklonen.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"deal_stage"` |
+
+### `filters.exclude_deal_otklonen.action`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): include / exclude. Путь `filters.exclude_deal_otklonen.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
+
+### `filters.exclude_deal_otklonen.match`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): Тип сравнения. Путь `filters.exclude_deal_otklonen.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `filters.exclude_deal_otklonen.values`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): Эталоны. Путь `filters.exclude_deal_otklonen.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Отклонена"]` |
+
+### `filters.exclude_deal_otklonen.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): any / all. Путь `filters.exclude_deal_otklonen.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `filters.exclude_deal_otklonen.value_type`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): string/number/date/auto. Путь `filters.exclude_deal_otklonen.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `filters.exclude_deal_otklonen.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_otklonen (исключить стадию сделки «Отклонена»): Регистр. Путь `filters.exclude_deal_otklonen.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | filters.exclude_deal_otklonen; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `filters.exclude_deal_annulirovana`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр analytics/detail: исключить стадию сделки «Аннулирован». Путь `filters.exclude_deal_annulirovana`. |
+| **Как работает** | Участвует при enabled=true в корневом filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Выборка для перцентилей / снимка. |
+| **От чего зависит** | columns; не влияет на source_export; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `filters.exclude_deal_annulirovana.enabled`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): Вкл/выкл. Путь `filters.exclude_deal_annulirovana.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `filters.exclude_deal_annulirovana.column_key`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): Ключ колонки. Путь `filters.exclude_deal_annulirovana.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"deal_stage"` |
+
+### `filters.exclude_deal_annulirovana.action`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): include / exclude. Путь `filters.exclude_deal_annulirovana.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
+
+### `filters.exclude_deal_annulirovana.match`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): Тип сравнения. Путь `filters.exclude_deal_annulirovana.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `filters.exclude_deal_annulirovana.values`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): Эталоны. Путь `filters.exclude_deal_annulirovana.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Аннулирован"]` |
+
+### `filters.exclude_deal_annulirovana.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): any / all. Путь `filters.exclude_deal_annulirovana.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `filters.exclude_deal_annulirovana.value_type`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): string/number/date/auto. Путь `filters.exclude_deal_annulirovana.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `filters.exclude_deal_annulirovana.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_annulirovana (исключить стадию сделки «Аннулирован»): Регистр. Путь `filters.exclude_deal_annulirovana.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | filters.exclude_deal_annulirovana; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `filters.exclude_deal_rastorgnuta`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр analytics/detail: исключить стадию сделки «Расторгнут». Путь `filters.exclude_deal_rastorgnuta`. |
+| **Как работает** | Участвует при enabled=true в корневом filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Выборка для перцентилей / снимка. |
+| **От чего зависит** | columns; не влияет на source_export; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `filters.exclude_deal_rastorgnuta.enabled`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): Вкл/выкл. Путь `filters.exclude_deal_rastorgnuta.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `filters.exclude_deal_rastorgnuta.column_key`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): Ключ колонки. Путь `filters.exclude_deal_rastorgnuta.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"deal_stage"` |
+
+### `filters.exclude_deal_rastorgnuta.action`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): include / exclude. Путь `filters.exclude_deal_rastorgnuta.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
+
+### `filters.exclude_deal_rastorgnuta.match`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): Тип сравнения. Путь `filters.exclude_deal_rastorgnuta.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `filters.exclude_deal_rastorgnuta.values`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): Эталоны. Путь `filters.exclude_deal_rastorgnuta.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Расторгнут"]` |
+
+### `filters.exclude_deal_rastorgnuta.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): any / all. Путь `filters.exclude_deal_rastorgnuta.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `filters.exclude_deal_rastorgnuta.value_type`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): string/number/date/auto. Путь `filters.exclude_deal_rastorgnuta.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `filters.exclude_deal_rastorgnuta.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | exclude_deal_rastorgnuta (исключить стадию сделки «Расторгнут»): Регистр. Путь `filters.exclude_deal_rastorgnuta.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | filters.exclude_deal_rastorgnuta; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `false` |
 
 ### `filters.exclude_deal_zakryta`
@@ -3844,7 +4120,7 @@ _Объект (контейнер)._
 | **Как работает** | `both` = analytics+detail; `full`/`all`/`все` = три файла; `source` = только исходные строки; список частей допускается. Пропуск тяжёлых этапов по выбранным частям. |
 | **Что даёт / куда влияет** | 1–3 файла `*_analytics_*` / `*_detail_*` / `*_source_*`. |
 | **От чего зависит** | report_part_suffixes; для source — `output.source_export` |
-| **Значение в актуальном config** | `"both"` |
+| **Значение в актуальном config** | `"all"` |
 
 ### `output.report_part_suffixes`
 
@@ -3908,7 +4184,7 @@ _Объект (контейнер)._
 | **Как работает** | Сначала первый, затем на остатке второй и т.д.; enabled=false пропускается. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Итоговая выборка source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
 | **От чего зависит** | source_export.filters; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `["efs_equals_1", "max_report_date", "status_activation", "label_strategy_kvartal", "label_kvartal_2_or_3"]` |
+| **Значение в актуальном config** | `["efs_equals_1", "cng_equals_0", "max_report_date", "status_prpr_otkaz", "stage_deal_otkaz", "label_strategy_kvartal", "label_kvartal_2_or_3"]` |
 
 ### `output.source_export.filters`
 
@@ -4110,98 +4386,289 @@ _Объект (контейнер)._
 | **От чего зависит** | source_export.filters.max_report_date; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `false` |
 
-### `output.source_export.filters.status_activation`
 
-_Объект (контейнер)._
+
+
+
+
+
+
+
+
+### `output.source_export.filters.cng_equals_0`
 
 _Объект (контейнер)._
 
 | | |
 |---|---|
-| **Зачем** | Фильтр source: статус содержит «Активация продукта». Параметр пути `output.source_export.filters.status_activation` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | Участвует, если имя в filters_order и enabled=true. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Сужение выборки source. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | filters_order, enabled; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Зачем** | Фильтр source: source: убрать _Изменение условий = 1 (оставить 0). Путь `output.source_export.filters.cng_equals_0`. |
+| **Как работает** | В filters_order при enabled=true; не читает корневой filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строки *_source_*.xlsx. |
+| **От чего зависит** | output.source_export.filters_order; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `см. вложенные ключи` |
 
-### `output.source_export.filters.status_activation.enabled`
+### `output.source_export.filters.cng_equals_0.enabled`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Вкл/выкл фильтра source_export. Параметр пути `output.source_export.filters.status_activation.enabled` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | false — шаг пропускается в filters_order. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Состав строк source-файла. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): Вкл/выкл. Путь `output.source_export.filters.cng_equals_0.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `true` |
 
-### `output.source_export.filters.status_activation.column_key`
+### `output.source_export.filters.cng_equals_0.column_key`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Ключ колонки Kanban для фильтра. Параметр пути `output.source_export.filters.status_activation.column_key` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | Через columns → Excel-заголовок. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Столбец сравнения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `"current_status"` |
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): Ключ колонки. Путь `output.source_export.filters.cng_equals_0.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"change_conditions"` |
 
-### `output.source_export.filters.status_activation.action`
-
-| | |
-|---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): include оставить / exclude убрать совпавшие. Параметр пути `output.source_export.filters.status_activation.action` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | apply_ordered_filters. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Отбор строк. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `"include"` |
-
-### `output.source_export.filters.status_activation.match`
+### `output.source_export.filters.cng_equals_0.action`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Тип сравнения: equals/contains/starts_with/ends_with/gt/gte/lt/lte/max/min. Параметр пути `output.source_export.filters.status_activation.match` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | normalize_filter + build_match_mask. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Критерий совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `"contains"` |
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): include / exclude. Путь `output.source_export.filters.cng_equals_0.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
 
-### `output.source_export.filters.status_activation.values`
-
-| | |
-|---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Эталоны для сравнения (для max/min можно []). Параметр пути `output.source_export.filters.status_activation.values` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `["Активация продукта"]` |
-
-### `output.source_export.filters.status_activation.values_mode`
+### `output.source_export.filters.cng_equals_0.match`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): any — достаточно одного; all — все values. Параметр пути `output.source_export.filters.status_activation.values_mode` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | OR или AND по values. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Логика нескольких эталонов. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): Тип сравнения. Путь `output.source_export.filters.cng_equals_0.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"equals"` |
+
+### `output.source_export.filters.cng_equals_0.values`
+
+| | |
+|---|---|
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): Эталоны. Путь `output.source_export.filters.cng_equals_0.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `[1]` |
+
+### `output.source_export.filters.cng_equals_0.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): any / all. Путь `output.source_export.filters.cng_equals_0.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `"any"` |
 
-### `output.source_export.filters.status_activation.value_type`
+### `output.source_export.filters.cng_equals_0.value_type`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): string/number/date/auto. Параметр пути `output.source_export.filters.status_activation.value_type` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | Приведение типа перед сравнением. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Корректное сравнение дат/чисел. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): string/number/date/auto. Путь `output.source_export.filters.cng_equals_0.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"number"` |
+
+### `output.source_export.filters.cng_equals_0.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | cng_equals_0 (source: убрать _Изменение условий = 1 (оставить 0)): Регистр. Путь `output.source_export.filters.cng_equals_0.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | source_export.filters.cng_equals_0; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.status_prpr_otkaz`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: source: исключить текущий статус с «Отказ». Путь `output.source_export.filters.status_prpr_otkaz`. |
+| **Как работает** | В filters_order при enabled=true; не читает корневой filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строки *_source_*.xlsx. |
+| **От чего зависит** | output.source_export.filters_order; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.status_prpr_otkaz.enabled`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): Вкл/выкл. Путь `output.source_export.filters.status_prpr_otkaz.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.status_prpr_otkaz.column_key`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): Ключ колонки. Путь `output.source_export.filters.status_prpr_otkaz.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"current_status"` |
+
+### `output.source_export.filters.status_prpr_otkaz.action`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): include / exclude. Путь `output.source_export.filters.status_prpr_otkaz.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
+
+### `output.source_export.filters.status_prpr_otkaz.match`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): Тип сравнения. Путь `output.source_export.filters.status_prpr_otkaz.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `output.source_export.filters.status_prpr_otkaz.values`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): Эталоны. Путь `output.source_export.filters.status_prpr_otkaz.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Отказ"]` |
+
+### `output.source_export.filters.status_prpr_otkaz.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): any / all. Путь `output.source_export.filters.status_prpr_otkaz.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.status_prpr_otkaz.value_type`
+
+| | |
+|---|---|
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): string/number/date/auto. Путь `output.source_export.filters.status_prpr_otkaz.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `"string"` |
 
-### `output.source_export.filters.status_activation.case_sensitive`
+### `output.source_export.filters.status_prpr_otkaz.case_sensitive`
 
 | | |
 |---|---|
-| **Зачем** | Фильтр status_activation (статус содержит «Активация продукта»): Учитывать регистр строк. Параметр пути `output.source_export.filters.status_activation.case_sensitive` в блоке `output`: задаёт поведение pipeline Excel v2 и должен быть согласован с соседними ключами. |
-| **Как работает** | false — casefold. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
-| **Что даёт / куда влияет** | Строковые совпадения. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
-| **От чего зависит** | source_export.filters.status_activation; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
+| **Зачем** | status_prpr_otkaz (source: исключить текущий статус с «Отказ»): Регистр. Путь `output.source_export.filters.status_prpr_otkaz.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | source_export.filters.status_prpr_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `false` |
+
+### `output.source_export.filters.stage_deal_otkaz`
+
+_Объект (контейнер)._
+
+| | |
+|---|---|
+| **Зачем** | Фильтр source: source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут. Путь `output.source_export.filters.stage_deal_otkaz`. |
+| **Как работает** | В filters_order при enabled=true; не читает корневой filters. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строки *_source_*.xlsx. |
+| **От чего зависит** | output.source_export.filters_order; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `см. вложенные ключи` |
+
+### `output.source_export.filters.stage_deal_otkaz.enabled`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): Вкл/выкл. Путь `output.source_export.filters.stage_deal_otkaz.enabled`. |
+| **Как работает** | false — не участвует. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Состав выборки. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `true` |
+
+### `output.source_export.filters.stage_deal_otkaz.column_key`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): Ключ колонки. Путь `output.source_export.filters.stage_deal_otkaz.column_key`. |
+| **Как работает** | Через columns → заголовок. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Столбец сравнения. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"deal_stage"` |
+
+### `output.source_export.filters.stage_deal_otkaz.action`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): include / exclude. Путь `output.source_export.filters.stage_deal_otkaz.action`. |
+| **Как работает** | Оставить или убрать совпавшие. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Отбор строк. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"exclude"` |
+
+### `output.source_export.filters.stage_deal_otkaz.match`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): Тип сравнения. Путь `output.source_export.filters.stage_deal_otkaz.match`. |
+| **Как работает** | equals/contains/…/max/min. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Критерий. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"contains"` |
+
+### `output.source_export.filters.stage_deal_otkaz.values`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): Эталоны. Путь `output.source_export.filters.stage_deal_otkaz.values`. |
+| **Как работает** | Сравнение с ячейкой. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Значения фильтра. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `["Отказ", "Отклонена", "Аннулирован", "Расторгнут"]` |
+
+### `output.source_export.filters.stage_deal_otkaz.values_mode`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): any / all. Путь `output.source_export.filters.stage_deal_otkaz.values_mode`. |
+| **Как работает** | OR или AND по values. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Логика эталонов. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"any"` |
+
+### `output.source_export.filters.stage_deal_otkaz.value_type`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): string/number/date/auto. Путь `output.source_export.filters.stage_deal_otkaz.value_type`. |
+| **Как работает** | Приведение типа. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Корректное сравнение. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
+| **Значение в актуальном config** | `"string"` |
+
+### `output.source_export.filters.stage_deal_otkaz.case_sensitive`
+
+| | |
+|---|---|
+| **Зачем** | stage_deal_otkaz (source: исключить стадии сделки Отказ/Отклонена/Аннулирован/Расторгнут): Регистр. Путь `output.source_export.filters.stage_deal_otkaz.case_sensitive`. |
+| **Как работает** | обычно false. Читается при загрузке config; следующий прогон `run_excel.py`. |
+| **Что даёт / куда влияет** | Строковые совпадения. |
+| **От чего зависит** | source_export.filters.stage_deal_otkaz; актуальные значения в config_excel_v2.json |
 | **Значение в актуальном config** | `false` |
 
 ### `output.source_export.filters.label_strategy_kvartal`
@@ -4266,7 +4733,7 @@ _Объект (контейнер)._
 | **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
 | **От чего зависит** | source_export.filters.label_strategy_kvartal; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `["Стратегия", "квартал"]` |
+| **Значение в актуальном config** | `["Стратегия", "квартал", "2026"]` |
 
 ### `output.source_export.filters.label_strategy_kvartal.values_mode`
 
@@ -4360,7 +4827,7 @@ _Объект (контейнер)._
 | **Как работает** | Сравниваются с ячейкой по match/values_mode. Значение читается при загрузке config и используется в source_export / exporter. Изменение влияет на следующий прогон `run_excel.py`. |
 | **Что даёт / куда влияет** | Набор допустимых/исключаемых значений. Итог — в `*_source_*.xlsx` (и при full — вместе с analytics/detail). |
 | **От чего зависит** | source_export.filters.label_kvartal_2_or_3; соседние ключи `output.*` и актуальные значения в config_excel_v2.json |
-| **Значение в актуальном config** | `["2", "3"]` |
+| **Значение в актуальном config** | `["1", "2", "3", "4"]` |
 
 ### `output.source_export.filters.label_kvartal_2_or_3.values_mode`
 

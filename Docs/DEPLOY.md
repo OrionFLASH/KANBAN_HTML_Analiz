@@ -47,9 +47,9 @@ KANBAN_HTML_Analiz/
 
 ## Пакет Excel v2 (zip)
 
-В корне репозитория: **`v2_program_files_20260910f.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
+В корне репозитория: **`v2_program_files_20260910g.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
 
-Только документация: **`docs_20260910f.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
+Только документация: **`docs_20260910g.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
 
 Выход `run_excel.py` — **до трёх файлов** (см. `output.report_parts`):
 
