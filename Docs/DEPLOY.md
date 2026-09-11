@@ -47,9 +47,11 @@ KANBAN_HTML_Analiz/
 
 ## Пакет Excel v2 (zip)
 
-В корне репозитория: **`v2_program_files_20260911.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
+В корне репозитория: **`v2_program_files_20260911b.zip`** — `run_excel.py` / `run.py`, **весь `src/`** (общие модули + `v1` + `v2`), `config.json` / `config_excel_v2.json`, README/ROADMAP, Docs. **Не входит:** `src/Tests/`, HTML/IN/OUT/`__pycache__`.
 
-Только документация: **`docs_20260911.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config, ToDo v3, prod DEBUG-лог) + `README.md` + `ROADMAP.md`.
+> Важно: одного `src/v2/` недостаточно — pipeline импортирует общие модули (`filter_funnel`, `filters`, `excel_loader`, …).
+
+Только документация: **`docs_20260911b.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config, ToDo v3, prod DEBUG-лог) + `README.md` + `ROADMAP.md`.
 
 Выход `run_excel.py` — **до четырёх файлов** (см. `output.report_parts`):
 

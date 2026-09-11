@@ -398,7 +398,8 @@ src/
 | 12.9 | Сохранить prod DEBUG-лог 2026-09-10 и ToDo v3 в Docs | `Docs/` | `[v]` |
 | 12.10 | Актуальный `config_excel_v2.json` (prod 10-09) + архив программы | config, zip | `[v]` |
 | 12.11 | Docs v2.9.0 (CONFIG/PARAMS/DEPLOY/README) + `docs_20260911.zip` | Docs, zip | `[v]` |
+| 12.12 | Fix архива программы: полный `src/` (не только v2), без Tests | zip, Docs | `[v]` |
 
 ## Следующий шаг
 
-- Prod-прогон с архивами `v2_program_files_20260911.zip` и `docs_20260911.zip`
+- Prod-прогон с архивами `v2_program_files_20260911b.zip` и `docs_20260911b.zip`
