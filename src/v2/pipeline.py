@@ -55,8 +55,9 @@ from src.v2.report_parts import (
 from src.v2.source_export import build_source_export_frame
 from src.v2.percentiles_export import (
     build_percentiles_export_frame,
+    count_percentiles_export_jobs,
+    iter_percentiles_export_jobs,
     percentiles_export_enabled,
-    split_percentiles_sheets_by_tb,
 )
 from src.v2.snapshot import snapshot_to_export_frame
 from src.v2.status_durations import attach_status_duration_columns
@@ -594,27 +595,43 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         del source_export_frame
 
     if need_percentiles:
-        percentiles_path: Path = build_report_path(
+        percentiles_base: Path = build_report_path(
             output_dir, config, REPORT_PART_PERCENTILES, timestamp
         )
-        progress.stage("Экспорт percentiles", str(percentiles_path.name))
-        pct_sheets: dict[str, pd.DataFrame] = split_percentiles_sheets_by_tb(
+        progress.stage("Экспорт percentiles", str(percentiles_base.name))
+        jobs_total: int = count_percentiles_export_jobs(
             percentiles_export_frame, config
         )
         progress.step(
-            f"Percentiles листов: {len(pct_sheets)}, строк={len(percentiles_export_frame):,}"
+            f"Percentiles файлов к записи: {jobs_total}, "
+            f"строк={len(percentiles_export_frame):,}"
         )
-        with progress.timed("export_excel_v2_percentiles", sheets=len(pct_sheets)):
-            _, csv_p = export_excel_v2(
-                percentiles_path,
-                pct_sheets,
-                config,
+        for job_i, (pct_path, pct_sheets, pct_label) in enumerate(
+            iter_percentiles_export_jobs(
+                percentiles_export_frame, config, percentiles_base
+            ),
+            start=1,
+        ):
+            rows_in_job: int = sum(len(chunk) for chunk in pct_sheets.values())
+            progress.step(
+                f"Percentiles [{job_i}/{jobs_total}] {pct_label}: "
+                f"{pct_path.name} ({rows_in_job:,} строк, листов={len(pct_sheets)})"
             )
-        created_paths.append(percentiles_path)
-        all_csv_paths.extend(csv_p)
-        progress.done(f"Excel percentiles: {percentiles_path.name}")
+            with progress.timed(
+                "export_excel_v2_percentiles",
+                file=job_i,
+                files=jobs_total,
+                rows=rows_in_job,
+                sheets=len(pct_sheets),
+            ):
+                _, csv_p = export_excel_v2(pct_path, pct_sheets, config)
+            created_paths.append(pct_path)
+            all_csv_paths.extend(csv_p)
+            progress.done(f"Excel percentiles: {pct_path.name}")
+            del pct_sheets
+            _maybe_free_memory(config)
         del percentiles_export_frame
-        del pct_sheets
+        _maybe_free_memory(config)
 
     if all_csv_paths:
         progress.step(f"CSV overflow: {', '.join(p.name for p in all_csv_paths)}")
