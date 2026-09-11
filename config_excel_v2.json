@@ -1008,7 +1008,8 @@
     "percentiles_export": {
       "enabled": true,
       "split_by_tb_over_rows": 1000000,
-      "sheet_name_prefix": "ТБ"
+      "sheet_name_prefix": "ТБ",
+      "split_mode": "files"
     }
   },
   "excel_theme": "green_red",

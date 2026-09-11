@@ -47,22 +47,22 @@ KANBAN_HTML_Analiz/
 
 ## Пакет Excel v2 (zip)
 
-В корне репозитория: **`v2_program_files_20260911b.zip`** — `run_excel.py` / `run.py`, **весь `src/`** (общие модули + `v1` + `v2`), `config.json` / `config_excel_v2.json`, README/ROADMAP, Docs. **Не входит:** `src/Tests/`, HTML/IN/OUT/`__pycache__`.
+В корне репозитория: **`v2_program_files_20260911c.zip`** — `run_excel.py` / `run.py`, **весь `src/`** (общие модули + `v1` + `v2`), `config.json` / `config_excel_v2.json`, README/ROADMAP, Docs. **Не входит:** `src/Tests/`, HTML/IN/OUT/`__pycache__`.
 
 > Важно: одного `src/v2/` недостаточно — pipeline импортирует общие модули (`filter_funnel`, `filters`, `excel_loader`, …).
 
-Только документация: **`docs_20260911b.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config, ToDo v3, prod DEBUG-лог) + `README.md` + `ROADMAP.md`.
+Только документация: **`docs_20260911c.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config, ToDo v3, prod DEBUG-лог) + `README.md` + `ROADMAP.md`.
 
-Выход `run_excel.py` — **до четырёх файлов** (см. `output.report_parts`):
+Выход `run_excel.py` — analytics / detail / source и **один или несколько** percentiles (см. `output.report_parts` и `percentiles_export.split_mode`):
 
 | Файл | Листы |
 |------|--------|
 | `*_analytics_*.xlsx` | Нормативы, Статистика (воронка + каталоги фильтров), матрицы сроков |
 | `*_detail_*.xlsx` | Уникальные ID (в т.ч. «Метод продаж»), менеджеры, нарушения |
 | `*_source_*.xlsx` | Исходные строки Kanban + лидеры/почты (фильтры `output.source_export`) |
-| `*_percentiles_*.xlsx` | Строки после фильтров процентилей (+ лидеры); при >1M — листы по ТБ |
+| `*_percentiles_*.xlsx` | Строки после фильтров процентилей (+ лидеры); при >1M — **отдельный файл на каждый ТБ** (`split_mode=files`) |
 
-`report_parts`: `both` | `analytics` | `detail` | `source` | `percentiles` | `full`/`all` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md) v2.9.0.
+`report_parts`: `both` | `analytics` | `detail` | `source` | `percentiles` | `full`/`all` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md) v2.9.3.
 
 ## Данные Excel (отдельно)
 

@@ -133,7 +133,11 @@ def test_percentiles_split_by_tb() -> None:
     config = {
         "columns": {"tb": "ТБ"},
         "output": {
-            "percentiles_export": {"split_by_tb_over_rows": 5, "sheet_name_prefix": "ТБ"},
+            "percentiles_export": {
+                "split_by_tb_over_rows": 5,
+                "sheet_name_prefix": "ТБ",
+                "split_mode": "sheets",
+            },
             "excel_max_sheet_name_length": 31,
         },
     }
@@ -147,6 +151,57 @@ def test_percentiles_split_by_tb() -> None:
     assert len(sheets) == 2
     assert sum(len(v) for v in sheets.values()) == 8
 
+
+def test_percentiles_split_files_by_tb() -> None:
+    """Вариант 2: при превышении порога — отдельный xlsx на каждый ТБ."""
+    from pathlib import Path
+
+    from src.v2.percentiles_export import (
+        count_percentiles_export_jobs,
+        iter_percentiles_export_jobs,
+    )
+
+    config = {
+        "columns": {"tb": "ТБ"},
+        "output": {
+            "percentiles_export": {
+                "split_by_tb_over_rows": 5,
+                "sheet_name_prefix": "ТБ",
+                "split_mode": "files",
+            },
+            "excel_max_sheet_name_length": 31,
+        },
+    }
+    frame = pd.DataFrame(
+        {
+            "ТБ": ["А"] * 4 + ["Б"] * 4,
+            "x": range(8),
+        }
+    )
+    assert count_percentiles_export_jobs(frame, config) == 2
+    jobs = list(iter_percentiles_export_jobs(frame, config, Path("OUT/pct.xlsx")))
+    assert len(jobs) == 2
+    assert all(path.suffix == ".xlsx" for path, _, _ in jobs)
+    assert {path.name for path, _, _ in jobs} == {
+        "pct_ТБ_А.xlsx",
+        "pct_ТБ_Б.xlsx",
+    }
+    assert sum(len(next(iter(sheets.values()))) for _, sheets, _ in jobs) == 8
+    # ниже порога — один файл без суффикса ТБ
+    config_low = {
+        "columns": {"tb": "ТБ"},
+        "output": {
+            "percentiles_export": {
+                "split_by_tb_over_rows": 100,
+                "split_mode": "files",
+            }
+        },
+    }
+    jobs_one = list(
+        iter_percentiles_export_jobs(frame, config_low, Path("OUT/pct.xlsx"))
+    )
+    assert len(jobs_one) == 1
+    assert jobs_one[0][0].name == "pct.xlsx"
 
 def test_snapshot_no_futurewarning_object_fillna() -> None:
     series = pd.Series([1, None, "x"], dtype=object)
