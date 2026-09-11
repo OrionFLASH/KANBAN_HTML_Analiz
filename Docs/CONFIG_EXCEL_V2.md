@@ -7,7 +7,7 @@
 > **[CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)** (656 путей, проверка: `python3 scripts/check_config_excel_v2_params.py`).  
 > Этот файл — обзорный гайд по блокам и сценариям.
 
-**Версия документа:** 2.8.0 (2026-09-10)
+**Версия документа:** 2.9.0 (2026-09-11)
 
 ---
 
@@ -27,8 +27,9 @@
 4. [team_files](#4-team_files)
 4.1. [manager_emails](#manager_emails)
 5. [output — листы и колонки](#5-output--листы-и-колонки)
-5.1. [report_parts — файлы analytics/detail/source](#report_parts)
+5.1. [report_parts — файлы analytics/detail/source/percentiles](#report_parts)
 5.2. [source_export — третий Excel с исходными строками](#source_export)
+5.2a. [percentiles_export — четвёртый Excel под фильтры процентилей](#percentiles_export)
 5.2. [duration_matrix — матрицы сроков](#duration_matrix)
 5.3. [status_duration_columns — сроки по статусам на «Уникальные ID»](#status_duration_columns)
 5.4. [excel_format — даты, текст ID, light-листы](#excel_format)
@@ -60,12 +61,14 @@ python -m src.v2.pipeline
 | `test_files` | массив имён xlsx | Файлы Kanban для test |
 | `prod_files` | массив имён xlsx | Файлы Kanban для prod |
 
-**Выход — до трёх Excel-файлов** (см. [`report_parts`](#report_parts)): analytics, detail и опционально **source** (исходные строки + лидеры/почты).
+**Выход — до четырёх Excel-файлов** (см. [`report_parts`](#report_parts)): analytics, detail, **source** и **percentiles**.
 
 | Часть | Имя файла | Листы |
 |-------|-----------|--------|
 | `analytics` | `{report_prefix}_analytics_{timestamp}.xlsx` | Нормативы, Статистика, все «Распределение сроков» |
 | `detail` | `{report_prefix}_detail_{timestamp}.xlsx` | Уникальные ID, Свод по менеджеру, Свод ПрПр с отклонениями |
+| `source` | `{report_prefix}_source_{timestamp}.xlsx` | Исходные строки Kanban + лидеры/почты (`output.source_export`) |
+| `percentiles` | `{report_prefix}_percentiles_{timestamp}.xlsx` | Строки после корневых `filters` (+ лидеры); при >1M — листы по ТБ |
 
 По умолчанию `report_prefix` = `kanban_excel_v2`, `timestamp_format` = `%Y%m%d_%H%M%S`. JSON **не** создаётся.
 
@@ -73,8 +76,8 @@ python -m src.v2.pipeline
 
 | Ключ config | Имя листа | Файл | Содержание |
 |-------------|-----------|------|------------|
-| `norms` | Нормативы | analytics | P20/P50/P80 по ТБ+группе+продукту+стадии; колонки отсечения выбросов **по каждой группе** |
-| `statistics` | Статистика | analytics | Воронка фильтров + свод выбросов |
+| `norms` | Нормативы | analytics | P20/P50/P80 по ТБ+группе+продукту+стадии; колонки отсечения фильтров/выбросов **по каждой группе** (без `stage_key`) |
+| `statistics` | Статистика | analytics | Воронка фильтров процентилей + каталоги Source/Percentiles + свод выбросов |
 | `duration_matrix` | Распределение сроков | analytics | Матрица группа/продукт × дни; P20/P50/P80; «Всего»; порядок `by_volume` |
 | `duration_matrix_by_group` | Распределение сроков (группы) | analytics | Дни ↑; группы А→Я; продукты по убыванию лидов |
 | `duration_matrix_by_status` | Распределение сроков (статус) | analytics | Как основной + колонка «Текущий статус» после продукта |
@@ -193,7 +196,7 @@ python -m src.v2.pipeline
 | `percentiles` | `[20, 50, 80]` | Какие перцентили считать глобально | Должны согласовываться с `output.statistics.percentiles[].p` и `exceedance.percentile` |
 | `exceedance.percentile` | `50` (в v2-config) | Порог «превышение» на лидах | ∈ `percentiles`; влияет на колонки на «Уникальные ID» и рамку порога на матрице сроков |
 | `aggregation.metrics` | `["days_on_stage"]` | Какие метрики агрегировать | Колонки нормативов строятся по этим ключам |
-| `aggregation.group_keys` | product_group, product, current_status, stage_key | Ключи groupby | Менять осторожно — ломает смысл листов |
+| `aggregation.group_keys` | product_group, product, current_status | Ключи groupby на Нормативах | `stage_key` **не** выводится (дубль статуса в mode=status) |
 
 ### 2.6. `logging`
 
@@ -212,12 +215,14 @@ python -m src.v2.pipeline
 
 | Набор | Где в config | На что влияет | Откуда берёт строки |
 |-------|--------------|---------------|---------------------|
-| Корневой | `filters` (+ terminal exclude) | analytics / detail: перцентили, снимок, менеджеры | полная загрузка Kanban |
+| Корневой (процентили) | `filters` + `filters_order` | analytics / detail / **percentiles** | полная загрузка Kanban |
 | Source | `output.source_export` | только `*_source_*.xlsx` | **отдельная копия** полной загрузки |
 
 Корневой набор **не** режет source и наоборот: у каждого сценария своя выборка.
 
-Все фильтры корневого набора с `enabled: true` объединяются по **AND**.  
+Корневые фильтры с `enabled: true` применяются **последовательно** в порядке `filters_order` (каждый шаг — на остатке предыдущего; и include, и exclude).  
+Если `filters_order` нет — include в порядке JSON, затем exclude (sorted).
+
 Формат — **универсальный** (см. ниже). Старые ключи (`value`, `contains*`, `exclude_*`) по-прежнему понимаются адаптером в `src/filters.py`.
 
 > **Нет HTML/JSON:** в `config_excel_v2.json` **не используется** поле `html_slice` из `config.json`. В v2 действует только `enabled: true/false`.
@@ -227,6 +232,7 @@ python -m src.v2.pipeline
 ```json
 "имя_фильтра": {
   "enabled": true,
+  "description": "Кратко по-русски",
   "column_key": "label",
   "column_keys": [],
   "action": "include",
@@ -240,7 +246,8 @@ python -m src.v2.pipeline
 
 | Поле | Значения | Зачем | Как работает | Пример эффекта |
 |------|----------|-------|--------------|----------------|
-| `enabled` | bool | Вкл/выкл фильтра | `false` — фильтр не участвует в AND | Выключить стратегию на время |
+| `enabled` | bool | Вкл/выкл фильтра | `false` — фильтр не участвует | Выключить стратегию на время |
+| `description` | строка | Русская подпись | Заголовки «Отсечено: …» на Нормативах; каталог на Статистике | `"Искл. статус «К ПРОДАЖЕ»"` |
 | `column_key` | ключ из `columns` | Основная колонка | Берётся заголовок через `columns` | `"label"` → «Метка» |
 | `column_keys` | массив ключей | Доп. колонки | Совпадение по **OR** с основной | искать метку ещё в другой колонке |
 | `action` | `include` \| `exclude` | Оставить / убрать | `include` — оставить совпавшие; `exclude` — убрать | терминальные стадии — `exclude` |
@@ -250,7 +257,6 @@ python -m src.v2.pipeline
 | `value_type` | `string` \| `number` \| `date` \| `auto` | Приведение типа | Числа не сравниваются как текст | ЕФС = number |
 | `case_sensitive` | bool | Регистр | `false` — «отказ» = «ОТКАЗ» | обычно `false` |
 
-Терминальные `action: exclude` применяются после inclusion (`filter_terminal_deal_stage_rows`).  
 Пустые стадии (`processing.empty_stage_values`) **не** попадают под exclude.
 
 ### Текущий набор v2
@@ -273,7 +279,9 @@ python -m src.v2.pipeline
 | `exclude_deal_zakryta` | exclude | contains | `["закрыта"]` | any | string (`enabled: false`) |
 | `exclude_deal_zaklyuchen` | exclude | contains | `["заключен"]` | any | string (`enabled: false`) |
 
-Корневой набор для перцентилей: ЕФС=1, изменение условий=0, плюс exclude терминальных стадий (отказ / к продаже / отклонена / аннулирован / расторгнут). Метки стратегии в корневом `filters` выключены — для source см. `output.source_export`.
+Корневой набор для перцентилей: порядок в `filters_order` (типично change_conditions → efs_flag → exclude_current_for_sale → …). Метки стратегии в корневом `filters` выключены — для source см. `output.source_export`.
+
+> **Почему на Нормативах «Отсечено: К ПРОДАЖЕ» = 0:** фильтр реально режет строки (см. воронку на «Статистике»), но группы со статусом «К ПРОДАЖЕ» исчезают с листа Нормативы — счётчик на оставшихся статусах закономерно 0. Смотрите глобальные «До/После/Отсечено» в Статистике.
 
 ---
 
@@ -485,11 +493,12 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 
 ```json
 "output": {
-  "report_parts": "both",
+  "report_parts": "all",
   "report_part_suffixes": {
     "analytics": "analytics",
     "detail": "detail",
-    "source": "source"
+    "source": "source",
+    "percentiles": "percentiles"
   },
   "report_prefix": "kanban_excel_v2",
   "timestamp_format": "%Y%m%d_%H%M%S"
@@ -498,17 +507,18 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 
 | Значение `report_parts` | Файлы | Что **считается** | Что **пропускается** |
 |-------------------------|-------|-------------------|----------------------|
-| `both` (default) | analytics + detail | полный pipeline без source | source_export |
-| `analytics` | `*_analytics_*.xlsx` | фильтры, records, нормативы, воронка, матрицы сроков | команды, почты, detail, source |
+| `both` (default в коде) | analytics + detail | полный pipeline без source/percentiles | source_export, percentiles_export |
+| `analytics` | `*_analytics_*.xlsx` | фильтры, records, нормативы, воронка, матрицы сроков | команды, почты, detail, source, percentiles |
 | `detail` | `*_detail_*.xlsx` | фильтры, снимок, команды, почты, P80, exceedance, своды | матрицы / воронка на экспорт; source |
-| `source` | `*_source_*.xlsx` | загрузка Kanban → фильтры `output.source_export` → лидеры/почты | analytics и detail целиком |
-| `full` / `all` / `все` | все три | полный pipeline + source | — |
+| `source` | `*_source_*.xlsx` | загрузка → `output.source_export` → лидеры/почты | analytics и detail целиком |
+| `percentiles` | `*_percentiles_*.xlsx` | фильтры процентилей → строки (+ лидеры) | analytics/detail/source целиком |
+| `full` / `all` / `все` | все **четыре** | полный pipeline + source + percentiles | — |
 
-Допустимы список `["analytics","detail","source"]` и синонимы (`нормативы`, `лиды`, `исходные`, `1`/`2`/`3`, `оба`, `все`).
+Допустимы список `["analytics","detail","source","percentiles"]` и синонимы (`нормативы`, `лиды`, `исходные`, `процентили`, `1`/`2`/`3`/`4`, `оба`, `все`).
 
 Имена файлов: `{report_prefix}_{suffix}_{timestamp}.xlsx`.
 
-> **Зачем:** на prod матрицы и воронка тяжелее по CPU; команды/почты — по I/O. Source — отдельная выгрузка «как в файле» с своими фильтрами.
+> **Зачем:** на prod матрицы и воронка тяжелее по CPU; команды/почты — по I/O. Source — «как в файле» со своими фильтрами. Percentiles — проверка выборки под нормативы.
 
 ### source_export
 
@@ -594,11 +604,34 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
 |------------|--------|
 | `filters_order` | Порядок шагов: каждый следующий фильтр — на **остатке** предыдущего |
 | `filters.<имя>.enabled` | Вкл/выкл шага без удаления из order |
+| `filters.<имя>.description` | Русская подпись для Статистики |
 | `filters.<имя>.*` | Та же универсальная схема, что в §3 (`action`, `match`, `values`, `values_mode`, `value_type`, …) |
 
 `match=max` / `min` — оставить строки с экстремумом колонки **в текущей выборке** (после предыдущих шагов). Для даты отчёта задайте `value_type: "date"`.
 
 Лист: `output.sheets.source` («Исходные строки»). Закрепление шапки и автофильтр — через `sheet_freeze.source` + `format_sheet`.
+
+### percentiles_export
+
+Четвёртый Excel: **исходные колонки после корневых `filters` / `filters_order`** (та же выборка, что идёт в нормативы) + лидеры/почты.
+
+```json
+"output": {
+  "percentiles_export": {
+    "enabled": true,
+    "split_by_tb_over_rows": 1000000,
+    "sheet_name_prefix": "ТБ"
+  }
+}
+```
+
+| Поле | Смысл |
+|------|--------|
+| `enabled` | `false` — не писать файл, даже если `percentiles` в `report_parts` |
+| `split_by_tb_over_rows` | Если строк **больше** порога — отдельные листы по значениям колонки ТБ |
+| `sheet_name_prefix` | Префикс имени листа (`ТБ ЦЧБ`, …) |
+
+При числе строк ≤ порога — один лист `output.sheets.percentiles` («Строки для процентилей»).
 
 ### sheets
 
@@ -613,20 +646,22 @@ CSV со справочником почт (лежит в `IN/`, имя в confi
   "leads": "Уникальные ID",
   "managers": "Свод по менеджеру",
   "violations": "Свод ПрПр с отклонениями",
-  "source": "Исходные строки"
+  "source": "Исходные строки",
+  "percentiles": "Строки для процентилей"
 }
 ```
 
 | Ключ | Назначение |
 |------|------------|
-| `norms` | Таблица нормативов + колонки **входных фильтров** и **выбросов** по строке группы; закрепление через `sheet_freeze.norms` (колонка «Уровень анализа» не выводится) |
-| `statistics` | Воронка фильтров и свод отсечений (отдельное оформление: два блока) |
+| `norms` | Таблица нормативов + колонки **входных фильтров** и **выбросов** по строке группы; без `stage_key` / «Уровень анализа» |
+| `statistics` | Воронка фильтров процентилей + каталоги всех Source/Percentiles-фильтров + свод выбросов |
 | `duration_matrix` | Матрица числа лидов по сроку (дни); см. блок `output.duration_matrix` ниже |
 | `duration_matrix_by_group` | Второй лист той же матрицы с раскладкой `group_alpha_product_volume` (через `variants`) |
 | `duration_matrix_by_status` | Матрица с разрезом по «Текущий статус» (колонка после продукта) |
 | `duration_matrix_by_group_status` | Группы А→Я + статус; имя листа ≤31 символа |
-| `leads` / `managers` / `violations` | См. §1 |
+| `leads` / `managers` / `violations` | См. §1; на leads — в т.ч. «Метод продаж» |
 | `source` | Третий файл: исходные колонки Kanban + лидеры/почты; см. [`source_export`](#source_export) |
+| `percentiles` | Четвёртый файл (или базовое имя при одном листе); см. [`percentiles_export`](#percentiles_export) |
 
 ### sheet_freeze
 
@@ -738,7 +773,7 @@ Excel закрепляет всё слева и выше первой незак
 | Внутренний ключ | Заголовок (по умолчанию) | Смысл |
 |-----------------|--------------------------|--------|
 | `filter_before` | До отсечения | Уник. лиды в группе **до** всех входных фильтров |
-| `filter_dropped_<имя>` | Отсечено: `<имя>` | Уник. лиды, отсечённые этим фильтром (include/exclude) |
+| `filter_dropped_<имя>` | Отсечено: `<description>` | Уник. лиды, отсечённые этим фильтром (подпись из `filters.*.description`) |
 | `filter_after` | После фильтров | Уник. лиды в группе **после** всех входных фильтров |
 | `outlier_before` | До выбросов | Записи группы до правил `outlier_clipping` |
 | `outlier_rule_<имя>` | Отсечено: `<имя>` | Отсечено правилом выбросов |
@@ -762,6 +797,7 @@ Excel закрепляет всё слева и выше первой незак
 | `work_start_date` | Дата начала работы (`YYYY-MM-DD`) |
 | `deal_id` | ID сделки |
 | `deal_created_date` | Дата создания сделки (`YYYY-MM-DD`) |
+| `sales_method` | Метод продаж (**строго** из строки с max датой отчёта, без fill-forward) |
 | `deal_stage` | Текущая стадия сделки |
 | `tb` | ТБ |
 | `gosb` | ГОСБ |
@@ -878,6 +914,7 @@ Excel закрепляет всё слева и выше первой незак
 | `timestamp_format` | `%Y%m%d_%H%M%S` | Суффикс времени | Меняет только имя файла |
 | `report_parts` / `report_part_suffixes` | §5.1 | Какие части отчёта строить | Пропуск расчётов |
 | `source_export` | §5.2 | Фильтры третьего Excel | Исходные строки + лидеры |
+| `percentiles_export` | §5.2a | Четвёртый Excel / split по ТБ | Строки под нормативы |
 | `all_tb_label` | `"все тб"` | Подпись агрегата без разреза по ТБ | Строка «все тб» в нормативах / воронке |
 | `excel_max_sheet_name_length` | `31` | Лимит Excel на имя листа | Обрезка длинных имён (матрицы со статусом) |
 | `excel_max_rows_per_sheet` / `csv_overflow` | § ниже | Overflow больших листов | CSV вместо вкладки |
@@ -1133,7 +1170,8 @@ Excel закрепляет всё слева и выше первой незак
 | Только нормативы и матрицы | `"report_parts": "analytics"` |
 | Только уникальные ID / менеджеры | `"report_parts": "detail"` |
 | Только исходные строки + лидеры | `"report_parts": "source"` |
-| Все три файла | `"report_parts": "full"` |
+| Только строки под процентили | `"report_parts": "percentiles"` |
+| Все четыре файла | `"report_parts": "full"` / `"all"` |
 | Порог превышения = медиана | `"exceedance": { "percentile": 50 }` |
 | Порядок статусов на «Уникальные ID» | `output.status_duration_columns.order` |
 | Формат дат | `output.excel_format.date_format` (`YYYY-MM-DD`) |
@@ -1155,12 +1193,12 @@ Excel закрепляет всё слева и выше первой незак
 | Dates | `dayfirst`, `excel_origin`, `formats`, `empty_values` | §2.4 |
 | Анализ | `duration_source`, `stage_analysis_mode`, `product_analysis_mode`, `percentiles`, `exceedance`, `aggregation.group_keys`, `aggregation.metrics` | §2.5 |
 | Logging | `logger_name`, `info_file_prefix`, `debug_file_prefix`, `hour_format` | §2.6 |
-| Filters | `filters.*` (универсальная схема) | §3 |
+| Filters | `filters.*`, `filters_order`, `description` | §3 |
 | Outliers | `outlier_clipping.*`, `rules[]` | §3.1 |
 | Teams | `team_files.*` вкл. `pick_report_date`, `columns.*`, `output_columns.*` | §4 |
 | Emails | `manager_emails.*` | §4.1 |
 | Client | `client_display.enabled`, `abbreviations[]` | §6 |
-| Output core | `report_prefix`, `timestamp_format`, `report_parts`, `report_part_suffixes`, `source_export`, `all_tb_label`, `excel_max_sheet_name_length`, `excel_max_rows_per_sheet`, `csv_overflow` | §5 / §5.5 |
+| Output core | `report_prefix`, `timestamp_format`, `report_parts`, `report_part_suffixes`, `source_export`, `percentiles_export`, `all_tb_label`, `excel_max_sheet_name_length`, `excel_max_rows_per_sheet`, `csv_overflow` | §5 / §5.5 |
 | Sheets | `sheets.*`, `sheet_freeze.*` | §5 |
 | Matrix | `duration_matrix.*` (variants, widths, heights, fills, `color_scale`) | §5.2 |
 | Snapshot | `snapshot_columns`, `status_duration_columns.*`, `exceedance_columns` | §5 |

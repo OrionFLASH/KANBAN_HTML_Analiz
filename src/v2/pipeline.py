@@ -17,6 +17,7 @@ from src.filter_funnel import (
     GroupFilterAuditor,
     append_funnel_step,
     build_filter_funnel_frame,
+    build_filters_catalog_frame,
     build_outlier_audit_summary,
     merge_filter_audit_into_norms,
 )
@@ -42,18 +43,25 @@ from src.v2.parallel_utils import run_snapshot_records_teams_parallel
 from src.v2.report_parts import (
     REPORT_PART_ANALYTICS,
     REPORT_PART_DETAIL,
+    REPORT_PART_PERCENTILES,
     REPORT_PART_SOURCE,
     build_report_path,
     resolve_report_parts,
     want_analytics,
     want_detail,
+    want_percentiles,
     want_source,
 )
 from src.v2.source_export import build_source_export_frame
+from src.v2.percentiles_export import (
+    build_percentiles_export_frame,
+    percentiles_export_enabled,
+    split_percentiles_sheets_by_tb,
+)
 from src.v2.snapshot import snapshot_to_export_frame
 from src.v2.status_durations import attach_status_duration_columns
 from src.v2.team_enrich import enrich_snapshot_with_team_dfs
-from src.filters import apply_filters, filter_terminal_deal_stage_rows
+from src.filters import apply_ordered_filters, resolve_filters_order
 from src.input_files_check import InputFilesMissingError, ensure_input_files_exist
 from src.resource_guard import apply_adaptive_resources, maybe_free_memory_between_stages
 from src.logger_setup import setup_logger
@@ -72,9 +80,11 @@ def _maybe_free_memory(config: dict[str, Any]) -> None:
 
 
 def _enabled_filter_names(config: dict[str, Any]) -> list[str]:
-    """Имена включённых фильтров (без значений/содержимого)."""
+    """Имена включённых фильтров в порядке filters_order (без значений)."""
+    filters_cfg: dict[str, Any] = dict(config.get("filters") or {})
     names: list[str] = []
-    for name, flt in (config.get("filters") or {}).items():
+    for name in resolve_filters_order(config, filters_cfg):
+        flt = filters_cfg.get(name)
         if isinstance(flt, dict) and flt.get("enabled"):
             names.append(str(name))
     return names
@@ -167,6 +177,9 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     need_analytics: bool = want_analytics(report_parts)
     need_detail: bool = want_detail(report_parts)
     need_source: bool = want_source(report_parts)
+    need_percentiles: bool = want_percentiles(report_parts) and percentiles_export_enabled(
+        config
+    )
 
     input_dir: Path = get_excel_v2_input_dir(config)
     filenames: list[str] = get_excel_v2_file_list(config)
@@ -254,21 +267,23 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
             kind="load",
             group_auditor=group_auditor,
         )
-    progress.substage("apply_filters", f"вход={rows_loaded:,}")
-    with progress.timed("apply_filters", rows_in=rows_loaded, filters=len(enabled_filters)):
-        after_inclusion: pd.DataFrame = apply_filters(
+    progress.substage("apply_ordered_filters", f"вход={rows_loaded:,}")
+    filters_cfg: dict[str, Any] = dict(config.get("filters") or {})
+    filters_order: list[str] = resolve_filters_order(config, filters_cfg)
+    progress.step(
+        f"порядок фильтров процентилей ({len(filters_order)}): "
+        f"{', '.join(enabled_filters) or '—'}"
+    )
+    with progress.timed(
+        "apply_ordered_filters",
+        rows_in=rows_loaded,
+        filters=len(enabled_filters),
+    ):
+        filtered_df: pd.DataFrame = apply_ordered_filters(
             raw_df,
             config,
-            audit_each_filter=audit_filters,
-            funnel=funnel_steps if need_analytics else None,
-            group_auditor=group_auditor,
-        )
-    progress.debug(f"После inclusion-фильтров: rows={len(after_inclusion):,}")
-    progress.substage("filter_terminal_deal_stage_rows", f"вход={len(after_inclusion):,}")
-    with progress.timed("filter_terminal_deal_stage_rows", rows_in=len(after_inclusion)):
-        filtered_df: pd.DataFrame = filter_terminal_deal_stage_rows(
-            after_inclusion,
-            config,
+            filters_cfg,
+            filters_order,
             audit_each_filter=audit_filters,
             funnel=funnel_steps if need_analytics else None,
             group_auditor=group_auditor,
@@ -284,11 +299,10 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     progress.done(f"После фильтров: {len(filtered_df):,} строк")
 
     del raw_df
-    del after_inclusion
     _maybe_free_memory(config)
 
-    # Команды / почты — для detail и/или source
-    load_teams: bool = need_detail or need_source
+    # Команды / почты — для detail / source / percentiles
+    load_teams: bool = need_detail or need_source or need_percentiles
     progress.stage(
         "Снимок + нормативы",
         f"{len(filtered_df):,} строк; teams={'да' if load_teams else 'нет'}",
@@ -304,6 +318,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
             config,
             shared_config,
             load_teams=load_teams,
+            progress=progress,
         )
     progress.step(
         f"Команда: лид={len(lead_team_df):,} строк, сделка={len(deal_team_df):,} строк"
@@ -315,7 +330,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     )
 
     email_lookup = None
-    if need_detail or need_source:
+    if need_detail or need_source or need_percentiles:
         if need_detail:
             progress.substage("enrich_snapshot_with_team_dfs")
             with progress.timed(
@@ -342,7 +357,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         else:
             progress.debug("manager_emails: выключены в config")
     else:
-        progress.debug("Детализация/source выключены — лидеры и почты пропущены")
+        progress.debug("Детализация/source/percentiles выключены — лидеры и почты пропущены")
 
     with progress.timed("audit_snapshot_coverage"):
         audit_snapshot_coverage(filtered_df, snapshot, config)
@@ -350,6 +365,7 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
 
     # Source: только output.source_export на полной копии загрузки (не filtered_df)
     source_export_frame: pd.DataFrame = pd.DataFrame()
+    source_funnel_steps: list[dict[str, Any]] = []
     if need_source and raw_for_source is not None:
         progress.stage(
             "Исходные строки (source)",
@@ -362,9 +378,27 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
                 lead_team_df=lead_team_df,
                 deal_team_df=deal_team_df,
                 email_lookup=email_lookup,
+                funnel=source_funnel_steps,
             )
         progress.done(f"Source export: {len(source_export_frame):,} строк")
         del raw_for_source
+
+    # Percentiles: строки после фильтров процентилей (+ лидеры)
+    percentiles_export_frame: pd.DataFrame = pd.DataFrame()
+    if need_percentiles:
+        progress.stage(
+            "Строки для процентилей",
+            f"{len(filtered_df):,} строк после filters",
+        )
+        with progress.timed("build_percentiles_export_frame", rows_in=len(filtered_df)):
+            percentiles_export_frame = build_percentiles_export_frame(
+                filtered_df,
+                config,
+                lead_team_df=lead_team_df,
+                deal_team_df=deal_team_df,
+                email_lookup=email_lookup,
+            )
+        progress.done(f"Percentiles export: {len(percentiles_export_frame):,} строк")
 
     del lead_team_df
     del deal_team_df
@@ -440,6 +474,8 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
     norms_export: pd.DataFrame = pd.DataFrame()
     funnel_frame: pd.DataFrame = pd.DataFrame()
     outlier_summary: pd.DataFrame = pd.DataFrame()
+    percentiles_catalog: pd.DataFrame = pd.DataFrame()
+    source_catalog: pd.DataFrame = pd.DataFrame()
     duration_matrices: dict = {}
     if need_analytics:
         progress.substage("подготовка analytics к экспорту")
@@ -450,7 +486,14 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         with progress.timed("norms_to_export_frame"):
             norms_export = norms_to_export_frame(combined_norms, config)
         with progress.timed("build_filter_funnel_frame", steps=len(funnel_steps)):
-            funnel_frame = build_filter_funnel_frame(funnel_steps)
+            funnel_frame = build_filter_funnel_frame(funnel_steps, config)
+        with progress.timed("build_filters_catalogs"):
+            percentiles_catalog = build_filters_catalog_frame(
+                config, scope="filters", funnel=funnel_steps
+            )
+            source_catalog = build_filters_catalog_frame(
+                config, scope="source", funnel=source_funnel_steps
+            )
         with progress.timed("build_outlier_audit_summary"):
             outlier_summary = build_outlier_audit_summary(norms_internal, config)
         if duration_matrix_enabled(config):
@@ -502,6 +545,8 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
                 funnel_frame=funnel_frame,
                 outlier_summary=outlier_summary,
                 duration_matrices=duration_matrices,
+                percentiles_catalog=percentiles_catalog,
+                source_catalog=source_catalog,
             )
         created_paths.append(analytics_path)
         all_csv_paths.extend(csv_a)
@@ -547,6 +592,29 @@ def run_excel_pipeline(config_path: str | Path = "config_excel_v2.json") -> list
         all_csv_paths.extend(csv_s)
         progress.done(f"Excel source: {source_path.name}")
         del source_export_frame
+
+    if need_percentiles:
+        percentiles_path: Path = build_report_path(
+            output_dir, config, REPORT_PART_PERCENTILES, timestamp
+        )
+        progress.stage("Экспорт percentiles", str(percentiles_path.name))
+        pct_sheets: dict[str, pd.DataFrame] = split_percentiles_sheets_by_tb(
+            percentiles_export_frame, config
+        )
+        progress.step(
+            f"Percentiles листов: {len(pct_sheets)}, строк={len(percentiles_export_frame):,}"
+        )
+        with progress.timed("export_excel_v2_percentiles", sheets=len(pct_sheets)):
+            _, csv_p = export_excel_v2(
+                percentiles_path,
+                pct_sheets,
+                config,
+            )
+        created_paths.append(percentiles_path)
+        all_csv_paths.extend(csv_p)
+        progress.done(f"Excel percentiles: {percentiles_path.name}")
+        del percentiles_export_frame
+        del pct_sheets
 
     if all_csv_paths:
         progress.step(f"CSV overflow: {', '.join(p.name for p in all_csv_paths)}")

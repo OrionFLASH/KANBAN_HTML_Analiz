@@ -839,6 +839,39 @@ def apply_config_only_filters(df: pd.DataFrame, config: dict[str, Any]) -> pd.Da
     return result
 
 
+def resolve_filters_order(config: dict[str, Any], filters_cfg: dict[str, Any] | None = None) -> list[str]:
+    """
+    Порядок применения фильтров процентилей/analytics.
+    Если задан config.filters_order — он; иначе ключи filters (JSON-порядок),
+    include сначала, затем exclude (как раньше).
+    """
+    cfg: dict[str, Any] = filters_cfg if filters_cfg is not None else dict(config.get("filters") or {})
+    raw_order: Any = config.get("filters_order")
+    if isinstance(raw_order, list) and raw_order:
+        seen: set[str] = set()
+        names: list[str] = []
+        for item in raw_order:
+            key = str(item).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            names.append(key)
+        # Ключи filters, не попавшие в order — в конце (сохраняем поведение «все enabled»)
+        for key in cfg.keys():
+            if key not in seen:
+                names.append(key)
+        return names
+    inclusion, exclusion = [], []
+    for name, flt in cfg.items():
+        if not isinstance(flt, dict):
+            continue
+        if is_exclude_filter(flt):
+            exclusion.append(name)
+        else:
+            inclusion.append(name)
+    return inclusion + sorted(exclusion)
+
+
 def apply_ordered_filters(
     df: pd.DataFrame,
     config: dict[str, Any],
@@ -846,12 +879,14 @@ def apply_ordered_filters(
     order: list[str],
     *,
     audit_each_filter: bool = False,
+    funnel: list[dict[str, Any]] | None = None,
+    group_auditor: Any = None,
 ) -> pd.DataFrame:
     """
     Последовательная фильтрация: каждый следующий фильтр — на остатке предыдущего.
     Порядок = `order` (имена ключей). Учитываются и include, и exclude.
     Фильтры с enabled=false пропускаются. Имена не из order в конце не применяются
-    (только явно перечисленные).
+    (только явно перечисленные), если order задан явно без «хвоста».
     """
     if df.empty or not filters_cfg:
         return df
@@ -886,5 +921,7 @@ def apply_ordered_filters(
             subset_cfg,
             include_filter=lambda _n, f: bool(f.get("enabled", False)),
             audit_each_filter=audit_each_filter,
+            funnel=funnel,
+            group_auditor=group_auditor,
         )
     return result.reset_index(drop=True)

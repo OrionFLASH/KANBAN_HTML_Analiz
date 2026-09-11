@@ -1,4 +1,4 @@
-"""Выбор частей Excel-отчёта v2: analytics / detail / source / both / full."""
+"""Выбор частей Excel-отчёта v2: analytics / detail / source / percentiles / both / full."""
 
 from __future__ import annotations
 
@@ -11,9 +11,15 @@ logger: logging.Logger = logging.getLogger("kanban.excel_v2.report_parts")
 REPORT_PART_ANALYTICS: str = "analytics"
 REPORT_PART_DETAIL: str = "detail"
 REPORT_PART_SOURCE: str = "source"
+REPORT_PART_PERCENTILES: str = "percentiles"
 
 KNOWN_REPORT_PARTS: frozenset[str] = frozenset(
-    {REPORT_PART_ANALYTICS, REPORT_PART_DETAIL, REPORT_PART_SOURCE}
+    {
+        REPORT_PART_ANALYTICS,
+        REPORT_PART_DETAIL,
+        REPORT_PART_SOURCE,
+        REPORT_PART_PERCENTILES,
+    }
 )
 
 # Синонимы значения output.report_parts
@@ -28,6 +34,7 @@ _FULL_ALIASES: frozenset[str] = frozenset(
         "все_файлы",
         "analytics+detail+source",
         "source+detail+analytics",
+        "analytics+detail+source+percentiles",
     }
 )
 _ANALYTICS_ALIASES: frozenset[str] = frozenset(
@@ -71,20 +78,34 @@ _SOURCE_ALIASES: frozenset[str] = frozenset(
         "file3",
     }
 )
+_PERCENTILES_ALIASES: frozenset[str] = frozenset(
+    {
+        "percentiles",
+        "percentile",
+        "процентили",
+        "percentiles_export",
+        "filtered_source",
+        "4",
+        "fourth",
+        "file4",
+    }
+)
 
 DEFAULT_PART_SUFFIXES: dict[str, str] = {
     REPORT_PART_ANALYTICS: "analytics",
     REPORT_PART_DETAIL: "detail",
     REPORT_PART_SOURCE: "source",
+    REPORT_PART_PERCENTILES: "percentiles",
 }
 
 ANALYTICS_SHEET_KEYS: frozenset[str] = frozenset({"norms", "statistics"})
 DETAIL_SHEET_KEYS: frozenset[str] = frozenset({"leads", "managers", "violations"})
 SOURCE_SHEET_KEYS: frozenset[str] = frozenset({"source"})
+PERCENTILES_SHEET_KEYS: frozenset[str] = frozenset({"percentiles"})
 
 
 def _normalize_part_token(raw: Any) -> str:
-    """Один токен → analytics | detail | source | both | full | ''."""
+    """Один токен → analytics | detail | source | percentiles | both | full | ''."""
     text: str = str(raw or "").strip().casefold()
     if not text:
         return ""
@@ -98,6 +119,8 @@ def _normalize_part_token(raw: Any) -> str:
         return REPORT_PART_DETAIL
     if text in _SOURCE_ALIASES:
         return REPORT_PART_SOURCE
+    if text in _PERCENTILES_ALIASES:
+        return REPORT_PART_PERCENTILES
     if text in KNOWN_REPORT_PARTS:
         return text
     return text
@@ -108,9 +131,10 @@ def resolve_report_parts(config: dict[str, Any]) -> frozenset[str]:
     Какие части отчёта строить.
 
     output.report_parts:
-      - строка: both | full | analytics | detail | source (+ синонимы)
+      - строка: both | full | analytics | detail | source | percentiles (+ синонимы)
       - список частей
-    По умолчанию: both (analytics + detail), без source.
+    По умолчанию: both (analytics + detail), без source/percentiles.
+    full/all → все четыре файла.
     """
     out_cfg: dict[str, Any] = config.get("output") or {}
     raw: Any = out_cfg.get("report_parts", "both")
@@ -130,7 +154,7 @@ def resolve_report_parts(config: dict[str, Any]) -> frozenset[str]:
             else:
                 raise ValueError(
                     f"output.report_parts: неизвестное значение {item!r}; "
-                    f"ожидается analytics / detail / source / both / full"
+                    f"ожидается analytics / detail / source / percentiles / both / full"
                 )
     else:
         token = _normalize_part_token(raw)
@@ -143,7 +167,7 @@ def resolve_report_parts(config: dict[str, Any]) -> frozenset[str]:
         else:
             raise ValueError(
                 f"output.report_parts={raw!r}: ожидается analytics / detail / source / "
-                f"both / full (или список)"
+                f"percentiles / both / full (или список)"
             )
 
     if not selected:
@@ -161,6 +185,10 @@ def want_detail(parts: frozenset[str]) -> bool:
 
 def want_source(parts: frozenset[str]) -> bool:
     return REPORT_PART_SOURCE in parts
+
+
+def want_percentiles(parts: frozenset[str]) -> bool:
+    return REPORT_PART_PERCENTILES in parts
 
 
 def report_part_suffix(config: dict[str, Any], part: str) -> str:
@@ -191,4 +219,6 @@ def sheet_belongs_to_part(sheet_key: str, part: str) -> bool:
         return sheet_key in DETAIL_SHEET_KEYS
     if part == REPORT_PART_SOURCE:
         return sheet_key in SOURCE_SHEET_KEYS
+    if part == REPORT_PART_PERCENTILES:
+        return sheet_key in PERCENTILES_SHEET_KEYS or sheet_key.startswith("ТБ")
     return False

@@ -1,0 +1,236 @@
+Необходимо внести правки в работу V2 Эксель
+
+1) stage_key колонка на листе Нормативы не нужна, давай ее уберем
+
+2) в исходных файлах появилась колонка "Метод продаж" давай ее выводить в "Уникальные ID" перед "Текущая стадия сделки"
+Забираем из строк с максимальной для нее Дата отчета
+
+3) Кроме файла kanban_excel_v2_source надо создавать такой же файл с исходными данными но под филтры для процентилей (если строк более 1000000, то создай в эксель страницы отдельные для каждого из ТБ, те вместо 3 листов их будет больше, размножай на ТБ только листы где строк более 1000000)
+
+4) Надо добавить к кадому фильтру текстовое коротное описание на русском для переименовывания колонок на листе "Нормативы" для более удобного чтения файла
+а также для вывода более понятной Статистики в файл
+
+5) Надо на лист Статистика выводить данные по всем фильрам настроек в разрезе Source и Процентилей те для каждого из разделов
+надо выводить все фильтры из настроек с отметкой включены они или нет
+с отметкой что именно мы в фильтрах ищем исключаем или вклбючаем и прочие параметры фильтра надо видеть. какие ключевые слова. Также Сколько строк было ДО фильтра сколько после осталось, сколько было отсечено
+
+6) Для фильтров процентилей надо также как и в Source задавать порядок их применения и последующие фильтры должны отбирать данные в оставшихся после предидущих 
+
+7) Проверь фильтр "exclude_current_for_sale" в исходных файлах много строк с К ПРОДАЖЕ в колонке а в Нормативы показывает что отсечено 0 по всем строкам. Может не так работает
+настроено вот так
+ "exclude_current_for_sale": {
+      "enabled": true,
+      "column_key": "current_status",
+      "action": "exclude",
+      "match": "equals",
+      "values": [
+        "К ПРОДАЖЕ"
+      ],
+	  
+
+Сверь написание может в исходном "К ПРОДАЖЕ" колонка "Текущий статус"
+
+
+
+8) когда работает программа в консоль выводится информация, но есть моменты когда на долго ничего не выводимтся, а хотелось бы понимать что программа делает и не зависла ли она, давай подумаем как выводить даныне чаще.
+
+вот запись ПРОД консоли. Найди где были задержки и придумай как в этом этапе можно выводить больше чаще даныне
+
+"C:\Program Files\anaconda3\python.exe" C:/Users/01803187/Documents/MyProject/KANBAN_HTML_Analiz/run_excel.py
+2026-09-10 14:30:27,468 - [INFO] - Входные файлы найдены: режим=prod, каталог=C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\IN\PROD, Kanban=9, команда=14 [class: kanban_excel_v2 | def: ensure_input_files_exist]
+2026-09-10 14:30:27,473 - [INFO] - Адаптивные ресурсы: RAM 6.3/15.7 ГБ (занято 60%), вход 1.29 ГБ, давление=ok, workers=2, parallel_stages=False, html_slices=True [class: kanban_excel_v2 | def: apply_adaptive_resources]
+2026-09-10 14:30:27,473 - [INFO] -   → RAM 15.7 ГБ < порога 16 ГБ (осторожный режим, workers≤2) [class: kanban_excel_v2 | def: apply_adaptive_resources]
+2026-09-10 14:30:27,474 - [INFO] - Старт Excel v2 pipeline (режим=prod, workers=2, report_parts=analytics,detail,source) [class: kanban_excel_v2 | def: run_excel_pipeline]
+2026-09-10 14:30:27,474 - [INFO] - Режим: prod, файлов: 9, workers: 2 [class: kanban_excel_v2 | def: run_excel_pipeline]
+2026-09-10 14:30:27,474 - [INFO] - ▶ Этап: Загрузка Kanban — 9 файлов [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,476 - [INFO] - ⏱ Этап «Загрузка Kanban»: 0.0 сек [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,476 - [INFO] - ▶ Этап: Загрузка Excel — 9 файл(ов), workers=2 [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,476 - [INFO] -   … В очереди: Канбан ЕФС0 (04_09-09-2026) __ 10-09-2026.xlsx (62.8 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,476 - [INFO] -   … В очереди: Канбан ЕФС0 (31-07 14_21_28_31-08-2026) __ 10-09-2026.xlsx (134.6 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,477 - [INFO] -   … В очереди: Канбан ЕФС1 (09-09-2026) __ 10-09-2026.xlsx (156.4 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,477 - [INFO] -   … В очереди: Канбан ЕФС1 (04-09-2026) __ 10-09-2026.xlsx (156.7 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,477 - [INFO] -   … В очереди: Канбан ЕФС1 (31-08-2026) __ 10-09-2026.xlsx (157.2 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,477 - [INFO] -   … В очереди: Канбан ЕФС1 (28-08-2026) __ 10-09-2026.xlsx (163.7 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,478 - [INFO] -   … В очереди: Канбан ЕФС1 (21-08-2026) __ 10-09-2026.xlsx (162.2 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,478 - [INFO] -   … В очереди: Канбан ЕФС1 (14-08-2026) __ 10-09-2026.xlsx (166.4 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:30:27,478 - [INFO] -   … В очереди: Канбан ЕФС1 (31-07-2026) __ 10-09-2026.xlsx (158.4 МБ) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:34:56,004 - [INFO] - [1/9] Канбан ЕФС0 (04_09-09-2026) __ 10-09-2026.xlsx: 370,043 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 14:34:56,005 - [INFO] -   … [1/9] Канбан ЕФС0 (04_09-09-2026) __ 10-09-2026.xlsx: 370,043 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:41:12,824 - [INFO] - [2/9] Канбан ЕФС0 (31-07 14_21_28_31-08-2026) __ 10-09-2026.xlsx: 895,886 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 14:41:12,824 - [INFO] -   … [2/9] Канбан ЕФС0 (31-07 14_21_28_31-08-2026) __ 10-09-2026.xlsx: 895,886 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:45:26,327 - [INFO] - [3/9] Канбан ЕФС1 (09-09-2026) __ 10-09-2026.xlsx: 877,074 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 14:45:26,327 - [INFO] -   … [3/9] Канбан ЕФС1 (09-09-2026) __ 10-09-2026.xlsx: 877,074 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:51:18,589 - [INFO] - [4/9] Канбан ЕФС1 (04-09-2026) __ 10-09-2026.xlsx: 879,250 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 14:51:18,589 - [INFO] -   … [4/9] Канбан ЕФС1 (04-09-2026) __ 10-09-2026.xlsx: 879,250 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 14:54:47,809 - [INFO] - [5/9] Канбан ЕФС1 (31-08-2026) __ 10-09-2026.xlsx: 882,544 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 14:54:47,809 - [INFO] -   … [5/9] Канбан ЕФС1 (31-08-2026) __ 10-09-2026.xlsx: 882,544 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:00:38,062 - [INFO] - [6/9] Канбан ЕФС1 (28-08-2026) __ 10-09-2026.xlsx: 923,558 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 15:00:38,062 - [INFO] -   … [6/9] Канбан ЕФС1 (28-08-2026) __ 10-09-2026.xlsx: 923,558 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:04:02,766 - [INFO] - [7/9] Канбан ЕФС1 (21-08-2026) __ 10-09-2026.xlsx: 915,267 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 15:04:02,767 - [INFO] -   … [7/9] Канбан ЕФС1 (21-08-2026) __ 10-09-2026.xlsx: 915,267 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:10:13,383 - [INFO] - [8/9] Канбан ЕФС1 (14-08-2026) __ 10-09-2026.xlsx: 939,243 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 15:10:13,383 - [INFO] -   … [8/9] Канбан ЕФС1 (14-08-2026) __ 10-09-2026.xlsx: 939,243 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:10:13,402 - [INFO] - Освобождение памяти (Канбан ЕФС1 (14-08-2026) __ 10-09-2026.xlsx): gc=100 объектов, RAM свободно 1.9 ГБ (88% занято, warn) [class: kanban.excel_loader | def: release_memory_if_needed]
+2026-09-10 15:13:04,339 - [INFO] - [9/9] Канбан ЕФС1 (31-07-2026) __ 10-09-2026.xlsx: 888,619 строк загружено [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 15:13:04,339 - [INFO] -   … [9/9] Канбан ЕФС1 (31-07-2026) __ 10-09-2026.xlsx: 888,619 строк загружено [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:04,357 - [INFO] - Освобождение памяти (Канбан ЕФС1 (31-07-2026) __ 10-09-2026.xlsx): gc=50 объектов, RAM свободно 1.3 ГБ (91% занято, critical) [class: kanban.excel_loader | def: release_memory_if_needed]
+2026-09-10 15:13:04,888 - [INFO] -   … Объединение 9 таблиц… [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:07,185 - [INFO] - Объединено строк: 7571484 из 9 файлов (все строки файлов сохранены) [class: kanban.excel_loader | def: load_all_files]
+2026-09-10 15:13:07,185 - [INFO] - ✓ Загрузка: 7,571,484 строк из 9 файлов — полный объём (2559.7 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:08,248 - [INFO] - ▶ Этап: Фильтрация — 7,571,484 строк [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:08,249 - [INFO] -   … подготовка фильтров — включено=8: change_conditions, efs_flag, exclude_deal_otkaz, exclude_current_for_sale, exclude_current_otkaz, exclude_deal_otklonen, exclude_deal_annulirovana, exclude_deal_rastorgnuta [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:32,731 - [INFO] -   … apply_filters — вход=7,571,484 [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:13:33,929 - [INFO] - Фильтр 'change_conditions' (вкл.): 7571484 -> 7419357 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 15:14:14,469 - [INFO] - Аудит [filter:change_conditions]: 7,571,484 → 7,419,357 строк (фильтр 'change_conditions' (вкл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:14:15,477 - [INFO] - Фильтр 'efs_flag' (вкл.): 7419357 -> 6153897 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 15:14:53,636 - [INFO] - Аудит [filter:efs_flag]: 7,419,357 → 6,153,897 строк (фильтр 'efs_flag' (вкл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:14:54,728 - [INFO] - Применены фильтры (AND): change_conditions, efs_flag [class: kanban.filters | def: apply_filters]
+2026-09-10 15:14:54,729 - [INFO] -   … filter_terminal_deal_stage_rows — вход=6,153,897 [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:15:00,740 - [INFO] - Фильтр 'exclude_current_for_sale' (искл.): 6153897 -> 3365630 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:15:26,332 - [INFO] - Аудит [exclude:exclude_current_for_sale]: 6,153,897 → 3,365,630 строк (фильтр 'exclude_current_for_sale' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:15:29,593 - [INFO] - Фильтр 'exclude_current_otkaz' (искл.): 3365630 -> 2975464 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:15:47,047 - [INFO] - Аудит [exclude:exclude_current_otkaz]: 3,365,630 → 2,975,464 строк (фильтр 'exclude_current_otkaz' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:15:50,057 - [INFO] - Фильтр 'exclude_deal_annulirovana' (искл.): 2975464 -> 2969967 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:16:06,865 - [INFO] - Аудит [exclude:exclude_deal_annulirovana]: 2,975,464 → 2,969,967 строк (фильтр 'exclude_deal_annulirovana' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:16:12,334 - [INFO] - Фильтр 'exclude_deal_otkaz' (искл.): 2969967 -> 2959200 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:16:29,240 - [INFO] - Аудит [exclude:exclude_deal_otkaz]: 2,969,967 → 2,959,200 строк (фильтр 'exclude_deal_otkaz' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:16:32,174 - [INFO] - Фильтр 'exclude_deal_otklonen' (искл.): 2959200 -> 2959191 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:16:49,090 - [INFO] - Аудит [exclude:exclude_deal_otklonen]: 2,959,200 → 2,959,191 строк (фильтр 'exclude_deal_otklonen' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:16:52,038 - [INFO] - Фильтр 'exclude_deal_rastorgnuta' (искл.): 2959191 -> 2930645 строк [class: kanban.filters | def: filter_terminal_deal_stage_rows]
+2026-09-10 15:17:08,803 - [INFO] - Аудит [exclude:exclude_deal_rastorgnuta]: 2,959,191 → 2,930,645 строк (фильтр 'exclude_deal_rastorgnuta' (exclude)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:17:09,352 - [INFO] - Аудит [фильтрация v2 (итого)]: 7,571,484 → 2,930,645 строк (активные фильтры в config_excel_v2) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 15:17:09,352 - [INFO] - ✓ После фильтров: 2,930,645 строк (241.1 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:17:10,243 - [INFO] - ▶ Этап: Снимок + нормативы — 2,930,645 строк; teams=да [class: kanban_excel_v2 | def: _emit]
+2026-09-10 15:17:10,243 - [INFO] -   … snapshot + records + team_files [class: kanban_excel_v2 | def: _emit]
+2026-09-10 17:33:22,635 - [INFO] - Снимок лидов: 742,665 уникальных ID [class: kanban.excel_v2.snapshot | def: build_lead_snapshot]
+2026-09-10 17:33:43,453 - [WARNING] - Аудит [сроки]: 628/816,405 записей без «days_on_stage» — сохранены в анализе (метрики могут быть пустыми) [class: kanban.data_audit | def: log_missing_metrics]
+2026-09-10 17:33:44,801 - [INFO] - Аудит [лиды]: все 742,665 уникальных ID ПрПр учтены в lead_stage_records [class: kanban.data_audit | def: audit_lead_coverage]
+2026-09-10 17:33:44,869 - [INFO] - Записей lead_stage_records: 816405 (все группы лид×стадия) [class: kanban.lead_tracker | def: build_lead_stage_records]
+2026-09-10 17:50:26,832 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (31-08-2026) __10-09-2026.xlsx): keep_leaders_only 643,881 → 0 строк (−643,881 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:50:26,943 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (31-08-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:50:33,416 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (09-09-2026) __10-09-2026.xlsx): keep_leaders_only 639,508 → 0 строк (−639,508 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:50:33,524 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (09-09-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:50:43,234 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (31-07-2026) __10-09-2026.xlsx): keep_leaders_only 644,884 → 0 строк (−644,884 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:50:43,347 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (31-07-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:50:54,129 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (04-09-2026) __10-09-2026.xlsx): keep_leaders_only 644,488 → 0 строк (−644,488 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:50:54,226 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (04-09-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:51:13,600 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (28-08-2026) __10-09-2026.xlsx): keep_leaders_only 667,520 → 0 строк (−667,520 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:51:13,694 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (28-08-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:51:22,310 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (21-08-2026) __10-09-2026.xlsx): keep_leaders_only 667,605 → 0 строк (−667,605 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:51:22,380 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (21-08-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 17:51:36,434 - [INFO] - Команда (Канбан Лидер_Нет команда лида и сделки (14-08-2026) __10-09-2026.xlsx): keep_leaders_only 668,757 → 0 строк (−668,757 не-лидеров) [class: kanban.team_loader | def: _filter_team_frame_leaders_only]
+2026-09-10 17:51:36,557 - [INFO] - Команда лида и сделки: Канбан Лидер_Нет команда лида и сделки (14-08-2026) __10-09-2026.xlsx — 0 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:08:01,934 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (09-09-2026) __10-09-2026.xlsx — 694,348 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:08:12,635 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (31-08-2026) __10-09-2026.xlsx — 690,395 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:08:31,218 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (04-09-2026) __10-09-2026.xlsx — 695,628 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:08:49,108 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (31-07-2026) __10-09-2026.xlsx — 676,809 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:08:59,622 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (21-08-2026) __10-09-2026.xlsx — 713,421 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:09:10,151 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (14-08-2026) __10-09-2026.xlsx — 713,814 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:09:10,709 - [INFO] - Команда лида и сделки: Канбан Лидер_Да команда лида и сделки (28-08-2026) __10-09-2026.xlsx — 719,882 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:09:18,597 - [INFO] - Команда лида и сделки: загружено 14 файлов, всего 4,904,297 строк [class: kanban.team_loader | def: _load_team_file_list]
+2026-09-10 18:09:22,864 - [INFO] - Команда (объединённая): распределение «Тип команды» (норм.): {'1': 3114223, '2': 1790074} [class: kanban.team_loader | def: split_team_frames_by_type]
+2026-09-10 18:09:27,603 - [INFO] - Команда (объединённая): тип=1 (лид) 3,114,223 строк, тип=2 (сделка) 1,790,074 строк [class: kanban.team_loader | def: split_team_frames_by_type]
+2026-09-10 18:09:28,795 - [INFO] -   … Команда: лид=3,114,223 строк, сделка=1,790,074 строк [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:09:28,796 - [INFO] -   … enrich_snapshot_with_team_dfs [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:09:38,612 - [INFO] - Команда (lead): дедупликация (_id, ФИО): 681354 → 643463 строк [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:10:22,090 - [INFO] - Lookup лидеров (lead): 643,463 ключей [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:10:27,932 - [INFO] - Команда (deal): отбор по дате добавления в команду: 370008 → 370005 строк [class: kanban.team_loader | def: pick_leaders_on_latest_dates]
+2026-09-10 18:10:28,802 - [INFO] - Команда (deal): дедупликация (_id, ФИО): 370005 → 344408 строк [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:10:52,697 - [INFO] - Lookup лидеров (deal): 344,408 ключей [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:10:56,214 - [INFO] - Подливка лидера лида: совпало 395,301 из 742,665 строк снимка (lookup 643,463 ключей) [class: kanban.excel_v2.team_enrich | def: enrich_snapshot_with_team_dfs]
+2026-09-10 18:10:57,296 - [INFO] - Подливка лидера сделки: совпало 233,474 из 742,665 строк снимка (lookup 344,408 ключей) [class: kanban.excel_v2.team_enrich | def: enrich_snapshot_with_team_dfs]
+2026-09-10 18:10:57,492 - [INFO] -   … manager_emails [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:10:57,665 - [INFO] - Справочник почт: 11,350 записей TN из PROM_ALPHA_gamification-statistics.csv [class: kanban.manager_emails | def: load_manager_email_lookup]
+2026-09-10 18:11:02,186 - [INFO] - Почты лидеров: заполнено ячеек Альфа (лид+сделка) ≈ 269,395 [class: kanban.manager_emails | def: enrich_snapshot_with_manager_emails]
+2026-09-10 18:11:03,970 - [INFO] - Аудит [снимок]: все 742,665 уникальных ID ПрПр после фильтров в листе уникальных ID [class: kanban.data_audit | def: audit_snapshot_coverage]
+2026-09-10 18:11:04,686 - [INFO] - ✓ Уникальных ID: 742,665, записей стадий: 816,405 (10434.4 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:11:04,687 - [INFO] - ▶ Этап: Исходные строки (source) — 7,571,484 строк [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:11:08,595 - [INFO] - Фильтр 'efs_equals_1' (вкл.): 7571484 -> 6305555 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:08,595 - [INFO] - Аудит [filter:efs_equals_1]: 7,571,484 → 6,305,555 строк (фильтр 'efs_equals_1' (вкл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:16,399 - [INFO] - Фильтр 'cng_equals_0' (искл.): 6305555 -> 6153897 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:16,399 - [INFO] - Аудит [filter:cng_equals_0]: 6,305,555 → 6,153,897 строк (фильтр 'cng_equals_0' (искл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:24,481 - [INFO] - Фильтр 'max_report_date' (вкл.): 6153897 -> 854479 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:24,481 - [INFO] - Аудит [filter:max_report_date]: 6,153,897 → 854,479 строк (фильтр 'max_report_date' (вкл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:25,769 - [INFO] - Фильтр 'status_prpr_otkaz' (искл.): 854479 -> 806379 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:25,769 - [INFO] - Аудит [filter:status_prpr_otkaz]: 854,479 → 806,379 строк (фильтр 'status_prpr_otkaz' (искл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:27,109 - [INFO] - Фильтр 'stage_deal_otkaz' (искл.): 806379 -> 799859 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:27,109 - [INFO] - Аудит [filter:stage_deal_otkaz]: 806,379 → 799,859 строк (фильтр 'stage_deal_otkaz' (искл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:27,795 - [INFO] - Фильтр 'label_strategy_kvartal' (вкл.): 799859 -> 109605 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:27,796 - [INFO] - Аудит [filter:label_strategy_kvartal]: 799,859 → 109,605 строк (фильтр 'label_strategy_kvartal' (вкл.)) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:28,013 - [INFO] - Фильтр 'label_kvartal_2_or_3' (вкл.): 109605 -> 109605 строк [class: kanban.filters | def: _apply_filter_subset]
+2026-09-10 18:11:28,014 - [INFO] - Аудит [filter:label_kvartal_2_or_3]: 109,605 строк (без изменений) [class: kanban.data_audit | def: audit_rows]
+2026-09-10 18:11:28,051 - [INFO] - Source export: фильтры по порядку ['efs_equals_1', 'cng_equals_0', 'max_report_date', 'status_prpr_otkaz', 'stage_deal_otkaz', 'label_strategy_kvartal', 'label_kvartal_2_or_3'] — 7,571,484 → 109,605 строк [class: kanban.excel_v2.source_export | def: build_source_export_frame]
+2026-09-10 18:11:39,316 - [INFO] - Команда (lead): дедупликация (_id, ФИО): 681354 → 643463 строк [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:12:21,759 - [INFO] - Lookup лидеров (lead): 643,463 ключей [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:12:26,818 - [INFO] - Команда (deal): отбор по дате добавления в команду: 370008 → 370005 строк [class: kanban.team_loader | def: pick_leaders_on_latest_dates]
+2026-09-10 18:12:27,736 - [INFO] - Команда (deal): дедупликация (_id, ФИО): 370005 → 344408 строк [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:12:50,039 - [INFO] - Lookup лидеров (deal): 344,408 ключей [class: kanban.excel_v2.team_enrich | def: build_leaders_lookup_df]
+2026-09-10 18:12:50,547 - [INFO] - Подливка лидера лида: совпало 13,489 из 109,605 строк снимка (lookup 643,463 ключей) [class: kanban.excel_v2.team_enrich | def: enrich_snapshot_with_team_dfs]
+2026-09-10 18:12:50,763 - [INFO] - Подливка лидера сделки: совпало 1,273 из 109,605 строк снимка (lookup 344,408 ключей) [class: kanban.excel_v2.team_enrich | def: enrich_snapshot_with_team_dfs]
+2026-09-10 18:12:51,174 - [INFO] - Почты лидеров: заполнено ячеек Альфа (лид+сделка) ≈ 12,353 [class: kanban.manager_emails | def: enrich_snapshot_with_manager_emails]
+2026-09-10 18:12:51,257 - [INFO] - ✓ Source export: 109,605 строк (106.6 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:12:57,655 - [INFO] - ▶ Этап: Нормативы перцентилей [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:12:57,655 - [INFO] -   … build_norms_tables — records=816,405 [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:13:11,130 - [INFO] - Агрегировано групп: 5536 (include_tb=True) [class: kanban.aggregator | def: aggregate_statistics]
+2026-09-10 18:13:14,132 - [INFO] - Агрегировано групп: 827 (include_tb=False) [class: kanban.aggregator | def: aggregate_statistics]
+2026-09-10 18:13:14,198 - [INFO] - Нормативы: by_tb=5536 строк, overall=827, combined=6363 [class: kanban.excel_v2.norms | def: build_norms_tables]
+2026-09-10 18:13:14,321 - [INFO] -   … build_p80_lookup + exceedance [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:13:16,190 - [INFO] - Превышения P80: 166,755 из 742,665 лидов [class: kanban.excel_v2.exceedance | def: attach_p80_exceedance]
+2026-09-10 18:13:16,291 - [INFO] -   … attach_status_duration_columns [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:13:21,948 - [INFO] - Сроки по статусам: 742,070 лидов, колонок статусов=7 [class: kanban.excel_v2.status_durations | def: build_status_duration_pivot]
+2026-09-10 18:13:24,690 - [INFO] - ✓ Нормативных групп: 6,363 (27.0 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:13:24,866 - [INFO] - ▶ Этап: Своды по менеджерам [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:13:24,866 - [INFO] -   … build_manager_reports — snapshot=742,665 [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:14:30,149 - [INFO] - Свод по менеджеру: 7,950 уникальных записей [class: kanban.excel_v2.manager_summary | def: _manager_summary_from_entries]
+2026-09-10 18:14:44,991 - [INFO] - Свод ПрПр с отклонениями: 259,384 строк [class: kanban.excel_v2.manager_summary | def: _violations_detail_from_entries]
+2026-09-10 18:14:46,880 - [INFO] - ✓ Менеджеров: 7,950, нарушений: 259,384 (82.0 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:14:46,881 - [INFO] -   … snapshot_to_export_frame [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:14:47,618 - [INFO] -   … подготовка analytics к экспорту [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:14:47,628 - [INFO] -   … build_duration_matrix [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:14:48,795 - [INFO] - Матрица сроков [duration_matrix]: mode=by_volume, status=False, 244 строк, дни 1…1568 (888 колонок), процентили=['p20', 'p50', 'p80'], порог P80, всего лидов 742063 [class: kanban.excel_v2.duration_matrix | def: build_all_duration_matrices]
+2026-09-10 18:14:48,795 - [INFO] - Матрица сроков [duration_matrix_by_group]: mode=group_alpha_product_volume, status=False, 244 строк, дни 1…1568 (888 колонок), процентили=['p20', 'p50', 'p80'], порог P80, всего лидов 742063 [class: kanban.excel_v2.duration_matrix | def: build_all_duration_matrices]
+2026-09-10 18:14:52,997 - [INFO] - Матрица сроков [duration_matrix_by_status]: mode=by_volume, status=True, 815 строк, дни 1…1568 (887 колонок), процентили=['p20', 'p50', 'p80'], порог P80, всего лидов 742018 [class: kanban.excel_v2.duration_matrix | def: build_all_duration_matrices]
+2026-09-10 18:14:53,000 - [INFO] - Матрица сроков [duration_matrix_by_group_status]: mode=group_alpha_product_volume, status=True, 815 строк, дни 1…1568 (887 колонок), процентили=['p20', 'p50', 'p80'], порог P80, всего лидов 742018 [class: kanban.excel_v2.duration_matrix | def: build_all_duration_matrices]
+2026-09-10 18:14:54,133 - [INFO] - ▶ Этап: Экспорт analytics — kanban_excel_v2_analytics_20260910_143027.xlsx [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:15:01,152 - [INFO] - Матрица сроков [duration_matrix]: лист записан, mode=by_volume, status=False, колонок процентилей=3, порог p80, выделено ячеек=244, freeze=G4 [class: kanban.excel_v2.exporter | def: _write_duration_matrix_sheet]
+2026-09-10 18:15:21,036 - [INFO] - Матрица сроков [duration_matrix_by_group]: лист записан, mode=group_alpha_product_volume, status=False, колонок процентилей=3, порог p80, выделено ячеек=244, freeze=G4 [class: kanban.excel_v2.exporter | def: _write_duration_matrix_sheet]
+2026-09-10 18:16:25,380 - [INFO] - Матрица сроков [duration_matrix_by_status]: лист записан, mode=by_volume, status=True, колонок процентилей=3, порог p80, выделено ячеек=815, freeze=H4 [class: kanban.excel_v2.exporter | def: _write_duration_matrix_sheet]
+2026-09-10 18:17:28,902 - [INFO] - Матрица сроков [duration_matrix_by_group_status]: лист записан, mode=group_alpha_product_volume, status=True, колонок процентилей=3, порог p80, выделено ячеек=815, freeze=H4 [class: kanban.excel_v2.exporter | def: _write_duration_matrix_sheet]
+2026-09-10 18:18:00,216 - [INFO] - Excel v2 сохранён: C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\OUT\excel_v2\kanban_excel_v2_analytics_20260910_143027.xlsx (6 листов) [class: kanban.excel_v2.exporter | def: _export_excel_v2_impl]
+2026-09-10 18:18:00,217 - [INFO] - ✓ Excel analytics: kanban_excel_v2_analytics_20260910_143027.xlsx (186.1 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:18:00,217 - [INFO] - ▶ Этап: Экспорт detail — kanban_excel_v2_detail_20260910_143027.xlsx [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:18:05,417 - [WARNING] - C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\src\date_utils.py:66: UserWarning: Parsing dates in %Y-%m-%d %H:%M:%S format when dayfirst=True was specified. Pass `dayfirst=False` or specify a format to silence this warning.
+  parsed: pd.Series = pd.to_datetime(text_values, errors="coerce", dayfirst=dayfirst)
+ [class: py.warnings | def: _showwarnmsg]
+2026-09-10 18:18:45,041 - [WARNING] - C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\src\date_utils.py:66: UserWarning: Parsing dates in %Y-%m-%d %H:%M:%S format when dayfirst=True was specified. Pass `dayfirst=False` or specify a format to silence this warning.
+  parsed: pd.Series = pd.to_datetime(text_values, errors="coerce", dayfirst=dayfirst)
+ [class: py.warnings | def: _showwarnmsg]
+2026-09-10 18:41:50,236 - [INFO] - Excel v2 сохранён: C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\OUT\excel_v2\kanban_excel_v2_detail_20260910_143027.xlsx (3 листов) [class: kanban.excel_v2.exporter | def: _export_excel_v2_impl]
+2026-09-10 18:41:51,573 - [INFO] - ✓ Excel detail: kanban_excel_v2_detail_20260910_143027.xlsx (1431.4 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:41:51,586 - [INFO] - ▶ Этап: Экспорт source — kanban_excel_v2_source_20260910_143027.xlsx [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,783 - [INFO] - Excel v2 сохранён: C:\Users\01803187\Documents\MyProject\KANBAN_HTML_Analiz\OUT\excel_v2\kanban_excel_v2_source_20260910_143027.xlsx (1 листов) [class: kanban.excel_v2.exporter | def: _export_excel_v2_impl]
+2026-09-10 18:43:49,798 - [INFO] - ✓ Excel source: kanban_excel_v2_source_20260910_143027.xlsx (118.2 сек) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] -  [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] - ══════════════════════════════════════════════ [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] - Сводка времени обработки [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] - ────────────────────────────────────────────── [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] -   Загрузка Kanban              0.0 сек  (   0%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] -   Загрузка Excel            2559.7 сек  (  17%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,841 - [INFO] -   Фильтрация                 241.1 сек  (   2%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Снимок + нормативы        10434.4 сек  (  69%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Исходные строки (source)   106.6 сек  (   1%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Нормативы перцентилей       27.0 сек  (   0%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Своды по менеджерам         82.0 сек  (   1%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Экспорт analytics          186.1 сек  (   1%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Экспорт detail            1431.4 сек  (   9%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   Экспорт source             118.2 сек  (   1%) [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] - ────────────────────────────────────────────── [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] -   ИТОГО                     15202.3 сек [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,842 - [INFO] - ══════════════════════════════════════════════ [class: kanban_excel_v2 | def: _emit]
+2026-09-10 18:43:49,848 - [INFO] - Excel v2 завершён за 15202.3 с: kanban_excel_v2_analytics_20260910_143027.xlsx, kanban_excel_v2_detail_20260910_143027.xlsx, kanban_excel_v2_source_20260910_143027.xlsx [class: kanban_excel_v2 | def: run_excel_pipeline]
+
+Process finished with exit code 0
+
+9) Также прикладываю лог работы, сохрани его в репозиторий для анализа в тч по п8
+
+10) вкладываю текущий конфиг, для корректировки версии в репозитории

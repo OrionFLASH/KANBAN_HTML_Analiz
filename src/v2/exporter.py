@@ -112,19 +112,29 @@ def _write_statistics_sheet(
     config: dict[str, Any],
     funnel_frame: pd.DataFrame | None,
     outlier_summary: pd.DataFrame | None,
+    *,
+    percentiles_catalog: pd.DataFrame | None = None,
+    source_catalog: pd.DataFrame | None = None,
 ) -> None:
     """
-    Лист «Статистика»: воронка фильтров + свод выбросов.
-    Не использует format_sheet (несколько блоков) — своё оформление.
-    Числа — формат с разделителем разрядов (# ##0).
+    Лист «Статистика»: воронка фильтров + каталоги Source/Percentiles + свод выбросов.
     """
     row: int = 1
     title_font: Font = Font(bold=True, size=12)
     fmt_cfg: dict[str, Any] = config.get("output", {}).get("excel_format", {})
-    # Пробел как разделитель тысяч (Excel: # ##0)
     thousands_format: str = str(fmt_cfg.get("thousands_format", "# ##0"))
 
-    ws.cell(row=row, column=1, value="Воронка отсечения по фильтрам (строки Kanban / уникальные лиды)")
+    ws.cell(
+        row=row,
+        column=1,
+        value=(
+            "Воронка отсечения по фильтрам процентилей "
+            "(строки Kanban / уникальные лиды). "
+            "На листе «Нормативы» колонка «Отсечено: …» по статусу "
+            "«К ПРОДАЖЕ» часто 0: эти группы уходят с листа после exclude — "
+            "факт отсечения смотрите здесь в воронке."
+        ),
+    )
     ws.cell(row=row, column=1).font = title_font
     row += 1
     funnel_header_row: int = row
@@ -133,7 +143,6 @@ def _write_statistics_sheet(
             ws, funnel_frame, row, thousands_format=thousands_format
         )
         _style_block_header(ws, funnel_header_row, len(funnel_frame.columns))
-        # Автофильтр только на таблицу воронки
         end_col: str = get_column_letter(len(funnel_frame.columns))
         end_row: int = row - 1
         ws.auto_filter.ref = f"A{funnel_header_row}:{end_col}{end_row}"
@@ -153,7 +162,43 @@ def _write_statistics_sheet(
     ws.cell(
         row=row,
         column=1,
-        value="Свод отсечения выбросов (сумма по группам; детали по ТБ/группе/продукту/стадии — на листе «Нормативы»)",
+        value="Фильтры процентилей (все из config.filters: вкл/выкл, параметры, до/после)",
+    )
+    ws.cell(row=row, column=1).font = title_font
+    row += 1
+    if percentiles_catalog is not None and not percentiles_catalog.empty:
+        hdr = row
+        row = _write_dataframe_block(
+            ws, percentiles_catalog, row, thousands_format=thousands_format
+        )
+        _style_block_header(ws, hdr, len(percentiles_catalog.columns))
+    else:
+        ws.cell(row=row, column=1, value="(нет фильтров процентилей)")
+        row += 1
+
+    row += 1
+    ws.cell(
+        row=row,
+        column=1,
+        value="Фильтры Source (output.source_export: вкл/выкл, параметры, до/после)",
+    )
+    ws.cell(row=row, column=1).font = title_font
+    row += 1
+    if source_catalog is not None and not source_catalog.empty:
+        hdr = row
+        row = _write_dataframe_block(
+            ws, source_catalog, row, thousands_format=thousands_format
+        )
+        _style_block_header(ws, hdr, len(source_catalog.columns))
+    else:
+        ws.cell(row=row, column=1, value="(нет фильтров source)")
+        row += 1
+
+    row += 1
+    ws.cell(
+        row=row,
+        column=1,
+        value="Свод отсечения выбросов (сумма по группам; детали — на листе «Нормативы»)",
     )
     ws.cell(row=row, column=1).font = title_font
     row += 1
@@ -438,6 +483,8 @@ def export_excel_v2(
     outlier_summary: pd.DataFrame | None = None,
     duration_matrix: DurationMatrixResult | None = None,
     duration_matrices: dict[str, DurationMatrixResult] | None = None,
+    percentiles_catalog: pd.DataFrame | None = None,
+    source_catalog: pd.DataFrame | None = None,
 ) -> tuple[Path, list[Path]]:
     """
     Записывает листы в Excel; листы > excel_max_rows_per_sheet — в CSV (;).
@@ -472,6 +519,8 @@ def export_excel_v2(
             funnel_frame=funnel_frame,
             outlier_summary=outlier_summary,
             duration_matrices=matrices,
+            percentiles_catalog=percentiles_catalog,
+            source_catalog=source_catalog,
         )
 
 
@@ -483,6 +532,8 @@ def _export_excel_v2_impl(
     funnel_frame: pd.DataFrame | None = None,
     outlier_summary: pd.DataFrame | None = None,
     duration_matrices: dict[str, DurationMatrixResult] | None = None,
+    percentiles_catalog: pd.DataFrame | None = None,
+    source_catalog: pd.DataFrame | None = None,
 ) -> tuple[Path, list[Path]]:
     """Внутренняя реализация экспорта (после обёртки procedure)."""
     sheet_names: dict[str, str] = dict(config.get("output", {}).get("sheets") or {})
@@ -562,14 +613,31 @@ def _export_excel_v2_impl(
             prepared[title] = pd.DataFrame({"_": []})
 
     with pd.ExcelWriter(path, engine=engine) as writer:
+        sheet_i: int = 0
+        sheet_n: int = len(prepared)
         for title, frame in prepared.items():
+            sheet_i += 1
             key: str = sheet_key_by_title.get(title, "")
+            logger.info(
+                "Excel: запись листа [%s/%s] «%s» (%s строк)…",
+                sheet_i,
+                sheet_n,
+                title,
+                f"{0 if frame is None else len(frame):,}",
+            )
             if key == "statistics":
                 pd.DataFrame({"_": []}).to_excel(writer, sheet_name=title, index=False)
                 ws = writer.book[title]
                 if ws.max_row >= 1:
                     ws.delete_rows(1, ws.max_row)
-                _write_statistics_sheet(ws, config, funnel_frame, outlier_summary)
+                _write_statistics_sheet(
+                    ws,
+                    config,
+                    funnel_frame,
+                    outlier_summary,
+                    percentiles_catalog=percentiles_catalog,
+                    source_catalog=source_catalog,
+                )
             elif _is_duration_matrix_sheet_key(key):
                 pd.DataFrame({"_": []}).to_excel(writer, sheet_name=title, index=False)
                 ws = writer.book[title]

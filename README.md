@@ -55,9 +55,9 @@ python run_excel.py
 
 > Пути в config считаются **от корня проекта** (где `run.py` / `run_excel.py`), не от CWD IDE.
 
-Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260910g.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.8.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
+Готовый пакет Excel v2 (код, `config_excel_v2.json`, Docs): **`v2_program_files_20260911.zip`** в корне репозитория (без тестов; старые `v2_*.zip` удалены). Справочник конфига: [Docs/CONFIG_EXCEL_V2.md](Docs/CONFIG_EXCEL_V2.md) v2.9.0; полный разбор **каждого** ключа: [Docs/CONFIG_EXCEL_V2_PARAMS.md](Docs/CONFIG_EXCEL_V2_PARAMS.md).
 
-Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260910g.zip`**.
+Отдельный архив документации (папка `Docs/` + `README.md` + `ROADMAP.md`): **`docs_20260911.zip`**.
 
 ## Структура проекта
 
@@ -299,3 +299,5 @@ cd HTML && python -m http.server 8080
 | 2.7.0 | 2026-09-10 | CONFIG_EXCEL_V2_PARAMS: карточка на каждый ключ config (603); архив `docs_20260910c.zip` |
 | 2.8.0 | 2026-09-10 | Третий Excel `source` + `output.source_export` (ordered filters, max/min/gt/…); архив `v2_program_files_20260910f.zip` |
 | 2.8.1 | 2026-09-10 | Актуальный prod-config + независимость filters/source_export; архив `v2_program_files_20260910g.zip` |
+| 2.9.0 | 2026-09-11 | ToDo v3: Метод продаж, percentiles Excel, filters_order, Статистика-каталог, heartbeat снимка; архив `v2_program_files_20260911.zip` |
+| 2.9.1 | 2026-09-11 | Docs v2.9.0: CONFIG/PARAMS/DEPLOY; архивы `v2_program_files_20260911.zip` + `docs_20260911.zip` |

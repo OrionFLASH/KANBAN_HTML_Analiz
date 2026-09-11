@@ -383,6 +383,22 @@ src/
 
 ---
 
+## Фаза 12 — Excel v2 ToDo v3 (`Docs/ToDo KANBAN v3.txt`)
+
+| # | Задача | Модули / файлы | Статус |
+|---|--------|----------------|--------|
+| 12.1 | Убрать `stage_key` с листа «Нормативы» | `aggregation`, `norms.py` | `[v]` |
+| 12.2 | Колонка «Метод продаж» в «Уникальные ID» (перед стадией сделки) | `snapshot`, config | `[v]` |
+| 12.3 | Excel `percentiles`: исходные строки под фильтры процентилей + split по ТБ >1M | `pipeline`, `report_parts`, export | `[v]` |
+| 12.4 | `description` у фильтров → русские заголовки Нормативы/Статистика | `filter_funnel`, config | `[v]` |
+| 12.5 | Статистика: все фильтры Source + Percentiles (вкл/выкл, параметры, до/после) | `exporter`, `filter_funnel` | `[v]` |
+| 12.6 | `filters_order` для процентилей (последовательное применение) | `filters`, `pipeline`, config | `[v]` |
+| 12.7 | Fix отображения `exclude_current_for_sale` (0 на Нормативах при реальном отсечении) | `filter_funnel`, docs | `[v]` |
+| 12.8 | Частый heartbeat на долгих этапах (снимок, команда, detail export) | `snapshot`, `progress`, loader | `[v]` |
+| 12.9 | Сохранить prod DEBUG-лог 2026-09-10 и ToDo v3 в Docs | `Docs/` | `[v]` |
+| 12.10 | Актуальный `config_excel_v2.json` (prod 10-09) + архив программы | config, zip | `[v]` |
+| 12.11 | Docs v2.9.0 (CONFIG/PARAMS/DEPLOY/README) + `docs_20260911.zip` | Docs, zip | `[v]` |
+
 ## Следующий шаг
 
-- **9.2** — prod-прогон Excel v2 на файлах в `IN/PROD` (проверить лидеров и DEBUG-детали в логе)
+- Prod-прогон с архивами `v2_program_files_20260911.zip` и `docs_20260911.zip`

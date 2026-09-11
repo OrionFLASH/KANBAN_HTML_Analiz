@@ -356,18 +356,40 @@ def _load_team_file_list(
     frames: list[pd.DataFrame] = []
 
     if parallel and workers > 1 and len(paths) > 1:
+        logger.info(
+            "Команда %s: загрузка %s файлов (workers=%s)…",
+            label,
+            len(paths),
+            min(workers, len(paths)),
+        )
         with ThreadPoolExecutor(max_workers=min(workers, len(paths))) as pool:
             futures = {
                 pool.submit(_load_one_team_file, path, name, config): name
                 for path, name in paths
             }
+            done_n: int = 0
             for future in as_completed(futures):
                 name = futures[future]
                 frame = future.result()
                 frames.append(frame)
-                logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")
+                done_n += 1
+                logger.info(
+                    "Команда %s: [%s/%s] %s — %s строк",
+                    label,
+                    done_n,
+                    len(paths),
+                    name,
+                    f"{len(frame):,}",
+                )
     else:
-        for path, name in paths:
+        for i, (path, name) in enumerate(paths, start=1):
+            logger.info(
+                "Команда %s: [%s/%s] читаю %s…",
+                label,
+                i,
+                len(paths),
+                name,
+            )
             frame = _load_one_team_file(path, name, config)
             frames.append(frame)
             logger.info("Команда %s: %s — %s строк", label, name, f"{len(frame):,}")

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+import time
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -12,6 +13,9 @@ from src.settings import col
 from src.v2.exceedance_config import resolve_exceedance_columns
 
 logger: logging.Logger = logging.getLogger("kanban.excel_v2.snapshot")
+
+# Поля, которые берутся строго из строки с max «Дата отчета» (без fill-forward).
+_LATEST_ROW_ONLY_KEYS: frozenset[str] = frozenset({"sales_method"})
 
 
 def _empty_tokens(config: dict[str, Any]) -> set[str]:
@@ -45,16 +49,39 @@ def _first_nonempty_per_group(series: pd.Series, empty: set[str]) -> Any:
     return series.loc[mask.index[mask]].iloc[0]
 
 
+def _first_nonempty_by_lead(
+    work: pd.DataFrame,
+    lead_src: str,
+    src_col: str,
+    empty: set[str],
+) -> pd.Series:
+    """
+    Векторно: первое непустое значение по лиду (строки work уже отсортированы
+    по убыванию даты отчёта). Быстрее groupby.apply на миллионах строк.
+    """
+    mask: pd.Series = _nonempty_mask(work[src_col], empty)
+    nonempty: pd.DataFrame = work.loc[mask, [lead_src, src_col]]
+    if nonempty.empty:
+        return pd.Series(dtype=object)
+    return nonempty.groupby(lead_src, sort=False)[src_col].first()
+
+
 def snapshot_column_map(config: dict[str, Any]) -> dict[str, str]:
     """Ключ колонки config → заголовок Excel на листе уникальных ID."""
     raw: dict[str, Any] = config.get("output", {}).get("snapshot_columns") or {}
     return {str(k): str(v) for k, v in raw.items()}
 
 
-def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+def build_lead_snapshot(
+    df: pd.DataFrame,
+    config: dict[str, Any],
+    *,
+    progress: Any | None = None,
+) -> pd.DataFrame:
     """
     Уникальные лиды с подтягиванием полей из самых свежих непустых строк.
     В снимке все поля под ключами config (lead_id, deal_id, …), не под Excel-именами.
+    progress — опциональный ProgressReporter для heartbeat на длинных прогонах.
     """
     if df.empty:
         return pd.DataFrame()
@@ -70,15 +97,23 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
             src_cols.add(col(config, key))
     use_cols: list[str] = [c for c in src_cols if c in df.columns]
 
+    t0: float = time.monotonic()
+    _hb: Callable[[str], None]
+    if progress is not None and hasattr(progress, "step"):
+        _hb = lambda msg: progress.step(msg)
+    else:
+        _hb = lambda msg: logger.info("  … %s", msg)
+
+    _hb(f"снимок: подготовка {len(df):,} строк, полей={len(field_keys)}")
     work: pd.DataFrame = df[use_cols].copy()
     work[report_col] = pd.to_datetime(work[report_col], errors="coerce")
     work = work.dropna(subset=[lead_src])
     work[lead_src] = work[lead_src].astype(str).str.strip()
     work = work.loc[work[lead_src] != ""]
     work = work.sort_values([lead_src, report_col], ascending=[True, False], kind="mergesort")
+    _hb(f"снимок: сортировка готова ({time.monotonic() - t0:.0f} сек)")
 
     empty: set[str] = _empty_tokens(config)
-    grouped = work.groupby(lead_src, sort=False)
 
     latest: pd.DataFrame = work.drop_duplicates(subset=[lead_src], keep="first")
     indexed: pd.DataFrame = latest[[lead_src]].set_index(lead_src)
@@ -89,14 +124,30 @@ def build_lead_snapshot(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFram
     else:
         indexed["_days_on_stage"] = pd.NA
 
-    for key in field_keys:
+    total_fields: int = len(field_keys)
+    for idx, key in enumerate(field_keys, start=1):
         if key not in config.get("columns", {}):
             continue
         src_col: str = col(config, key)
         if src_col not in work.columns:
             indexed[key] = pd.NA
             continue
-        indexed[key] = grouped[src_col].apply(lambda s: _first_nonempty_per_group(s, empty))
+        if key in _LATEST_ROW_ONLY_KEYS:
+            # Строго из строки с max датой отчёта
+            indexed[key] = latest.set_index(lead_src)[src_col]
+        else:
+            filled: pd.Series = _first_nonempty_by_lead(work, lead_src, src_col, empty)
+            indexed[key] = filled.reindex(indexed.index)
+        if progress is not None and hasattr(progress, "maybe_heartbeat"):
+            progress.maybe_heartbeat(
+                f"снимок: поле {idx}/{total_fields} «{key}» "
+                f"({time.monotonic() - t0:.0f} сек)"
+            )
+        elif idx == 1 or idx == total_fields or idx % 3 == 0:
+            _hb(
+                f"снимок: поле {idx}/{total_fields} «{key}» "
+                f"({time.monotonic() - t0:.0f} сек)"
+            )
 
     result: pd.DataFrame = indexed.reset_index()
 
@@ -117,9 +168,6 @@ def snapshot_to_export_frame(
 ) -> pd.DataFrame:
     """
     Переименовывает ключи снимка в Excel-заголовки.
-
-    status_duration_columns — колонки сроков по статусам (уже с Excel-именами),
-    вставляются сразу после «Стадия работы с лидом» / current_status.
     """
     if snapshot.empty:
         return snapshot
@@ -134,19 +182,14 @@ def snapshot_to_export_frame(
     export_cols: list[str] = [lead_label] + [mapping[k] for k in mapping if k in snapshot.columns]
     renamed: pd.DataFrame = snapshot.rename(columns=rename)
 
-    # Сроки по статусам — после колонки текущего статуса
-    status_cols: list[str] = [
-        str(c) for c in (status_duration_columns or []) if str(c) in renamed.columns
-    ]
-    if status_cols:
-        status_label: str = str(mapping.get("current_status") or "")
-        insert_at: int = len(export_cols)
-        if status_label and status_label in export_cols:
-            insert_at = export_cols.index(status_label) + 1
-        for offset, name in enumerate(status_cols):
-            if name in export_cols:
-                export_cols.remove(name)
-            export_cols.insert(insert_at + offset, name)
+    # Сроки по статусам — сразу после «Стадия работы с лидом»
+    status_label: str = mapping.get("current_status", "")
+    if status_duration_columns and status_label and status_label in export_cols:
+        insert_at: int = export_cols.index(status_label) + 1
+        for col_name in status_duration_columns:
+            if col_name in renamed.columns and col_name not in export_cols:
+                export_cols.insert(insert_at, col_name)
+                insert_at += 1
 
     exc_cfg: dict[str, str] = resolve_exceedance_columns(config)
     extra_cols: list[str] = [
@@ -156,7 +199,7 @@ def snapshot_to_export_frame(
         exc_cfg["exceedance_days"],
     ]
     for col_name in extra_cols:
-        if col_name in renamed.columns:
+        if col_name in renamed.columns and col_name not in export_cols:
             export_cols.append(col_name)
 
     team_out: dict[str, Any] = config.get("team_files", {}).get("output_columns") or {}
@@ -167,7 +210,6 @@ def snapshot_to_export_frame(
         block = team_out.get(block_name)
         if not isinstance(block, dict):
             continue
-        # Порядок: TN → ФИО → почты → роль → ТБ
         for field_key in ("member_tab_number", "member", "role", "tb"):
             label = block.get(field_key)
             if label and label in renamed.columns and label not in export_cols:
@@ -184,6 +226,4 @@ def snapshot_to_export_frame(
                 export_cols.append(str(label))
 
     present: list[str] = [c for c in export_cols if c in renamed.columns]
-    # На случай если колонки статусов не попали в export_cols из-за порядка —
-    # они уже вставлены выше; остальные колонки снимка не тащим
     return renamed[present].copy()

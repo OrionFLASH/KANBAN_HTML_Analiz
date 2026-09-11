@@ -49,7 +49,8 @@
     "vks": "ВКС",
     "label": "Метка",
     "change_conditions": "_Изменение условий",
-    "efs_flag": "ЕФС флаг"
+    "efs_flag": "ЕФС флаг",
+    "sales_method": "Метод продаж"
   },
   "required_column_keys": [
     "report_date",
@@ -76,7 +77,8 @@
     "tb_code",
     "gosb",
     "km",
-    "vks"
+    "vks",
+    "sales_method"
   ],
   "excel": {
     "sheet_name": "Sheet1",
@@ -142,8 +144,7 @@
     "group_keys": [
       "product_group",
       "product",
-      "current_status",
-      "stage_key"
+      "current_status"
     ],
     "metrics": [
       "days_on_stage"
@@ -211,7 +212,8 @@
       ],
       "values_mode": "any",
       "value_type": "number",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "ЕФС=1"
     },
     "change_conditions": {
       "enabled": true,
@@ -223,7 +225,8 @@
       ],
       "values_mode": "any",
       "value_type": "number",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Без изменения условий"
     },
     "data_entry": {
       "enabled": false,
@@ -235,7 +238,8 @@
       ],
       "values_mode": "any",
       "value_type": "number",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Ввод данных=0"
     },
     "strategy_label": {
       "enabled": false,
@@ -247,7 +251,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Метка содержит «Стратегия»"
     },
     "strategy_label_2026": {
       "enabled": false,
@@ -260,7 +265,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Стратегия 2/3 кв. 2026"
     },
     "strategy_label_and_2026": {
       "enabled": false,
@@ -273,7 +279,8 @@
       ],
       "values_mode": "all",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Стратегия и 2026"
     },
     "current_status_activation": {
       "enabled": false,
@@ -285,7 +292,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Статус: активация продукта"
     },
     "exclude_current_otkaz": {
       "enabled": true,
@@ -297,7 +305,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. статус ПрПр «отказ»"
     },
     "exclude_current_for_sale": {
       "enabled": true,
@@ -309,7 +318,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. статус «К ПРОДАЖЕ»"
     },
     "exclude_deal_otkaz": {
       "enabled": true,
@@ -321,7 +331,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия сделки «отказ»"
     },
     "exclude_deal_otklonen": {
       "enabled": true,
@@ -333,7 +344,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия «Отклонена»"
     },
     "exclude_deal_annulirovana": {
       "enabled": true,
@@ -345,7 +357,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия «Аннулирован»"
     },
     "exclude_deal_rastorgnuta": {
       "enabled": true,
@@ -357,7 +370,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия «Расторгнут»"
     },
     "exclude_deal_zakryta": {
       "enabled": false,
@@ -369,7 +383,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия «закрыта»"
     },
     "exclude_deal_zaklyuchen": {
       "enabled": false,
@@ -381,7 +396,8 @@
       ],
       "values_mode": "any",
       "value_type": "string",
-      "case_sensitive": false
+      "case_sensitive": false,
+      "description": "Искл. стадия «заключен»"
     }
   },
   "team_files": {
@@ -598,7 +614,8 @@
     "report_part_suffixes": {
       "analytics": "analytics",
       "detail": "detail",
-      "source": "source"
+      "source": "source",
+      "percentiles": "percentiles"
     },
     "source_export": {
       "filters_order": [
@@ -621,7 +638,8 @@
           ],
           "values_mode": "any",
           "value_type": "number",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "ЕФС=1"
         },
         "cng_equals_0": {
           "enabled": true,
@@ -633,7 +651,8 @@
           ],
           "values_mode": "any",
           "value_type": "number",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Искл. изменение условий=1"
         },
         "max_report_date": {
           "enabled": true,
@@ -643,7 +662,8 @@
           "values": [],
           "values_mode": "any",
           "value_type": "date",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Только max дата отчёта"
         },
         "status_prpr_otkaz": {
           "enabled": true,
@@ -655,7 +675,8 @@
           ],
           "values_mode": "any",
           "value_type": "string",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Искл. статус «Отказ»"
         },
         "stage_deal_otkaz": {
           "enabled": true,
@@ -670,7 +691,8 @@
           ],
           "values_mode": "any",
           "value_type": "string",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Искл. стадии отказа сделки"
         },
         "label_strategy_kvartal": {
           "enabled": true,
@@ -684,7 +706,8 @@
           ],
           "values_mode": "all",
           "value_type": "string",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Метка: Стратегия+квартал+2026"
         },
         "label_kvartal_2_or_3": {
           "enabled": true,
@@ -699,7 +722,8 @@
           ],
           "values_mode": "any",
           "value_type": "string",
-          "case_sensitive": false
+          "case_sensitive": false,
+          "description": "Метка: квартал 1–4"
         }
       }
     },
@@ -721,7 +745,8 @@
       "leads": "Уникальные ID",
       "managers": "Свод по менеджеру",
       "violations": "Свод ПрПр с отклонениями",
-      "source": "Исходные строки"
+      "source": "Исходные строки",
+      "percentiles": "Строки для процентилей"
     },
     "sheet_freeze": {
       "default": {
@@ -765,6 +790,10 @@
         "last_col": 0
       },
       "source": {
+        "last_row": 1,
+        "last_col": 0
+      },
+      "percentiles": {
         "last_row": 1,
         "last_col": 0
       }
@@ -838,7 +867,22 @@
       "outlier_rule_example_unique_days_trim_10pct": "Отсечено: example_unique_days_trim_10pct",
       "outlier_rule_example_iqr": "Отсечено: example_iqr",
       "min_header_marker": "Мин",
-      "max_header_marker": "Макс"
+      "max_header_marker": "Макс",
+      "filter_dropped_efs_flag": "Отсечено: ЕФС=1",
+      "filter_dropped_change_conditions": "Отсечено: Без изменения условий",
+      "filter_dropped_data_entry": "Отсечено: Ввод данных=0",
+      "filter_dropped_strategy_label": "Отсечено: Метка содержит «Стратегия»",
+      "filter_dropped_strategy_label_2026": "Отсечено: Стратегия 2/3 кв. 2026",
+      "filter_dropped_strategy_label_and_2026": "Отсечено: Стратегия и 2026",
+      "filter_dropped_current_status_activation": "Отсечено: Статус: активация продукта",
+      "filter_dropped_exclude_current_otkaz": "Отсечено: Искл. статус ПрПр «отказ»",
+      "filter_dropped_exclude_current_for_sale": "Отсечено: Искл. статус «К ПРОДАЖЕ»",
+      "filter_dropped_exclude_deal_otkaz": "Отсечено: Искл. стадия сделки «отказ»",
+      "filter_dropped_exclude_deal_otklonen": "Отсечено: Искл. стадия «Отклонена»",
+      "filter_dropped_exclude_deal_annulirovana": "Отсечено: Искл. стадия «Аннулирован»",
+      "filter_dropped_exclude_deal_rastorgnuta": "Отсечено: Искл. стадия «Расторгнут»",
+      "filter_dropped_exclude_deal_zakryta": "Отсечено: Искл. стадия «закрыта»",
+      "filter_dropped_exclude_deal_zaklyuchen": "Отсечено: Искл. стадия «заключен»"
     },
     "percentile_column_labels": {
       "days_on_stage": {
@@ -935,6 +979,7 @@
       "work_start_date": "Дата начала работы",
       "deal_id": "ID сделки",
       "deal_created_date": "Дата создания сделки",
+      "sales_method": "Метод продаж",
       "deal_stage": "Текущая стадия сделки",
       "tb": "ТБ",
       "gosb": "ГОСБ",
@@ -959,6 +1004,11 @@
       "current_days": "Текущий срок",
       "exceedance_flag": "превышение",
       "exceedance_days": "дней отклонения"
+    },
+    "percentiles_export": {
+      "enabled": true,
+      "split_by_tb_over_rows": 1000000,
+      "sheet_name_prefix": "ТБ"
     }
   },
   "excel_theme": "green_red",
@@ -1000,5 +1050,22 @@
     "log_every_seconds": 3,
     "show_timing_summary": true,
     "debug_detail": true
-  }
+  },
+  "filters_order": [
+    "change_conditions",
+    "efs_flag",
+    "exclude_current_for_sale",
+    "exclude_current_otkaz",
+    "exclude_deal_otkaz",
+    "exclude_deal_otklonen",
+    "exclude_deal_annulirovana",
+    "exclude_deal_rastorgnuta",
+    "data_entry",
+    "strategy_label",
+    "strategy_label_2026",
+    "strategy_label_and_2026",
+    "current_status_activation",
+    "exclude_deal_zakryta",
+    "exclude_deal_zaklyuchen"
+  ]
 }

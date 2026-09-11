@@ -32,6 +32,7 @@ def build_source_export_frame(
     lead_team_df: pd.DataFrame | None = None,
     deal_team_df: pd.DataFrame | None = None,
     email_lookup: EmailLookup | None = None,
+    funnel: list[dict[str, Any]] | None = None,
 ) -> pd.DataFrame:
     """
     Исходные колонки как после загрузки → фильтры output.source_export по порядку →
@@ -60,6 +61,7 @@ def build_source_export_frame(
         audit_each_filter=bool(
             config.get("processing", {}).get("audit_row_counts", True)
         ),
+        funnel=funnel,
     )
     logger.info(
         "Source export: фильтры по порядку %s — %s → %s строк",
