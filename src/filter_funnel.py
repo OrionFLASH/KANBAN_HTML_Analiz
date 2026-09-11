@@ -41,12 +41,22 @@ def _unique_leads(df: pd.DataFrame, config: dict[str, Any]) -> int:
 
 def enabled_pipeline_filter_names(config: dict[str, Any]) -> list[str]:
     """
-    Имена включённых фильтров в порядке применения pipeline v2:
-    include (порядок config) → exclude (как enabled_terminal_exclusion_names, sorted).
+    Имена включённых фильтров в порядке применения pipeline v2.
+    При наличии filters_order — по нему (только enabled); иначе include → exclude sorted.
     """
-    from src.filters import enabled_terminal_exclusion_names, is_exclude_filter
+    from src.filters import is_exclude_filter, resolve_filters_order
 
     filters_cfg: dict[str, Any] = config.get("filters") or {}
+    order: list[str] = resolve_filters_order(config, filters_cfg)
+    names: list[str] = []
+    for name in order:
+        flt = filters_cfg.get(name)
+        if not isinstance(flt, dict) or not bool(flt.get("enabled", False)):
+            continue
+        names.append(name)
+    # Если order пуст (нет filters) — fallback
+    if names:
+        return names
     inclusion: list[str] = []
     for name, flt in filters_cfg.items():
         if not isinstance(flt, dict) or not bool(flt.get("enabled", False)):
@@ -54,6 +64,8 @@ def enabled_pipeline_filter_names(config: dict[str, Any]) -> list[str]:
         if is_exclude_filter(flt):
             continue
         inclusion.append(name)
+    from src.filters import enabled_terminal_exclusion_names
+
     return inclusion + enabled_terminal_exclusion_names(config)
 
 
@@ -69,6 +81,21 @@ def filter_audit_column_keys(config: dict[str, Any]) -> list[str]:
     return keys
 
 
+def filter_description(config: dict[str, Any], filter_name: str, *, scope: str = "filters") -> str:
+    """Короткое русское описание фильтра из config (description) или имя ключа."""
+    block: dict[str, Any]
+    if scope == "source":
+        block = dict((config.get("output") or {}).get("source_export", {}).get("filters") or {})
+    else:
+        block = dict(config.get("filters") or {})
+    flt: Any = block.get(filter_name)
+    if isinstance(flt, dict):
+        desc: str = str(flt.get("description") or "").strip()
+        if desc:
+            return desc
+    return filter_name
+
+
 def build_filter_audit_mapping(config: dict[str, Any]) -> dict[str, str]:
     """Mapping внутренних колонок аудита фильтров → заголовки Excel."""
     labels: dict[str, str] = dict(config.get("output", {}).get("column_labels") or {})
@@ -80,7 +107,8 @@ def build_filter_audit_mapping(config: dict[str, Any]) -> dict[str, str]:
             mapping[key] = labels.get(key, "После фильтров")
         elif key.startswith(FILTER_DROPPED_PREFIX):
             fname: str = key[len(FILTER_DROPPED_PREFIX) :]
-            mapping[key] = labels.get(key, f"Отсечено: {fname}")
+            default_label: str = f"Отсечено: {filter_description(config, fname)}"
+            mapping[key] = labels.get(key, default_label)
         else:
             mapping[key] = labels.get(key, key)
     return mapping
@@ -380,8 +408,11 @@ def append_funnel_step(
         group_auditor.record_filter_step(filter_name, before_df, after_df)
 
 
-def build_filter_funnel_frame(funnel: list[dict[str, Any]]) -> pd.DataFrame:
-    """Таблица воронки фильтров для Excel."""
+def build_filter_funnel_frame(
+    funnel: list[dict[str, Any]],
+    config: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Таблица воронки фильтров для Excel (с русскими описаниями, если есть config)."""
     if not funnel:
         return pd.DataFrame(
             columns=[
@@ -396,15 +427,101 @@ def build_filter_funnel_frame(funnel: list[dict[str, Any]]) -> pd.DataFrame:
         )
     rows: list[dict[str, Any]] = []
     for step in funnel:
+        stage_label: str = str(step["stage"])
+        fname: Any = step.get("filter_name")
+        if config is not None and fname:
+            desc: str = filter_description(config, str(fname))
+            kind: str = str(step.get("kind") or "filter")
+            prefix: str = "Исключение" if kind == "exclude" else "Фильтр"
+            stage_label = f"{prefix}: {desc}"
         rows.append(
             {
-                "Этап": step["stage"],
+                "Этап": stage_label,
                 "До (строк)": step["before_rows"],
                 "После (строк)": step["after_rows"],
                 "Отсечено строк": step["dropped_rows"],
                 "До (лидов)": step["before_leads"],
                 "После (лидов)": step["after_leads"],
                 "Отсечено лидов": step["dropped_leads"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _format_filter_values(flt: dict[str, Any]) -> str:
+    """Краткое текстовое представление values фильтра."""
+    values: list[Any] = list(flt.get("values") or [])
+    if not values:
+        match: str = str(flt.get("match") or "")
+        if match in {"max", "min"}:
+            return f"({match})"
+        return "—"
+    return ", ".join(str(v) for v in values)
+
+
+def build_filters_catalog_frame(
+    config: dict[str, Any],
+    *,
+    scope: str,
+    funnel: list[dict[str, Any]] | None = None,
+) -> pd.DataFrame:
+    """
+    Каталог всех фильтров раздела (percentiles/source): вкл/выкл, параметры, до/после.
+    scope: 'filters' | 'source'
+    """
+    if scope == "source":
+        block: dict[str, Any] = dict(
+            (config.get("output") or {}).get("source_export", {}).get("filters") or {}
+        )
+        order_raw: Any = (config.get("output") or {}).get("source_export", {}).get("filters_order")
+        section: str = "Source"
+    else:
+        block = dict(config.get("filters") or {})
+        order_raw = config.get("filters_order")
+        section = "Процентили"
+
+    if isinstance(order_raw, list) and order_raw:
+        order: list[str] = [str(x) for x in order_raw]
+        for key in block.keys():
+            if key not in order:
+                order.append(key)
+    else:
+        order = list(block.keys())
+
+    funnel_by_name: dict[str, dict[str, Any]] = {}
+    if funnel:
+        for step in funnel:
+            fname = step.get("filter_name")
+            if fname:
+                funnel_by_name[str(fname)] = step
+
+    rows: list[dict[str, Any]] = []
+    for pos, name in enumerate(order, start=1):
+        flt = block.get(name)
+        if not isinstance(flt, dict):
+            continue
+        enabled: bool = bool(flt.get("enabled", False))
+        action: str = str(flt.get("action") or flt.get("filter_mode") or "include")
+        step = funnel_by_name.get(name)
+        rows.append(
+            {
+                "Раздел": section,
+                "Порядок": pos,
+                "Ключ": name,
+                "Описание": filter_description(config, name, scope=scope),
+                "Включён": "да" if enabled else "нет",
+                "Действие": action,
+                "Сопоставление": str(flt.get("match") or ""),
+                "Колонка": str(flt.get("column_key") or flt.get("column") or ""),
+                "Значения": _format_filter_values(flt),
+                "values_mode": str(flt.get("values_mode") or ""),
+                "value_type": str(flt.get("value_type") or ""),
+                "До (строк)": step["before_rows"] if step else "",
+                "После (строк)": step["after_rows"] if step else "",
+                "Отсечено строк": step["dropped_rows"] if step else "",
+                "До (лидов)": step["before_leads"] if step else "",
+                "После (лидов)": step["after_leads"] if step else "",
+                "Отсечено лидов": step["dropped_leads"] if step else "",
             }
         )
     return pd.DataFrame(rows)

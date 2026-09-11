@@ -81,11 +81,25 @@ def test_export_leader_emails_after_fio() -> None:
 
 
 def test_config_report_parts_default_both() -> None:
-    """В config_excel_v2 по умолчанию оба файла."""
-    from src.v2.report_parts import REPORT_PART_ANALYTICS, REPORT_PART_DETAIL, resolve_report_parts
+    """В актуальном config_excel_v2 — all (analytics+detail+source+percentiles)."""
+    from src.v2.report_parts import (
+        REPORT_PART_ANALYTICS,
+        REPORT_PART_DETAIL,
+        REPORT_PART_PERCENTILES,
+        REPORT_PART_SOURCE,
+        resolve_report_parts,
+    )
 
     config: dict = load_excel_v2_config("config_excel_v2.json")
     parts = resolve_report_parts(config)
-    assert parts == frozenset({REPORT_PART_ANALYTICS, REPORT_PART_DETAIL})
+    assert parts == frozenset(
+        {
+            REPORT_PART_ANALYTICS,
+            REPORT_PART_DETAIL,
+            REPORT_PART_SOURCE,
+            REPORT_PART_PERCENTILES,
+        }
+    )
     assert config["output"]["report_part_suffixes"]["analytics"] == "analytics"
     assert config["output"]["report_part_suffixes"]["detail"] == "detail"
+    assert config["output"]["report_part_suffixes"]["percentiles"] == "percentiles"

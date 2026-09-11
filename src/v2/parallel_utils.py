@@ -35,11 +35,13 @@ def run_snapshot_records_teams_parallel(
     shared_config: dict[str, Any],
     *,
     load_teams: bool = True,
+    progress: Any | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Снимок и трекинг — последовательно в основном процессе (без pickle DataFrame).
     Файлы команд — в ThreadPool (I/O), один проход (единый комплект или legacy).
     load_teams=False — пустые кадры команд (когда детализация не нужна).
+    progress — ProgressReporter для heartbeat в build_lead_snapshot.
     Возвращает (snapshot, records, lead_team_df, deal_team_df).
     """
     workers: int = stage_workers(config, 2)
@@ -64,7 +66,9 @@ def run_snapshot_records_teams_parallel(
         with ThreadPoolExecutor(max_workers=workers) as io_pool:
             fut_teams = io_pool.submit(load_team_frames, shared_config)
             with procedure(logger, "build_lead_snapshot", rows_in=len(filtered_df)):
-                snapshot: pd.DataFrame = build_lead_snapshot(filtered_df, config)
+                snapshot: pd.DataFrame = build_lead_snapshot(
+                    filtered_df, config, progress=progress
+                )
             with procedure(logger, "build_lead_stage_records", rows_in=len(filtered_df)):
                 records: pd.DataFrame = build_lead_stage_records(
                     filtered_df,
@@ -76,7 +80,7 @@ def run_snapshot_records_teams_parallel(
                 lead_team_df, deal_team_df = fut_teams.result()
     else:
         with procedure(logger, "build_lead_snapshot", rows_in=len(filtered_df)):
-            snapshot = build_lead_snapshot(filtered_df, config)
+            snapshot = build_lead_snapshot(filtered_df, config, progress=progress)
         with procedure(logger, "build_lead_stage_records", rows_in=len(filtered_df)):
             records = build_lead_stage_records(
                 filtered_df,

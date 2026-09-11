@@ -231,6 +231,11 @@ def load_all_files(
                 path_str: str = futures[future]
                 done += 1
                 try:
+                    logger.info(
+                        "[…/%s] чтение %s…",
+                        total,
+                        Path(path_str).name,
+                    )
                     frame = future.result()
                     frames.append(frame)
                     msg = (

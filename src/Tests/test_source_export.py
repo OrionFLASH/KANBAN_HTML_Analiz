@@ -139,14 +139,26 @@ def test_apply_ordered_filters_sequential() -> None:
 
 
 def test_resolve_report_parts_source_and_full() -> None:
+    from src.v2.report_parts import REPORT_PART_PERCENTILES
+
     assert resolve_report_parts({"output": {"report_parts": "source"}}) == frozenset(
         {REPORT_PART_SOURCE}
     )
     assert resolve_report_parts({"output": {"report_parts": "full"}}) == frozenset(
-        {REPORT_PART_ANALYTICS, REPORT_PART_DETAIL, REPORT_PART_SOURCE}
+        {
+            REPORT_PART_ANALYTICS,
+            REPORT_PART_DETAIL,
+            REPORT_PART_SOURCE,
+            REPORT_PART_PERCENTILES,
+        }
     )
     assert resolve_report_parts({"output": {"report_parts": "all"}}) == frozenset(
-        {REPORT_PART_ANALYTICS, REPORT_PART_DETAIL, REPORT_PART_SOURCE}
+        {
+            REPORT_PART_ANALYTICS,
+            REPORT_PART_DETAIL,
+            REPORT_PART_SOURCE,
+            REPORT_PART_PERCENTILES,
+        }
     )
     assert resolve_report_parts({"output": {"report_parts": "both"}}) == frozenset(
         {REPORT_PART_ANALYTICS, REPORT_PART_DETAIL}
