@@ -1,6 +1,6 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия копии POST:** 2.7.0 (2026-09-10)
+**Версия копии POST:** 2.9.0 (2026-09-11)
 
 Инструкция для работы после пересылки по почте или копированием каталога.
 
@@ -47,26 +47,27 @@ KANBAN_HTML_Analiz/
 
 ## Пакет Excel v2 (zip)
 
-В корне репозитория: **`v2_program_files_20260910g.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
+В корне репозитория: **`v2_program_files_20260911.zip`** — код Excel v2, `config_excel_v2.json`, README/ROADMAP, Docs (без `src/Tests/`, без HTML/IN/OUT).
 
-Только документация: **`docs_20260910g.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config) + `README.md` + `ROADMAP.md`.
+Только документация: **`docs_20260911.zip`** — папка `Docs/` (включая **CONFIG_EXCEL_V2_PARAMS.md** — каждый ключ config, ToDo v3, prod DEBUG-лог) + `README.md` + `ROADMAP.md`.
 
-Выход `run_excel.py` — **до трёх файлов** (см. `output.report_parts`):
+Выход `run_excel.py` — **до четырёх файлов** (см. `output.report_parts`):
 
 | Файл | Листы |
 |------|--------|
-| `*_analytics_*.xlsx` | Нормативы, Статистика, матрицы сроков |
-| `*_detail_*.xlsx` | Уникальные ID (сроки по статусам), менеджеры, нарушения |
+| `*_analytics_*.xlsx` | Нормативы, Статистика (воронка + каталоги фильтров), матрицы сроков |
+| `*_detail_*.xlsx` | Уникальные ID (в т.ч. «Метод продаж»), менеджеры, нарушения |
 | `*_source_*.xlsx` | Исходные строки Kanban + лидеры/почты (фильтры `output.source_export`) |
+| `*_percentiles_*.xlsx` | Строки после фильтров процентилей (+ лидеры); при >1M — листы по ТБ |
 
-`report_parts`: `both` | `analytics` | `detail` | `source` | `full` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md).
+`report_parts`: `both` | `analytics` | `detail` | `source` | `percentiles` | `full`/`all` — см. [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md) v2.9.0.
 
 ## Данные Excel (отдельно)
 
 | Режим | Каталог | Файлы |
 |-------|---------|-------|
 | test | `IN/TEST/` | Kanban + команды из config |
-| prod | `IN/PROD/` | 11 Kanban ЕФС + файлы «команда лида и сделки» (`team_files`) + CSV почт (если включён `manager_emails`) |
+| prod | `IN/PROD/` | Kanban ЕФС + файлы «команда лида и сделки» (`team_files`) + CSV почт (если включён `manager_emails`) |
 
 Перед запуском pipeline проверяет наличие всех файлов для `mode`; при отсутствии — остановка с перечнем недостающих.
 
@@ -78,26 +79,3 @@ KANBAN_HTML_Analiz/
 4. Положить xlsx (и CSV почт при необходимости)
 5. При необходимости поправить `config.json` / `config_excel_v2.json` — см. [CONFIG.md](CONFIG.md), [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md)
 6. `python run.py` → `OUT/`; `python run_excel.py` → `OUT/excel_v2/`
-
-## Prod-режим
-
-```json
-"mode": "prod"
-```
-
-При высокой нагрузке:
-
-```json
-"parallel_workers": 1,
-"performance": { "max_parallel_workers": 2, "reserve_cpu_cores": 2 }
-```
-
-## Проверка
-
-```bash
-python -c "import pandas, openpyxl; print('OK')"
-python run.py
-python run_excel.py
-```
-
-> `pytest src/Tests/` — только в Git-репозитории разработки; в копии POST каталог `src/Tests/` отсутствует.

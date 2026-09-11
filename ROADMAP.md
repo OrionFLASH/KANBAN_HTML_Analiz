@@ -397,7 +397,8 @@ src/
 | 12.8 | Частый heartbeat на долгих этапах (снимок, команда, detail export) | `snapshot`, `progress`, loader | `[v]` |
 | 12.9 | Сохранить prod DEBUG-лог 2026-09-10 и ToDo v3 в Docs | `Docs/` | `[v]` |
 | 12.10 | Актуальный `config_excel_v2.json` (prod 10-09) + архив программы | config, zip | `[v]` |
+| 12.11 | Docs v2.9.0 (CONFIG/PARAMS/DEPLOY/README) + `docs_20260911.zip` | Docs, zip | `[v]` |
 
 ## Следующий шаг
 
-- Prod-прогон с новым архивом `v2_program_files_20260911.zip`
+- Prod-прогон с архивами `v2_program_files_20260911.zip` и `docs_20260911.zip`
