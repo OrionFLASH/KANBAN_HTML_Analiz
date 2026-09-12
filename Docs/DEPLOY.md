@@ -1,6 +1,6 @@
 # Перенос проекта на другой ПК (без Git)
 
-**Версия копии POST:** 2.9.0 (2026-09-11)
+**Версия копии POST:** 2.9.3 (2026-09-12)
 
 Инструкция для работы после пересылки по почте или копированием каталога.
 
@@ -40,7 +40,8 @@ KANBAN_HTML_Analiz/
 │   └── …
 └── Docs/
     ├── CONFIG.md                 # справочник config.json
-    └── CONFIG_EXCEL_V2.md        # справочник config_excel_v2.json
+    ├── CONFIG_EXCEL_V2.md        # справочник config_excel_v2.json
+    └── CONFIG_EXCEL_V2_PARAMS.md # карточка на каждый ключ config_excel_v2
 ```
 
 В копиях `config.json` / `config_excel_v2.json` внутри POST стоит **`mode: prod`**.
@@ -79,5 +80,5 @@ KANBAN_HTML_Analiz/
 2. Скопировать каталог `POST/KANBAN_HTML_Analiz/`
 3. Создать пустые: `IN/`, `IN/TEST/`, `IN/PROD/`, `OUT/`, `OUT/excel_v2/`, `log/`
 4. Положить xlsx (и CSV почт при необходимости)
-5. При необходимости поправить `config.json` / `config_excel_v2.json` — см. [CONFIG.md](CONFIG.md), [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md)
+5. При необходимости поправить `config.json` / `config_excel_v2.json` — см. [CONFIG.md](CONFIG.md), [CONFIG_EXCEL_V2.md](CONFIG_EXCEL_V2.md), [CONFIG_EXCEL_V2_PARAMS.md](CONFIG_EXCEL_V2_PARAMS.md)
 6. `python run.py` → `OUT/`; `python run_excel.py` → `OUT/excel_v2/`

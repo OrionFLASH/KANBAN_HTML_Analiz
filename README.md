@@ -303,3 +303,4 @@ cd HTML && python -m http.server 8080
 | 2.9.1 | 2026-09-11 | Docs v2.9.0: CONFIG/PARAMS/DEPLOY; архивы `v2_program_files_20260911.zip` + `docs_20260911.zip` |
 | 2.9.2 | 2026-09-11 | Fix архива: полный `src/` (не только `v2`); `v2_program_files_20260911b.zip` + `docs_20260911b.zip` |
 | 2.9.3 | 2026-09-11 | Percentiles: `split_mode=files` — отдельный xlsx на ТБ; архивы `20260911c` |
+| 2.9.3a | 2026-09-12 | POST 2.9.3: синхронизация кода/config/Docs (в т.ч. PARAMS) с main |
